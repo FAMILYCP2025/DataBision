@@ -1,0 +1,38 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+*.DotSettings
+appsettings.Development.json
+
+# Secrets — never commit
+appsettings.*.local.json
+*.pfx
+*.pem
+secrets.json
+
+# Frontend
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Test results
+TestResults/
+coverage/
