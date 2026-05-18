@@ -14,7 +14,41 @@ DataBision es una plataforma de reportería para SAP Business One. Este roadmap 
 | **Cliente A** | Dedicated Extractor (Modalidad A) | SAP B1 HANA, ambiente dedicado | Sí — Windows Service o Linux systemd |
 | **Cliente B** | Cloud Connector / Queue Mode (Modalidad B) | SAP B1 cloud/restringido | No — Service Layer + UDT/UDO |
 
-Ambos clientes compartirán la misma infraestructura Azure, el mismo Ingest API, y el mismo schema de Azure SQL con aislamiento por `tenant_id`/`company_id`.
+Ambos clientes comparten la misma infraestructura Azure (Resource Group, Ingest API, Azure Function) y el mismo schema lógico de Azure SQL. Sin embargo, **cada cliente tiene su propia Azure SQL Database** — no comparten la misma base de datos física. El aislamiento es por base de datos, no por fila ni schema.
+
+> **Modelo MVP:** una Azure SQL DB por tenant/cliente. El Ingest API es único y distingue tenants por API Key + `tenant_id` en el payload. El schema (DDL, stored procedures) es idéntico en ambas DBs y se mantiene con migraciones versionadas.
+>
+> **Futuro:** si el número de tenants crece y el costo operacional de N bases individuales resulta alto, evaluar **Elastic Pool** o un modelo de DB compartida con RLS. Esa decisión se toma con datos reales de volumen y costo — no antes.
+
+---
+
+## Advertencia sobre duración y go-live comercial
+
+> **MVP técnico vs producción confiable — no son lo mismo.**
+
+Un MVP técnico (datos de SAP en Azure SQL, primera factura visible en el portal) puede lograrse en **días** con condiciones ideales: accesos listos, SAP disponible, sin problemas de firewall, volumen bajo.
+
+Producción confiable para dos clientes reales — donde el cliente puede tomar decisiones de negocio basadas en los datos — probablemente requiere **semanas**, por los siguientes motivos reales:
+
+| Causa de demora | Por qué no se puede acelerar |
+|---|---|
+| Validación de `UpdateTS` en HANA del cliente | Depende del entorno real; no predecible |
+| Autorización para instalar agente en servidor del cliente | Requiere aprobación IT del cliente |
+| Autorización para crear UDT/SP en SAP cloud (Cliente B) | Puede requerir solicitud formal al proveedor cloud |
+| Medición real de throughput Service Layer | Solo se sabe con el ambiente productivo |
+| Conciliación de conteos y totales contra SAP | No se puede asumir que el primer resultado es correcto |
+| Detección de encoding/collation en datos SAP reales | Los datos sintéticos no reproducen todos los casos borde |
+| Revisión con el cliente (¿los datos coinciden con su reporte SAP interno?) | El cliente necesita tiempo para validar |
+
+**Regla de go-live comercial:**
+
+No comprometer fecha de go-live productivo hasta tener:
+1. Hito "SAP real → raw conciliado" validado para al menos uno de los dos clientes.
+2. Throughput de Service Layer medido (para Cliente B).
+3. Carga inicial completada y cronometrada en PROD (no en DEV).
+4. Al menos una semana de ciclo incremental estable sin errores.
+
+El go-live commercial puede negociarse como "acceso beta controlado" mientras se completa la estabilización — no como producto terminado.
 
 ---
 
@@ -30,31 +64,49 @@ Ambos clientes compartirán la misma infraestructura Azure, el mismo Ingest API,
 
 - [ ] Crear Azure Subscription (DEV y futuro PROD en la misma suscripción o separadas).
 - [ ] Crear Resource Group `rg-databision-dev`.
+**Bloqueantes para empezar (hacer primero):**
+
 - [ ] Provisionar Azure SQL Server + DB por tenant:
-  - `databision-sql-dev` (servidor lógico)
-  - `db-tenant-clienta-dev` (DB Cliente A)
-  - `db-tenant-clientb-dev` (DB Cliente B)
-  - Tier inicial: S2 Standard (50 DTU) — ajustar tras carga inicial.
+  - `databision-sql-dev` (servidor lógico compartido — una instancia lógica, una DB por tenant)
+  - `db-tenant-clienta-dev` (DB dedicada Cliente A)
+  - `db-tenant-clientb-dev` (DB dedicada Cliente B)
+  - **Tier DEV:** S1 Standard (20 DTU) o S2 (50 DTU) — suficiente para desarrollo y pruebas. Ver tabla de tiers más abajo.
 - [ ] Crear Azure Key Vault `kv-databision-dev`:
   - Secretos: `sql-conn-clienta`, `sql-conn-clientb`, `ingest-api-key-clienta`, `ingest-api-key-clientb`.
   - Política de acceso: solo servicios autorizados (no personas directamente).
 - [ ] Crear Storage Account `stdatabisiondev`:
   - Blob container `raw-exports` para archivo futuro Parquet.
   - Blob container `csv-initial-loads` para carga inicial CSV Modalidad B.
-- [ ] Crear App Registration en Azure AD (para Service Principal Power BI futuro — no configurar todavía, solo crear el placeholder).
-- [ ] Crear Power BI Workspace `DataBision DEV` (solo el workspace, sin datasets todavía).
 - [ ] Crear Application Insights `appi-databision-dev` (para telemetría del Ingest API).
 - [ ] Crear App Service Plan + Web App para Ingest API:
   - `app-databision-ingest-dev`
-  - Plan B2 mínimo (2 vCores, 3.5 GB RAM).
+  - **Plan DEV: B1** (1 vCore, 1.75 GB RAM) — suficiente para DEV y pruebas con volumen bajo. Escalar durante carga inicial si es necesario (ver criterio abajo).
   - Managed Identity habilitada.
 - [ ] Asignar Managed Identity del Ingest API como usuario en cada Azure SQL DB con rol `extractor_writer`.
 - [ ] Configurar firewall Azure SQL: solo App Service Outbound IPs + IPs de soporte.
 - [ ] Verificar conectividad App Service → Azure SQL (no Internet pública).
 
+**No bloqueantes para empezar (preparación futura — hacer después de validar SAP→raw):**
+
+- [ ] Crear App Registration en Azure AD (para Service Principal Power BI — no configurar todavía, solo el placeholder).
+- [ ] Crear Power BI Workspace `DataBision DEV` (solo el workspace vacío, sin datasets).
+
+> Estos dos ítems no son necesarios hasta que `raw.*` esté conciliado contra SAP real y el pipeline raw→fact esté probado. No crearlos como prerrequisito de go-live.
+
+#### Criterio de escalamiento de tiers
+
+| Momento | App Service | Azure SQL |
+|---|---|---|
+| DEV normal | B1 | S1/S2 |
+| Carga inicial grande (> 100k docs) | Escalar temporalmente a B2/B3 | Escalar temporalmente a S3/S4 |
+| PROD inicial (post-pruebas) | B1/B2 según pruebas de carga | S2/S3 según volumen real medido |
+| PROD estabilizado (> 200k docs/día) | P1v3 o superior | P1/vCore General Purpose |
+
+Regla: **no sobredimensionar DEV**. El costo de S1+B1 en DEV es < USD 50/mes. Escalar solo cuando los datos reales de volumen lo justifiquen.
+
 #### Componentes afectados
 
-Azure Subscription, Resource Groups, Azure SQL, Key Vault, Storage Account, App Service, Application Insights.
+Azure Subscription, Resource Groups, Azure SQL (dos DBs independientes), Key Vault, Storage Account, App Service, Application Insights.
 
 #### Dependencias
 
@@ -63,16 +115,22 @@ Ninguna (es la fase cero).
 #### Accesos requeridos
 
 - Rol `Owner` o `Contributor` en Azure Subscription.
-- Acceso a Azure AD para crear App Registration.
 - Créditos Azure o suscripción activa.
+- Acceso a Azure AD para App Registration (solo cuando se llegue a ese ítem futuro).
 
-#### Criterios de aceptación
+#### Criterios de aceptación (bloqueantes)
 
 - [ ] `curl https://app-databision-ingest-dev.azurewebsites.net/health` responde `200 OK`.
 - [ ] Managed Identity conecta a Azure SQL sin password en logs.
 - [ ] Key Vault accesible desde App Service (GET secret sin error).
-- [ ] Todas las DBs con schemas `raw`, `stg`, `dim`, `fact`, `ctl`, `audit` creados.
-- [ ] Usuarios SQL con roles asignados (`extractor_writer`, `transform_runner`, `portal_reader`, `powerbi_reader`, `admin_operator`).
+- [ ] Ambas DBs (`db-tenant-clienta-dev` y `db-tenant-clientb-dev`) son bases de datos independientes.
+- [ ] Schemas `raw`, `stg`, `dim`, `fact`, `ctl`, `audit` creados en cada DB.
+- [ ] Usuarios SQL con roles asignados en cada DB independientemente.
+
+#### Criterios de aceptación (no bloqueantes — verificar cuando corresponda)
+
+- [ ] App Registration creado en Azure AD (previo a configurar Power BI).
+- [ ] Power BI Workspace DEV accesible (previo a publicar datasets).
 
 #### Riesgos
 
@@ -80,7 +138,8 @@ Ninguna (es la fase cero).
 |---|---|
 | Firewall Azure SQL bloqueando App Service | Agregar "Allow Azure Services" como regla temporal; reemplazar con IPs explícitas |
 | Managed Identity sin permisos en SQL | Script de provisioning crea el usuario SQL mapeado a la identidad antes del deploy |
-| Tier insuficiente para carga inicial | Escalar temporalmente a S4 durante carga inicial; degradar después |
+| Tier insuficiente para carga inicial | Escalar temporalmente (ver tabla de tiers); degradar después de la carga |
+| Power BI bloqueando go-live de extracción | Power BI no es bloqueante — el hito real es SAP→raw conciliado |
 
 #### Duración estimada
 
@@ -123,9 +182,21 @@ Infraestructura Azure DEV operativa. Script de provisioning idempotente (`script
   - Autenticación: API Key en header `X-DataBision-ApiKey` validado contra Key Vault.
 - [ ] Test de carga básico: insertar 5000 filas OINV sintéticas y medir tiempo (objetivo < 2s p95).
 
+#### Decisión de diseño: `source_hash` — quién lo calcula y cómo
+
+`source_hash` es SHA-256 del contenido canónico de las columnas de negocio. Esta decisión tiene impacto directo en la equivalencia entre modalidades.
+
+**Riesgo de dos implementaciones divergentes:** si el Dedicated Extractor (C#, HANA) y el Cloud Connector (C#, Service Layer) calculan `source_hash` de forma ligeramente distinta (diferente canonicalización, diferente set de columnas, diferente manejo de NULLs), el mismo registro SAP tendrá hashes diferentes por modalidad — lo que rompe el criterio de equivalencia.
+
+**Recomendación:**
+
+1. **Librería compartida obligatoria:** crear un proyecto `DataBision.Shared` con la función `CanonicalHash.Compute(Dictionary<string, object?> columns)`. Tanto el Extractor como el Connector deben referenciar este proyecto — nunca reimplementar el hash.
+2. **Validación en el Ingest API:** el Ingest API puede opcionalmente re-calcular el hash desde el payload canónico y compararlo con el `source_hash` recibido. Si difieren, loguear `audit.ingestion_event` con flag `hash_validation_mismatch` (no rechazar, solo detectar). Esto actúa como red de seguridad si una versión del agente tiene un bug de canonicalización.
+3. **Lista de columnas versionada:** el set de columnas incluidas en el hash está en `ctl.source_object_config.hash_columns` (campo JSON). Cambiar el set de columnas implica recalcular el hash de todo el histórico — hacer con cuidado y versionado.
+
 #### Componentes afectados
 
-Azure SQL, Ingest API (DataBision.Api), stored procedures.
+Azure SQL, Ingest API (DataBision.Api), stored procedures, librería `DataBision.Shared`.
 
 #### Dependencias
 
@@ -164,9 +235,13 @@ Ingest API desplegado en DEV. Ambas Azure SQL DBs con schema completo. Script de
 
 ---
 
-### Fase 2 — Modelo BI inicial de ventas
+### Fase 2 — Modelo BI inicial de ventas (estructura con datos sintéticos)
 
-**Objetivo:** Tener las capas `stg`, `dim` y `fact` funcionando con stored procedures de refresh, listas para consumir datos una vez que los extractores empiecen a poblar `raw`.
+**Objetivo:** Tener el DDL y los stored procedures de `stg`/`dim`/`fact` listos y verificados con un dataset sintético, de modo que cuando los extractores empiecen a poblar `raw` con datos reales, el pipeline ya esté probado.
+
+> **Importante sobre el orden:** esta fase construye la estructura del modelo BI y lo verifica con datos sintéticos. Esto no reemplaza la validación con datos SAP reales — esa validación ocurre en las Fases 3 y 4. El modelo BI no se considera **cerrado** hasta que `fact.sales` se haya reconciliado contra SAP real con al menos un cliente. Ver hito de conciliación en §Fase 3 y §Fase 4.
+>
+> **¿Por qué construir el modelo BI antes de tener datos reales?** Porque si se espera a tener datos de SAP para definir el schema de `stg`/`dim`/`fact`, el Dedicated Extractor y el Cloud Connector no tienen destino preparado. Las Fases 3 y 4 dependen de que el pipeline raw→fact ya exista. Sin embargo, los stored procedures de refresh **no son validados como correctos hasta probar contra datos SAP reales**.
 
 #### Tareas técnicas
 
@@ -213,15 +288,21 @@ Fase 1 completada (raw schema + Ingest API operativo).
 - Azure SQL con rol `transform_runner` para jobs.
 - Azure Function con Managed Identity o SQL user `databision_refresh`.
 
-#### Criterios de aceptación
+#### Criterios de aceptación (con datos sintéticos — cierre de Fase 2)
 
 - [ ] Con raw poblado con datos sintéticos: `fact.sales` tiene filas correctas tras refresh.
-- [ ] Refresh stg completo de 10k filas: < 5 minutos.
-- [ ] Refresh fact delta diario de 1k filas: < 2 minutos.
-- [ ] SCD2 crea nueva versión al cambiar `CardName` en OCRD.
-- [ ] Cancelación en OINV se refleja en `fact.sales.is_canceled = 1` tras próximo refresh.
+- [ ] Refresh stg completo de 10k filas sintéticas: < 5 minutos.
+- [ ] Refresh fact delta de 1k filas sintéticas: < 2 minutos.
+- [ ] SCD2 crea nueva versión al cambiar `CardName` en OCRD sintético.
+- [ ] Cancelación en OINV sintético se refleja en `fact.sales.is_canceled = 1` tras refresh.
 - [ ] `audit.data_quality_event` registra filas problemáticas sin romper pipeline.
-- [ ] Mismo input desde `DEDICATED_HANA` y `SERVICE_LAYER_QUEUE` produce mismo `fact.sales`.
+- [ ] Mismo input sintético produce mismo `fact.sales` independientemente del `ingestion_mode`.
+
+#### Criterios de aceptación adicionales (con datos SAP reales — cierre de Fases 3/4)
+
+- [ ] `fact.sales` con datos reales de Cliente A coincide ± 1% con reporte SAP.
+- [ ] `fact.sales` con datos reales de Cliente B coincide ± 1% con reporte SAP.
+- [ ] Stored procedures de refresh ajustados si se detectan diferencias entre datos sintéticos y datos SAP reales (tipos, NULLs, encoding, etc.).
 
 #### Riesgos
 
@@ -304,6 +385,25 @@ DataBision.Extractor (Worker Service), Ingest API, Azure SQL (raw), agente insta
 - [ ] Agente arranca automáticamente tras reboot del servidor.
 - [ ] Heartbeat visible en `ctl.extraction_run` cada ciclo.
 - [ ] Conteo de documentos en `raw.sap_oinv` ± 1% vs `SELECT COUNT(*) FROM OINV` en HANA.
+
+#### Hito de validación: SAP real → Azure SQL raw conciliado (Cliente A)
+
+**Este hito es prerrequisito para considerar la Fase 3 cerrada.** No avanzar a Fase 5 (portal) sin él.
+
+| Check | Criterio | Query de validación |
+|---|---|---|
+| OINV cargada | COUNT raw = COUNT SAP ± 1% | `SELECT COUNT(*) FROM raw.sap_oinv` vs `SELECT COUNT(*) FROM OINV` en HANA |
+| INV1 cargada | COUNT raw = COUNT SAP ± 1% | Idem para inv1 |
+| ORIN cargada | COUNT raw = COUNT SAP ± 1% | Idem para orin |
+| RIN1 cargada | COUNT raw = COUNT SAP ± 1% | Idem para rin1 |
+| OCRD cargada | COUNT raw = COUNT SAP ± 0 | Maestros deben ser exactos |
+| OITM cargada | COUNT raw = COUNT SAP ± 0 | |
+| OSLP cargada | COUNT raw = COUNT SAP ± 0 | |
+| Suma DocTotal conciliada | `SUM(DocTotal)` raw vs HANA ± 0.01% | Sobre período de 6 meses |
+| Incremental probado | Documento nuevo en SAP → raw en ≤ 60 min | Factura de prueba creada y verificada |
+| Documento modificado | Modificar factura → raw actualizado en ≤ 60 min | Cambiar Comments; verificar update en raw |
+| Reintento probado | Detener Ingest API 10 min → reactivar → datos no perdidos | Verificar `ctl.extraction_error` y recovery |
+| Checkpoint probado | Reiniciar agente → retoma desde watermark correcto | No re-extrae todo desde cero |
 
 #### Riesgos
 
@@ -392,6 +492,24 @@ DataBision.CloudConnector (Azure Function), Ingest API, Azure SQL (raw), SAP B1 
 - [ ] Factura de prueba nueva en SAP aparece en `raw.sap_oinv` dentro de 10 minutos.
 - [ ] Conteo documentos en `raw.sap_oinv` ± 1% vs conteo vía `GET /b1s/v1/Invoices/$count`.
 
+#### Hito de validación: SAP real → Azure SQL raw conciliado (Cliente B)
+
+**Este hito es prerrequisito para considerar la Fase 4 cerrada.** No avanzar a Fase 5 (portal) sin él.
+
+| Check | Criterio | Método de validación |
+|---|---|---|
+| OINV cargada | COUNT raw = `GET /b1s/v1/Invoices/$count` ± 1% | Query Azure SQL vs SL |
+| INV1 cargada | COUNT raw conciliado | Derivado por DocEntry |
+| ORIN cargada | COUNT raw = SL/$count ± 1% | |
+| OCRD cargada | COUNT exacto | Maestros |
+| OITM cargada | COUNT exacto | |
+| OSLP cargada | COUNT exacto | |
+| Suma DocTotal conciliada | `SUM(DocTotal)` raw vs SL paginado ± 0.01% | Script de comparación |
+| Incremental por cola probado | Documento nuevo → raw en ≤ 10 min | Factura de prueba; verificar TN + Function |
+| Documento modificado | Modificar → raw actualizado en ≤ 10 min | Cambio en SAP; verificar MERGE en raw |
+| Reintento probado | Bajar Function 10 min → levantar → cola procesada | `@DBI_SYNC_QUEUE` no pierde items |
+| Checkpoint probado | Reiniciar Function → retoma desde checkpoint | `ctl.extraction_checkpoint` correcto |
+
 #### Riesgos
 
 | Riesgo | Mitigación |
@@ -442,8 +560,11 @@ DataBision.Api (portal endpoints), DataBision Frontend, Azure SQL (dim/fact).
 
 #### Dependencias
 
-- Fases 3 y 4 completadas (raw poblado para ambos clientes).
-- Fase 2 completada (dim/fact con datos reales tras al menos un refresh).
+- **Hito "SAP real → raw conciliado" de Fase 3 completado** (Cliente A con datos reales en raw).
+- **Hito "SAP real → raw conciliado" de Fase 4 completado** (Cliente B con datos reales en raw).
+- Al menos un ciclo de refresh raw→stg→dim→fact corrido con datos SAP reales (no solo sintéticos).
+
+> No conectar el portal a datos reales si la conciliación raw vs SAP no está validada. Mostrar datos incorrectos al cliente final es peor que no mostrar nada.
 
 #### Accesos requeridos
 
@@ -584,22 +705,31 @@ Runbook de soporte. Dashboard de monitoreo funcional. Documento de lecciones apr
 
 | Item | Estado | Notas |
 |---|---|---|
+**Bloqueantes (necesarios antes de empezar extracción):**
+
+| Item | Estado | Notas |
+|---|---|---|
 | Azure Subscription activa | ⬜ | Confirmar si DEV y PROD en misma suscripción |
 | Resource Group DEV (`rg-databision-dev`) | ⬜ | |
 | Azure SQL Server DEV (`databision-sql-dev`) | ⬜ | Región: la más cercana al servidor de Cliente A |
-| Azure SQL DB Cliente A DEV | ⬜ | Tier S2 inicial |
-| Azure SQL DB Cliente B DEV | ⬜ | Tier S2 inicial |
+| Azure SQL DB Cliente A DEV — **base independiente** | ⬜ | Tier S1/S2; escalar durante carga inicial si necesario |
+| Azure SQL DB Cliente B DEV — **base independiente** | ⬜ | Tier S1/S2; escalar durante carga inicial si necesario |
 | Key Vault DEV (`kv-databision-dev`) | ⬜ | Soft-delete habilitado |
 | Storage Account DEV (`stdatabisiondev`) | ⬜ | Containers: `raw-exports`, `csv-initial-loads` |
-| App Service Plan DEV (B2) | ⬜ | Para Ingest API |
-| App Service Ingest API DEV | ⬜ | Managed Identity habilitada |
-| Azure Function App DEV (Cloud Connector) | ⬜ | Consumption plan o Premium V2 |
-| App Registration Azure AD | ⬜ | Placeholder para Service Principal Power BI futuro |
-| Power BI Workspace DEV | ⬜ | Solo el workspace vacío |
 | Application Insights DEV | ⬜ | Connection string en App Settings del API |
+| App Service Plan DEV (**B1 recomendado para DEV**) | ⬜ | Escalar a B2/B3 solo durante carga inicial grande |
+| App Service Ingest API DEV | ⬜ | Managed Identity habilitada |
+| Azure Function App DEV (Cloud Connector) | ⬜ | Consumption plan para DEV; Premium V2 solo si cold start es problema |
 | Firewall Azure SQL configurado | ⬜ | Solo App Service IPs + IPs soporte |
-| Managed Identity → SQL DB vinculada | ⬜ | Usuario SQL mapeado en cada DB |
+| Managed Identity → SQL DB vinculada (ambas DBs) | ⬜ | Usuario SQL mapeado en cada DB independientemente |
 | Todos los secrets en Key Vault | ⬜ | Verificar que no hay secrets en appsettings.json productivo |
+
+**No bloqueantes (preparación futura — hacer cuando corresponda):**
+
+| Item | Estado | Cuándo activar |
+|---|---|---|
+| App Registration Azure AD | ⬜ | Antes de configurar Service Principal Power BI |
+| Power BI Workspace DEV | ⬜ | Después de validar raw→fact con datos SAP reales |
 
 ---
 
@@ -832,13 +962,15 @@ GROUP  BY object_name, last_update_date;
 
 | Semana | Fases activas | Hitos clave |
 |---|---|---|
-| **Semana 1** | Fase 0 + Fase 1 | Infraestructura Azure DEV operativa. Ingest API funcional. DDL aplicado. Smoke test de MERGE con datos sintéticos. |
-| **Semana 2** | Fase 2 + inicio Fase 3 | Pipeline raw→fact con datos sintéticos funcionando. Inicio instalación agente Cliente A. Checklist B validado con el cliente. |
-| **Semana 3** | Fase 3 (carga inicial + validación) + inicio Fase 4 | Carga inicial Cliente A completa. Ciclo incremental Cliente A validado. Inicio setup UDT/SP en SAP Cliente B. |
-| **Semana 4** | Fase 4 + Fase 5 | Carga inicial Cliente B completa. Portal conectado a datos reales. Aislamiento de tenants validado. |
-| **Semana 5** | Fase 6 + inicio Fase 7 | Pruebas E2E completas. Infra PROD provisionada. Go-live Cliente A. |
-| **Semana 6** | Fase 7 (Cliente B) + Fase 8 | Go-live Cliente B. Monitoreo activo. Estabilización. |
-| **Semana 7–8** | Fase 8 | Soporte, ajustes de configuración, conciliación semanal, retrospectiva. |
+| **Semana 1** | Fase 0 + Fase 1 | Infraestructura Azure DEV operativa (sin Power BI aún). Ingest API funcional. DDL aplicado en ambas DBs. Smoke test de MERGE con datos sintéticos. |
+| **Semana 2** | Fase 2 + inicio Fase 3 | Pipeline raw→stg→fact con datos sintéticos probado. Inicio instalación agente Cliente A. Checklists B y C iniciados con los clientes. |
+| **Semana 3** | Fase 3 — carga inicial + hito conciliación Cliente A | Carga inicial Cliente A completa. **Hito: raw conciliado contra SAP real.** Ciclo incremental estable. Inicio setup UDT/SP en SAP Cliente B (en paralelo si es posible). |
+| **Semana 4** | Fase 4 — carga inicial + hito conciliación Cliente B | Carga inicial Cliente B completa. **Hito: raw conciliado contra SAP real Cliente B.** Ciclo incremental estable. Pipeline raw→fact con datos reales de ambos. |
+| **Semana 5** | Fase 5 + Fase 6 | Portal conectado a datos reales. Pruebas E2E. Validación de aislamiento y conciliación final. Decisión go/no-go. |
+| **Semana 6** | Fase 7 (go-live controlado) | Infra PROD provisionada. Cargas iniciales PROD. Go-live Cliente A. Validar 24h. Go-live Cliente B. |
+| **Semana 7–8+** | Fase 8 | Monitoreo activo, ajustes, conciliación semanal, retrospectiva. Power BI Workspace activado si es prioridad. |
+
+> **Nota sobre semanas:** estas estimaciones asumen accesos disponibles desde el día 1 de cada semana. Demoras en accesos (firewall, autorización IT, UDT en SAP cloud) pueden extender cada fase en 1–2 semanas adicionales. Ver advertencia de duración al inicio del documento.
 
 ---
 
