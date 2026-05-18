@@ -66,23 +66,41 @@ public class PermissionRepository(AppDbContext db) : IPermissionRepository
         await db.SaveChangesAsync();
     }
 
-    public async Task ReplaceUserPermissionsAsync(int companyId, int targetUserId, int grantedBy, IEnumerable<PermissionUpdateDto> updates)
+    public async Task<PermissionsChangeResult> ReplaceUserPermissionsAsync(int companyId, int targetUserId, int grantedBy, IEnumerable<PermissionUpdateDto> updates)
     {
         await using var transaction = await db.Database.BeginTransactionAsync();
 
         try
         {
-            // Eliminar todos los permisos actuales del usuario en esta compañía
             var existing = await db.UserPermissions
                 .Where(p => p.UserId == targetUserId && p.CompanyId == companyId)
                 .ToListAsync();
 
+            // Effective access set = rows that actually grant view on a specific report.
+            // ReportId=null or CanView=false don't grant anything (see HasPermissionAsync /
+            // HasModulePermissionAsync) — they're discarded so the diff reflects real intent.
+            var existingGranting = existing
+                .Where(e => e.CanView && e.ReportId.HasValue)
+                .Select(e => new PermissionChange(e.ModuleId, e.ReportId))
+                .ToList();
+
+            var newGranting = updates
+                .Where(u => u.UserId == targetUserId && u.ReportId.HasValue && u.CanView)
+                .Select(u => new PermissionChange(u.ModuleId, u.ReportId))
+                .Distinct()
+                .ToList();
+
+            var added = newGranting
+                .Where(n => !existingGranting.Any(e => e.ModuleId == n.ModuleId && e.ReportId == n.ReportId))
+                .ToList();
+
+            var removed = existingGranting
+                .Where(e => !newGranting.Any(n => n.ModuleId == e.ModuleId && n.ReportId == e.ReportId))
+                .ToList();
+
             db.UserPermissions.RemoveRange(existing);
             await db.SaveChangesAsync();
 
-            // Permisos válidos: deben ser para el usuario objetivo, tener ReportId concreto
-            // (un row con ReportId=null es ambiguo y no concede nada en HasPermissionAsync /
-            // HasModulePermissionAsync — se descarta para evitar filas muertas).
             foreach (var u in updates)
             {
                 if (u.UserId != targetUserId) continue;
@@ -101,6 +119,8 @@ public class PermissionRepository(AppDbContext db) : IPermissionRepository
 
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            return new PermissionsChangeResult(added, removed);
         }
         catch
         {

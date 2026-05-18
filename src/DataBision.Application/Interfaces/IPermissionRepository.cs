@@ -10,6 +10,6 @@ public interface IPermissionRepository
     Task<bool> IsCompanyAdminAsync(int userId, int companyId);
     Task<bool> HasModulePermissionAsync(int userId, int companyId, int moduleId);
     Task UpsertPermissionsAsync(int companyId, int grantedBy, IEnumerable<PermissionUpdateDto> updates);
-    Task ReplaceUserPermissionsAsync(int companyId, int targetUserId, int grantedBy, IEnumerable<PermissionUpdateDto> updates);
+    Task<PermissionsChangeResult> ReplaceUserPermissionsAsync(int companyId, int targetUserId, int grantedBy, IEnumerable<PermissionUpdateDto> updates);
     Task<IEnumerable<UserPermission>> GetForCompanyAsync(int companyId);
 }

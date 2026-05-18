@@ -8,9 +8,13 @@ interface AuthState {
   accessToken: string | null
   isAuthenticated: boolean
   setAuth: (user: AuthUser, token: string) => void
+  restoreSession: (user: AuthUser, token: string) => void
   clearAuth: () => void
 }
 
+// Persisted shape: user / isAuthenticated only. accessToken stays in memory
+// and is recovered via the httpOnly refresh-token cookie on the first protected
+// request after page load (handled by the response interceptor in lib/api.ts).
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -23,6 +27,11 @@ export const useAuthStore = create<AuthState>()(
         set({ user, accessToken: token, isAuthenticated: true })
       },
 
+      restoreSession: (user, token) => {
+        setAccessToken(token)
+        set({ user, accessToken: token, isAuthenticated: true })
+      },
+
       clearAuth: () => {
         setAccessToken(null)
         set({ user: null, accessToken: null, isAuthenticated: false })
@@ -30,11 +39,10 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'databision-admin-auth',
-      onRehydrateStorage: () => (state) => {
-        if (state?.accessToken) {
-          setAccessToken(state.accessToken)
-        }
-      },
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 )

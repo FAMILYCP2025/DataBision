@@ -9,9 +9,13 @@ interface ClientAuthState {
   isAuthenticated: boolean
   tenant: string | null
   setAuth: (user: AuthUser, token: string, tenant: string | null) => void
+  restoreSession: (user: AuthUser, token: string, tenant: string | null) => void
   clearAuth: () => void
 }
 
+// Persisted shape: user / isAuthenticated / tenant. accessToken stays in memory
+// only — it is recovered via the httpOnly refresh-token cookie on the first
+// protected request after page load (handled by the response interceptor in lib/api.ts).
 export const useClientAuthStore = create<ClientAuthState>()(
   persist(
     (set) => ({
@@ -28,6 +32,13 @@ export const useClientAuthStore = create<ClientAuthState>()(
         set({ user, accessToken: token, isAuthenticated: true, tenant })
       },
 
+      // Used by AuthBootstrap on silent refresh — does NOT write to localStorage
+      // because the tenant is already persisted from the original login.
+      restoreSession: (user, token, tenant) => {
+        setAccessToken(token)
+        set({ user, accessToken: token, isAuthenticated: true, tenant })
+      },
+
       clearAuth: () => {
         setAccessToken(null)
         set({ user: null, accessToken: null, isAuthenticated: false })
@@ -35,11 +46,11 @@ export const useClientAuthStore = create<ClientAuthState>()(
     }),
     {
       name: 'databision-client-auth',
-      onRehydrateStorage: () => (state) => {
-        if (state?.accessToken) {
-          setAccessToken(state.accessToken)
-        }
-      },
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        tenant: state.tenant,
+      }),
     }
   )
 )

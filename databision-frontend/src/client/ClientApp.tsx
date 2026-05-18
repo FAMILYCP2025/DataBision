@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
+import AuthBootstrap from '../components/AuthBootstrap'
 import ClientLayout from './components/ClientLayout'
 import ClientRequireAuth from './components/ClientRequireAuth'
 import ClientLoginPage from './pages/ClientLoginPage'
@@ -20,30 +21,32 @@ const queryClient = new QueryClient({
 export default function ClientApp() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          {/* Public */}
-          <Route path="/client/login" element={<ClientLoginPage />} />
+      <AuthBootstrap context="client">
+        <BrowserRouter>
+          <Routes>
+            {/* Public */}
+            <Route path="/client/login" element={<ClientLoginPage />} />
 
-          {/* Protected client routes */}
-          <Route element={<ClientRequireAuth />}>
-            <Route element={<ClientLayout />}>
-              <Route path="/client" element={<ClientHomePage />} />
-              <Route path="/client/modules/:moduleSlug" element={<ModulePage />} />
-              <Route path="/client/modules/:moduleSlug/reports/:reportId" element={<ReportViewPage />} />
-              
-              {/* Settings (CompanyAdmin) */}
-              <Route path="/client/settings/users" element={<UsersSettingsPage />} />
-              <Route path="/client/settings/permissions" element={<PermissionsSettingsPage />} />
-              <Route path="/client/settings/branding" element={<BrandingSettingsPage />} />
+            {/* Protected client routes */}
+            <Route element={<ClientRequireAuth />}>
+              <Route element={<ClientLayout />}>
+                <Route path="/client" element={<ClientHomePage />} />
+                <Route path="/client/modules/:moduleSlug" element={<ModulePage />} />
+                <Route path="/client/modules/:moduleSlug/reports/:reportId" element={<ReportViewPage />} />
+
+                {/* Settings (CompanyAdmin) */}
+                <Route path="/client/settings/users" element={<UsersSettingsPage />} />
+                <Route path="/client/settings/permissions" element={<PermissionsSettingsPage />} />
+                <Route path="/client/settings/branding" element={<BrandingSettingsPage />} />
+              </Route>
             </Route>
-          </Route>
 
-          {/* Fallback — redirect to client home */}
-          <Route path="/" element={<Navigate to="/client/login" replace />} />
-          <Route path="*" element={<Navigate to="/client/login" replace />} />
-        </Routes>
-      </BrowserRouter>
+            {/* Fallback — redirect to client home */}
+            <Route path="/" element={<Navigate to="/client/login" replace />} />
+            <Route path="*" element={<Navigate to="/client/login" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthBootstrap>
     </QueryClientProvider>
   )
 }

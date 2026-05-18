@@ -29,6 +29,7 @@ public class ReportRepository(AppDbContext db) : IReportRepository
 
     public async Task UpdateAsync(Report report)
     {
+        report.UpdatedAt = DateTime.UtcNow;
         db.Reports.Update(report);
         await db.SaveChangesAsync();
     }

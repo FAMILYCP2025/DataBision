@@ -1,5 +1,5 @@
 import api from '../../lib/api'
-import type { ApiResponse, BrandingConfig, Module, Report } from '../../types'
+import type { ApiResponse, BrandingConfig, Module, Report, User } from '../../types'
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -37,32 +37,8 @@ export async function clientLogout(): Promise<void> {
 }
 
 // ── Branding ─────────────────────────────────────────────────────────────────
-// TODO: Replace with real endpoint GET /api/client/branding when available
-// MOCK: Returns default branding based on slug
-
-const MOCK_BRANDING: Record<string, Partial<BrandingConfig>> = {
-  acme: {
-    companyDisplayName: 'Acme Corp',
-    primaryColor: '#7C3AED',
-    sidebarColor: '#1E1B4B',
-    accentColor: '#A78BFA',
-    backgroundColor: '#F5F3FF',
-  },
-  techco: {
-    companyDisplayName: 'TechCo',
-    primaryColor: '#0891B2',
-    sidebarColor: '#0C4A6E',
-    accentColor: '#38BDF8',
-    backgroundColor: '#F0F9FF',
-  },
-  demo: {
-    companyDisplayName: 'Demo Company',
-    primaryColor: '#2563EB',
-    sidebarColor: '#0F172A',
-    accentColor: '#0EA5E9',
-    backgroundColor: '#F1F5F9',
-  },
-}
+// Real source of truth: GET /api/tenant/config (public, resolved by subdomain
+// in prod and by ?tenant= query param in local dev via TenantMiddleware).
 
 const DEFAULT_BRANDING: BrandingConfig = {
   companyDisplayName: 'Portal BI',
@@ -76,10 +52,13 @@ const DEFAULT_BRANDING: BrandingConfig = {
 }
 
 export async function getClientBranding(slug: string | null): Promise<BrandingConfig> {
-  // [MOCK] — Real endpoint: GET /api/client/branding?tenant=slug
-  await new Promise((r) => setTimeout(r, 300))
-  const override = slug ? MOCK_BRANDING[slug] ?? {} : {}
-  return { ...DEFAULT_BRANDING, ...override }
+  const tenantParam = slug ? `?tenant=${slug}` : ''
+  try {
+    const { data } = await api.get<ApiResponse<BrandingConfig>>(`/tenant/config${tenantParam}`)
+    return { ...DEFAULT_BRANDING, ...data.data }
+  } catch {
+    return DEFAULT_BRANDING
+  }
 }
 
 // ── Modules ───────────────────────────────────────────────────────────────────
@@ -128,6 +107,28 @@ export async function getReportsByModule(moduleSlug: string): Promise<ClientRepo
 export async function getReportById(moduleSlug: string, reportId: number): Promise<ClientReport | null> {
   const reports = await getReportsByModule(moduleSlug)
   return reports.find((r) => r.id === reportId) ?? null
+}
+
+// ── Embed config ──────────────────────────────────────────────────────────────
+
+export interface ReportEmbedConfigDto {
+  id: number
+  moduleId: number
+  name: string
+  description?: string
+  embedUrl: string
+  workspaceId: string
+  reportId: string
+  datasetId: string
+  isConfigured: boolean
+}
+
+export async function getEmbedConfig(reportId: number): Promise<ReportEmbedConfigDto> {
+  const { useClientAuthStore } = await import('../store/useClientAuthStore')
+  const tenant = useClientAuthStore.getState().tenant
+  const tenantParam = tenant ? `?tenant=${tenant}` : ''
+  const { data } = await api.get<ApiResponse<ReportEmbedConfigDto>>(`/reports/${reportId}/embed-config${tenantParam}`)
+  return data.data
 }
 
 // ── CompanyAdmin Management ───────────────────────────────────────────────────
@@ -192,10 +193,9 @@ export async function updateCompanyPermissionsClient(payload: { userId: number; 
 }
 
 export async function getCompanyBrandingClient(): Promise<BrandingConfig> {
-  // Uses existing getClientBranding or a dedicated endpoint? The backend has GET /api/client/branding?
-  // Actually, we can fetch via GET /api/company/branding (assuming it exists, wait, does it? No, backend CompanyController doesn't have GET /branding, only PUT). 
-  // Let's use the public client branding endpoint.
-  return {} as BrandingConfig
+  const { useClientAuthStore } = await import('../store/useClientAuthStore')
+  const tenant = useClientAuthStore.getState().tenant
+  return getClientBranding(tenant)
 }
 
 export async function updateCompanyBrandingClient(payload: Partial<BrandingConfig>): Promise<BrandingConfig> {

@@ -154,12 +154,26 @@ public class CompanyController(
             .ToList();
 
         // Reemplazar transaccionalmente los permisos para este usuario
-        await permissionService.ReplaceUserPermissionsAsync(companyId.Value, dto.UserId, GetUserId(), updates);
+        var diff = await permissionService.ReplaceUserPermissionsAsync(companyId.Value, dto.UserId, GetUserId(), updates);
 
-        await auditService.LogAsync("PERMISSIONS_UPDATED", userId: GetUserId(), companyId: companyId,
-            metadata: System.Text.Json.JsonSerializer.Serialize(new { updatedUser = dto.UserId, count = updates.Count }));
+        var moduleNameMap = map.ToDictionary(kv => kv.Value, kv => kv.Key);
+        static object Describe(PermissionChange c, Dictionary<int, string> nameMap) =>
+            new { moduleId = c.ModuleId, moduleSlug = nameMap.TryGetValue(c.ModuleId, out var s) ? s : null, reportId = c.ReportId };
 
-        return Ok(new { data = new { updated = updates.Count } });
+        await auditService.LogAsync("PERMISSIONS_UPDATED",
+            userId: GetUserId(), companyId: companyId,
+            resourceType: "User", resourceId: dto.UserId.ToString(),
+            metadata: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                updatedBy = GetUserId(),
+                targetUser = dto.UserId,
+                added = diff.Added.Select(c => Describe(c, moduleNameMap)).ToList(),
+                removed = diff.Removed.Select(c => Describe(c, moduleNameMap)).ToList(),
+                addedCount = diff.Added.Count,
+                removedCount = diff.Removed.Count
+            }));
+
+        return Ok(new { data = new { updated = updates.Count, added = diff.Added.Count, removed = diff.Removed.Count } });
     }
 
     [HttpPut("branding")]

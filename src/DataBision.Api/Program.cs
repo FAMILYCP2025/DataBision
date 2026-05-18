@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using DataBision.Application.Interfaces;
+using DataBision.Application.Options;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using DataBision.Application.Services;
@@ -47,7 +48,9 @@ builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IBrandingService, BlobStorageService>();
-builder.Services.AddScoped<IEmbedTokenService, PowerBIService>();
+builder.Services.AddScoped<IPowerBIService, PowerBIService>();
+builder.Services.Configure<PowerBISettingsOptions>(
+    builder.Configuration.GetSection(PowerBISettingsOptions.SectionName));
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IModuleService, ModuleService>();

@@ -36,10 +36,8 @@ public class PermissionService(IPermissionRepository repository) : IPermissionSe
         await repository.UpsertPermissionsAsync(companyId, grantedBy, updates);
     }
 
-    public async Task ReplaceUserPermissionsAsync(int companyId, int targetUserId, int grantedBy, IEnumerable<PermissionUpdateDto> updates)
-    {
-        await repository.ReplaceUserPermissionsAsync(companyId, targetUserId, grantedBy, updates);
-    }
+    public Task<PermissionsChangeResult> ReplaceUserPermissionsAsync(int companyId, int targetUserId, int grantedBy, IEnumerable<PermissionUpdateDto> updates)
+        => repository.ReplaceUserPermissionsAsync(companyId, targetUserId, grantedBy, updates);
 
     public async Task<IEnumerable<PermissionDto>> GetForCompanyAsync(int companyId)
     {

@@ -16,7 +16,8 @@ public class ReportConfiguration : IEntityTypeConfiguration<Report>
         b.Property(x => x.WorkspaceId).HasMaxLength(100);
         b.Property(x => x.ReportId).HasMaxLength(100);
         b.Property(x => x.DatasetId).HasMaxLength(100);
-        b.Property(x => x.EmbedUrl).HasMaxLength(500).IsRequired();
+        b.Property(x => x.EmbedUrl).HasMaxLength(500);
+        b.Property(x => x.UpdatedAt);
 
         b.HasOne(x => x.Module)
             .WithMany(x => x.Reports)

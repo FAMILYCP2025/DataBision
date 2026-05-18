@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useReportById } from '../hooks/useClientData'
-import ReportPlaceholder from '../components/ReportPlaceholder'
+import ReportEmbedContainer from '../components/ReportEmbedContainer'
 
 export default function ReportViewPage() {
   const { moduleSlug, reportId } = useParams<{ moduleSlug: string; reportId: string }>()
@@ -45,7 +45,7 @@ export default function ReportViewPage() {
               )}
             </div>
           </div>
-          <ReportPlaceholder report={report} />
+          <ReportEmbedContainer report={report} />
         </>
       )}
 

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { getModules, getReportsByModule, getClientBranding, getReportById } from '../api/clientApi'
+import { getModules, getReportsByModule, getClientBranding, getReportById, getEmbedConfig } from '../api/clientApi'
 import { useClientAuthStore } from '../store/useClientAuthStore'
 
 export function useClientModules() {
@@ -25,6 +25,16 @@ export function useReportById(moduleSlug: string | undefined, reportId: number |
     queryFn: () => getReportById(moduleSlug!, reportId!),
     enabled: !!moduleSlug && !!reportId,
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useEmbedConfig(reportId: number | undefined) {
+  return useQuery({
+    queryKey: ['embed-config', reportId],
+    queryFn: () => getEmbedConfig(reportId!),
+    enabled: !!reportId,
+    staleTime: 5 * 60_000,
+    retry: false,
   })
 }
 
