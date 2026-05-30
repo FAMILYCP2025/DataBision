@@ -10,6 +10,13 @@ public class TenantMiddleware(RequestDelegate next, IConfiguration config)
 
     public async Task InvokeAsync(HttpContext ctx, ITenantService tenantService)
     {
+        // Ingest API uses ApiKey auth — tenant is resolved from the key, not the Host header
+        if (ctx.Request.Path.StartsWithSegments("/api/ingest"))
+        {
+            await next(ctx);
+            return;
+        }
+
         var slug = ResolveSlug(ctx, config);
 
         if (!string.IsNullOrEmpty(slug))
@@ -28,7 +35,7 @@ public class TenantMiddleware(RequestDelegate next, IConfiguration config)
     public static string? ResolveSlug(HttpContext ctx, IConfiguration config)
     {
         var host = ctx.Request.Host.Host;
-        var baseDomain = config["App:BaseDomain"] ?? "databision.app";
+        var baseDomain = config["App:BaseDomain"] ?? "databision.com";
         var adminSubdomain = config["App:AdminSubdomain"] ?? "admin";
 
         if (host == "localhost" || host == "127.0.0.1")

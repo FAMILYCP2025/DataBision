@@ -1,14 +1,18 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
+using DataBision.Api.Filters;
 using DataBision.Application.Interfaces;
+using DataBision.Application.Interfaces.Ingest;
 using DataBision.Application.Options;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using DataBision.Application.Services;
 using DataBision.Infrastructure.Azure;
 using DataBision.Infrastructure.Data;
+using DataBision.Infrastructure.Data.Staging;
 using DataBision.Infrastructure.PowerBI;
 using DataBision.Infrastructure.Repositories;
+using DataBision.Infrastructure.Repositories.Ingest;
 using DataBision.Infrastructure.Seed;
 using FluentValidation;
 using FluentValidation.AspNetCore;
@@ -42,15 +46,36 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IModuleRepository, ModuleRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 
+// Staging database — optional, guarded by connection string presence (PostgreSQL/Supabase in Sprint 1)
+var stagingConnectionString = builder.Configuration.GetConnectionString("StagingConnection");
+if (!string.IsNullOrWhiteSpace(stagingConnectionString))
+{
+    builder.Services.AddStagingDatabase(stagingConnectionString);
+    builder.Services.AddScoped<ISapRawRepository>(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<SapRawRepository>>();
+        return new SapRawRepository(stagingConnectionString, logger);
+    });
+    builder.Services.AddScoped<IIngestCheckpointRepository, IngestCheckpointRepository>();
+    builder.Services.AddScoped<IIngestService, IngestService>();
+    builder.Services.AddScoped<ApiKeyAuthFilter>();
+}
+
 // Application services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IBrandingService, BlobStorageService>();
-builder.Services.AddScoped<IPowerBIService, PowerBIService>();
+
+// Power BI is an optional future add-on, not part of the Native BI MVP.
 builder.Services.Configure<PowerBISettingsOptions>(
     builder.Configuration.GetSection(PowerBISettingsOptions.SectionName));
+if (builder.Configuration.GetValue<bool>("PowerBI:Enabled"))
+{
+    builder.Services.AddScoped<IPowerBIService, PowerBIService>();
+}
+
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IModuleService, ModuleService>();
@@ -104,7 +129,7 @@ builder.Services.AddCors(opts => opts.AddPolicy("DataBision", policy =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
     else
         policy.SetIsOriginAllowedToAllowWildcardSubdomains()
-              .WithOrigins("https://*.databision.app")
+              .WithOrigins("https://*.databision.com")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -134,6 +159,11 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
     await scope.ServiceProvider.GetRequiredService<DatabaseSeeder>().SeedAsync();
+
+    // Staging DB migrations (only when configured)
+    var stagingDb = scope.ServiceProvider.GetService<StagingDbContext>();
+    if (stagingDb is not null)
+        stagingDb.Database.Migrate();
 }
 
 if (app.Environment.IsDevelopment())
