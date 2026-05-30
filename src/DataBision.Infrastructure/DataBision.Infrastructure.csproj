@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DataBision.Application\DataBision.Application.csproj" />
     <ProjectReference Include="..\DataBision.Domain\DataBision.Domain.csproj" />
+    <ProjectReference Include="..\DataBision.Shared\DataBision.Shared.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.4" />
@@ -15,6 +16,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.1" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
     <!-- Power BI: uncomment when Service Principal is configured -->

@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DataBision.Application\DataBision.Application.csproj" />
     <ProjectReference Include="..\..\src\DataBision.Domain\DataBision.Domain.csproj" />
+    <ProjectReference Include="..\..\src\DataBision.Shared\DataBision.Shared.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
