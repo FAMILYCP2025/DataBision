@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(node --version)",
-      "PowerShell(npm --version 2>&1)",
-      "Bash(dotnet build *)"
-    ]
-  }
-}

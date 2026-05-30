@@ -38,7 +38,7 @@ public class DatabaseSeeder(AppDbContext db, ILogger<DatabaseSeeder> logger)
 
     private async Task SeedSuperAdminAsync()
     {
-        const string adminEmail = "admin@databision.app";
+        const string adminEmail = "admin@databision.com";
         if (await db.Users.AnyAsync(u => u.Email == adminEmail)) return;
 
         db.Users.Add(new User
