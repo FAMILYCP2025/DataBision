@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DataBision.Infrastructure.Data.Staging;
 
 /// <summary>
-/// Separate EF context for the staging database (SQL Server only).
+/// Separate EF context for the staging database (Supabase PostgreSQL).
 /// Used only for ctl/audit EF-managed tables. Raw table upserts use Dapper.
 /// </summary>
 public sealed class StagingDbContext(DbContextOptions<StagingDbContext> options) : DbContext(options)
@@ -35,7 +35,11 @@ public sealed class StagingDbContext(DbContextOptions<StagingDbContext> options)
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        // Migrations history in ctl schema to keep EF tables isolated from raw data
-        optionsBuilder.UseSqlServer(b => b.MigrationsHistoryTable("__EFMigrationsHistory", "ctl"));
+        // Guard: only configure when DI has not already configured (design-time / dotnet ef tool path).
+        // At runtime, AddStagingDatabase() in StagingDatabaseExtensions provides the full config.
+        if (!optionsBuilder.IsConfigured)
+            optionsBuilder
+                .UseNpgsql(b => b.MigrationsHistoryTable("__EFMigrationsHistory", "ctl"))
+                .UseSnakeCaseNamingConvention();
     }
 }

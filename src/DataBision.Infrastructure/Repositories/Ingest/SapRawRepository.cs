@@ -1,7 +1,7 @@
 using Dapper;
 using DataBision.Application.DTOs.Ingest.Rows;
 using DataBision.Application.Interfaces.Ingest;
-using Microsoft.Data.SqlClient;
+using Npgsql; // Sprint 1C: SQL inside still T-SQL MERGE — rewrite pending
 using Microsoft.Extensions.Logging;
 
 namespace DataBision.Infrastructure.Repositories.Ingest;
@@ -367,7 +367,7 @@ SELECT DocEntry
 FROM [raw].[sap_orin]
 WHERE company_id = @CompanyId AND DocEntry IN @DocEntries;";
 
-        await using var conn = new SqlConnection(connectionString);
+        await using var conn = new NpgsqlConnection(connectionString);
         var rows = await conn.QueryAsync<int>(
             new CommandDefinition(sql, new { CompanyId = companyId, DocEntries = list }, cancellationToken: ct));
         return rows.ToList();
@@ -381,7 +381,7 @@ WHERE company_id = @CompanyId AND DocEntry IN @DocEntries;";
         var inserted = 0;
         var updated = 0;
 
-        await using var conn = new SqlConnection(connectionString);
+        await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync(ct);
 
         foreach (var p in paramsList)

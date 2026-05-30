@@ -7,14 +7,15 @@ public static class DatabaseExtensions
 {
     /// <summary>
     /// Registers AppDbContext with SQLite (when connection string starts with "Data Source=")
-    /// or SQL Server otherwise. This allows SQLite in dev without changing production config.
+    /// or PostgreSQL otherwise. Dev local uses SQLite; production targets Supabase PostgreSQL.
+    /// Note: AppDbContext migrations migration to PostgreSQL is a separate sprint (portal DB).
     /// </summary>
     public static IServiceCollection AddDatabase(this IServiceCollection services, string connectionString)
     {
         if (IsSqlite(connectionString))
             services.AddDbContext<AppDbContext>(o => o.UseSqlite(connectionString));
         else
-            services.AddDbContext<AppDbContext>(o => o.UseSqlServer(connectionString));
+            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connectionString));
 
         return services;
     }
