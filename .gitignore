@@ -36,3 +36,15 @@ Thumbs.db
 # Test results
 TestResults/
 coverage/
+
+# Local databases (SQLite dev files — never commit)
+*.db
+*.sqlite
+*.db-shm
+*.db-wal
+
+# Windows accidental null device artifact
+nul
+
+# Local tool settings (Claude Code / Antigravity)
+.claude/settings.local.json
