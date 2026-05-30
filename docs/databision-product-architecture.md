@@ -2,6 +2,8 @@
 
 Status: **Solo diseño — sin implementación.**
 Foco de esta fase: **extracción, sincronización y base intermedia** desde SAP Business One hacia Azure SQL.
+
+> **⚠️ PARCIALMENTE SUPERSEDED (2026-05-29):** La arquitectura de extracción (Modalidades A y B), los objetos SAP MVP, los patrones de watermark/lookback, y la estructura raw/stg/ctl/audit son válidos y se mantienen. Lo que cambió: (1) Azure SQL reemplazado por Supabase PostgreSQL — ver [ADR-001](adr/ADR-001-database-engine.md); (2) Una DB por tenant reemplazado por instancia compartida + company_id — ver [ADR-003](adr/ADR-003-multitenancy.md); (3) T-SQL MERGE reemplazado por PostgreSQL INSERT ON CONFLICT. Ver [master-architecture.md](master-architecture.md) como fuente de verdad.
 Power BI aparece solo como destino futuro. Embedded, tokens, RLS y frontend de reportes están explícitamente fuera de alcance.
 
 ---

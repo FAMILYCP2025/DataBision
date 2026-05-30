@@ -1,9 +1,12 @@
 # DataBision Dedicated Extractor — Technical Design
 
 Status: **Diseño técnico — sin implementación.**
-Modalidad A del documento maestro: agente local en infra del cliente que extrae SAP B1 HANA y empuja a Azure SQL.
+Modalidad A del documento maestro: agente local en infra del cliente que extrae SAP B1 HANA y empuja a **Supabase PostgreSQL vía DataBision Ingest API** (HTTPS POST JSON).
 
-Power BI fuera de alcance salvo como consumidor futuro de Azure SQL.
+> **✅ ACTUALIZADO (2026-05-30 — resolución C-01 auditoría):**
+> El destino del extractor NO es Azure SQL. El extractor envía batches comprimidos al **DataBision Ingest API** (`POST /api/ingest/sap-b1`), que persiste en **Supabase PostgreSQL** usando `INSERT ON CONFLICT`. Azure SQL queda documentado como opción Enterprise futura en `docs/azure-sql-staging-design.md`.
+>
+> Power BI no es el destino ni el núcleo del producto. Ver [ADR-002](adr/ADR-002-bi-layer.md).
 
 ---
 
@@ -78,12 +81,12 @@ Servicio autónomo que vive en la infraestructura del cliente, junto al servidor
                                                     ▼
 ┌──────────────────────────────── AZURE ─────────────────────────────────┐
 │                                                                         │
-│   ┌────────────────────────┐      ┌────────────────────────┐            │
-│   │ DataBision Ingest API  │─────►│  Azure SQL (tenant)    │            │
-│   │ POST /ingest/{...}     │      │  raw.* + ctl.*         │            │
-│   │ POST /heartbeat        │      └────────────────────────┘            │
-│   │ GET /config (agente)   │                                            │
-│   └────────────────────────┘                                            │
+│   ┌────────────────────────┐      ┌────────────────────────────┐          │
+│   │ DataBision Ingest API  │─────►│  Supabase PostgreSQL       │          │
+│   │ POST /api/ingest/sap-b1│      │  raw.* + ctl.* + audit.*   │          │
+│   │ POST /heartbeat        │      │  INSERT ON CONFLICT         │          │
+│   │ GET /config (agente)   │      └────────────────────────────┘          │
+│   └────────────────────────┘                                              │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -280,31 +283,54 @@ journalctl -u databision-extractor -f
 - **Cuándo se usa en Modalidad A:** *solo* para recuperación puntual de un objeto cuya extracción SQL falló (ej.: fila con campo BLOB corrupto en SQL pero accesible por OData).
 - **Nunca para carga masiva.** Ya documentado en doc maestro.
 
-### 5.4 Driver matrix
+### 5.4 Nota: HDBCLI Python vs `Sap.Data.Hana.Core` (.NET)
 
-| Driver | Plataforma | Bulk | Tipado | Tamaño dep. | Recomendación |
-|---|---|---|---|---|---|
-| **HDBODBC + System.Data.Odbc** | Win + Linux | Excelente | Débil (DataReader) | 150 MB | **MVP — default obligatorio** |
-| Sap.Data.Hana.Core | Win + Linux | Excelente | Fuerte | 40 MB | **Alternativa FUTURA** — solo tras validar distribución, licencia y runtime cliente |
-| HANA JDBC | (no aplica) | — | — | — | No (no .NET) |
-| Service Layer OData | Win + Linux | Pobre | Fuerte | 0 | Solo fallback puntual |
+"HDBCLI" es el nombre del paquete Python oficial de SAP (`pip install hdbcli`). Internamente llama a `libhdbsql` — el mismo runtime C que usa `Sap.Data.Hana.Core` (.NET).
+
+DataBision Extractor es .NET. HDBCLI Python **no aplica directamente**. La correspondencia correcta de terminología es:
+
+| Término común | .NET | Python |
+|---|---|---|
+| HANA ODBC | `System.Data.Odbc` + HDBODBC | `pyodbc` + HDBODBC |
+| HANA nativo ("HDBCLI") | `Sap.Data.Hana.Core` | `hdbcli` (PyPI) |
+| Service Layer | `HttpClient` OData | `requests` OData |
+
+Para el agente .NET, la comparación "ODBC vs HDBCLI" se lee como "§5.1 vs §5.2". Si DataBision reescribiera el agente en Python en el futuro, `hdbcli` sería la opción natural frente a `pyodbc`.
+
+**Diferencia operacional relevante:** `hdbcli` Python está disponible en PyPI público con términos de distribución más claros que `Sap.Data.Hana.Core` NuGet — uno de los tres bloqueadores del provider .NET (§5.2, §7).
+
+### 5.5 Driver matrix
+
+| Driver | Lenguaje | Plataforma | Bulk | Tipado | Tamaño dep. | Recomendación |
+|---|---|---|---|---|---|---|
+| **HDBODBC + System.Data.Odbc** | .NET | Win + Linux | Excelente | Débil (DataReader) | 150 MB | **MVP — default obligatorio** |
+| `Sap.Data.Hana.Core` (≈ HDBCLI nativo .NET) | .NET | Win + Linux | Excelente | Fuerte | 40 MB | **Alternativa FUTURA** — solo tras validar distribución, licencia y runtime |
+| `hdbcli` | Python | Win + Linux | Excelente | Fuerte | 40 MB | Solo si agente se reescribe en Python |
+| HANA JDBC | Java | — | — | — | — | No aplica (.NET) |
+| Service Layer OData | Cualquiera | Win + Linux | Pobre | Fuerte | 0 | Solo fallback puntual |
 
 ---
 
-## 6. HANA directo vs ODBC vs Service Layer — comparación
+## 6. ODBC vs HDBCLI (nativo) vs Service Layer — comparación
 
-| Dimensión | HANA SQL (ODBC) | HANA SQL (provider) | Service Layer |
+La siguiente tabla usa "HDBCLI" como nombre genérico para el cliente nativo HANA (§5.4 explica la distinción Python/.NET). En contexto .NET: ODBC = §5.1, HDBCLI = §5.2.
+
+| Dimensión | HANA SQL (ODBC) | HANA SQL (HDBCLI / nativo) | Service Layer OData |
 |---|---|---|---|
 | Throughput bulk | 10k–100k rows/s | 10k–100k rows/s | 100–300 rows/s |
 | Latencia query | <50 ms | <50 ms | 200–2000 ms |
-| Acceso a TODA la tabla | Sí | Sí | Sí (con $top y paginación lenta) |
+| Acceso a TODA la tabla | Sí | Sí | Sí ($top, paginación lenta) |
 | Acceso a UDF y UDT | Sí | Sí | Sí (depende mapping) |
 | Joins complejos | Sí | Sí | Limitado |
-| Trabaja en cloud restringido | No | No | Sí |
-| Requiere instalación cliente | Sí (driver) | Sí (lib) | No |
+| Trabaja sin acceso a puerto BD | No | No | Sí (solo HTTP 50000) |
+| Requiere instalación en cliente | Sí (HANA Client ~150 MB) | Sí (lib ~40 MB) | No |
 | Estable ante upgrades SAP B1 | Alta | Alta | Media (endpoints cambian) |
 | Telemetría / observabilidad | Buena | Buena | Pobre |
-| Licenciamiento | Estándar ODBC | Provider SAP | Service Layer license |
+| Licenciamiento .NET | Estándar ODBC — claro | `Sap.Data.Hana.Core` — ambiguo | Service Layer license |
+| Licenciamiento Python | `pyodbc` — libre | `hdbcli` PyPI — más claro que .NET | Service Layer license |
+| Distribución en cliente | Driver SAP previo | Bundleable (pendiente validación) | Sin instalación |
+| Debuggeable con herramientas | `isql`, `odbctest`, `hdbsql` | Solo via binding | Cualquier HTTP tool |
+| Soporta SQL Server futuro | Sí (cambia driver ODBC) | No (solo HANA) | No (solo SAP B1 API) |
 
 ---
 
@@ -2100,6 +2126,420 @@ Modo recovery completo (cuando hay sospecha de corrupción):
 6. Primera corrida re-extrae 24h; reconciliación posterior detecta y corrige.
 7. Si divergencia persiste: --force-rebuild para esa tabla (re-extrae 30d).
 ```
+
+---
+
+---
+
+## 42. SQL Server: soporte futuro
+
+### Contexto
+
+SAP B1 corre sobre SQL Server en instalaciones heredadas y en muchos partners cloud. ADR-004 contempla Modalidad A sobre SQL Server via ODBC. Esta sección define el diseño para ese escenario.
+
+### Driver y conexión
+
+| Aspecto | HANA (actual) | SQL Server (futuro) |
+|---|---|---|
+| Driver .NET recomendado | `System.Data.Odbc` + HDBODBC | `Microsoft.Data.SqlClient` (NuGet estándar Microsoft) |
+| Puerto default | 30015 | 1433 |
+| Encrypt | `ENCRYPT=TRUE` en conn string | `Encrypt=True;TrustServerCertificate=False` |
+| Auth | UID/PWD HANA nativo | SQL Auth (`User ID`/`Password`) o Windows Integrated |
+| Schema SAP | `SBO_<EMPRESA>` | `SBO<EMPRESA>` (sin guion bajo en SQL Server) |
+| Parámetros | `:nombre` | `@nombre` |
+| Comillas identificadores | `"NombreColumna"` | `[NombreColumna]` |
+
+**Recomendación SQL Server:** `Microsoft.Data.SqlClient` en lugar de ODBC puro — mejor soporte async, mejor tipado, activamente mantenido por Microsoft, sin driver externo a instalar.
+
+### Diferencias de sintaxis T-SQL vs HANA SQL
+
+| Constructo | HANA SQL | SQL Server T-SQL |
+|---|---|---|
+| Paginación top-N | `SELECT TOP 5000 ... ORDER BY` | `SELECT TOP 5000 ... ORDER BY` (igual) |
+| Fecha aritmética (24 meses) | `ADD_MONTHS(CURRENT_DATE, -24)` | `DATEADD(MONTH, -24, GETDATE())` |
+| Timestamp UTC | `CURRENT_TIMESTAMP` | `SYSUTCDATETIME()` |
+| IN list grande | `WHERE DocEntry IN (:p1, :p2)` | `WHERE DocEntry IN (@p1, @p2)` o TVP |
+
+### Columnas SAP en SQL Server vs HANA
+
+SAP B1 mantiene las mismas columnas lógicas en ambas plataformas. Las columnas `UpdateDate`, `UpdateTS`, `CreateDate`, `CreateTS` existen y tienen el mismo significado. El watermark compuesto `(UpdateDate, UpdateTS, NaturalKey)` (§14) **funciona sin cambios conceptuales** en SQL Server.
+
+| Columna | HANA tipo | SQL Server tipo | Compatible |
+|---|---|---|---|
+| `UpdateDate` | DATE | `date` o `datetime` | Sí — granularidad día |
+| `UpdateTS` | INT (HHMMSS) | `int` (HHMMSS) | Sí — mismo formato SAP |
+| `DocTotal` | DECIMAL | `numeric(19,6)` | Sí |
+| `DocEntry` | INT | `int` | Sí |
+
+### Abstracción de la capa de acceso
+
+La interface `IHanaQuery` se renombra a `ISourceQuery` con implementaciones:
+
+- `HanaOdbcSourceQuery` — HANA via HDBODBC (actual).
+- `SqlServerSourceQuery` — SQL Server via `Microsoft.Data.SqlClient` (futuro).
+
+La `ExtractionPipeline` no cambia; solo el `ISourceQuery` concreto varía por cliente.
+
+### Configuración por cliente (SQL Server)
+
+```json
+"Source": {
+  "Driver": "SqlServer",
+  "ServerNode": "sqlserver-host,1433",
+  "Database": "SBOACME",
+  "Username": "DBI_READER",
+  "PasswordSource": "env:DBI_SOURCE_PASSWORD",
+  "Encrypt": true,
+  "TrustServerCertificate": false
+}
+```
+
+La sección `Hana` del config actual se reemplaza por `Source` con un campo `Driver` discriminante. Backward compat: si `Driver` ausente, default `HANA`.
+
+---
+
+## 43. SQL Server Change Tracking
+
+### Qué es
+
+SQL Server Change Tracking (CT) es una feature nativa que registra qué filas cambiaron (INSERT/UPDATE/DELETE) por tabla, asociando cada cambio a una `sync_version` — número incremental global. El extractor almacena la última `sync_version` procesada, equivalente funcional al watermark compuesto de HANA.
+
+### Mecanismo
+
+1. El DBA habilita CT por base de datos y por tabla.
+2. SQL Server mantiene una versión global que incrementa con cada commit que toca tablas rastreadas.
+3. En cada corrida: `CHANGETABLE(CHANGES tabla, @last_sync_version)` retorna solo los PKs de filas que cambiaron desde esa versión, más el tipo de operación (I/U/D).
+4. El extractor hace JOIN de los PKs con la tabla principal para obtener los datos completos.
+5. Al confirmar el batch en Azure, se guarda la nueva `sync_version` como checkpoint.
+
+### CT vs watermark SAP UpdateDate/TS
+
+| Aspecto | Watermark UpdateDate/TS | SQL Server CT |
+|---|---|---|
+| Detecta DELETEs reales | No (solo si SAP setea `Canceled='Y'`) | Sí — explícitamente como tipo 'D' |
+| Cobertura de cambios | Solo filas donde SAP actualizó `UpdateDate` | Todos los commits DML |
+| Granularidad de cursor | (date, int, naturalkey) compuesto | `sync_version` — entero simple |
+| Requiere config DB previa | No | Sí (`ALTER DATABASE ... SET CHANGE_TRACKING = ON`) |
+| Compatibilidad con upgrades SAP B1 | Alta — SAP gestiona UpdateDate | Media — SAP podría deshabilitar CT |
+| Retention de cambios | Ilimitada (datos en tabla) | Configurable (default 2 días, mínimo recomendado 7) |
+| Riesgo de "versión expirada" | No aplica | Sí — si el agente no corre por > retention → forzar full reload |
+| Performance en tablas grandes | Buena (index sobre UpdateDate) | Excelente (change store interno separado de la tabla) |
+| Aplica a SAP B1 HANA | N/A | No |
+
+### Riesgos
+
+1. **Permiso ALTER DATABASE** — el partner SAP puede restringirlo. Frecuente en instalaciones gestionadas.
+2. **Retention expiry** — si el agente para por > N días configurados, la `sync_version` queda inválida. Protocolo de fallback: forzar full reload de la tabla afectada con lookback de 30 días.
+3. **Ruptura silenciosa en upgrades** — SAP B1 upgrades pueden incluir scripts que reconstruyen tablas y pierden el estado CT. Validar en cada upgrade.
+4. **Solo rastreo de PKs** — implica dos queries por page (CT + JOIN) en lugar de una. Marginal en performance pero mayor complejidad.
+
+### Cuándo usar CT vs watermark
+
+| Escenario | Recomendación |
+|---|---|
+| SQL Server + partner permite `ALTER DATABASE` + volumen alto | CT (mejor exactitud de DELETEs) |
+| SQL Server + partner restringe `ALTER DATABASE` | Watermark UpdateDate/TS |
+| SQL Server + UpdateDate confiable para tablas objetivo | Watermark (más simple, sin permisos adicionales) |
+| SAP HANA (cualquier caso) | Watermark compuesto (CT no existe en HANA) |
+
+**Recomendación MVP SQL Server:** comenzar con **watermark UpdateDate/TS** (mismo mecanismo que HANA, cero permisos adicionales, cero riesgo de expiry). Implementar CT como opción avanzada cuando el cliente y el partner lo autoricen formalmente.
+
+### Config para activar CT (opcional, SQL Server únicamente)
+
+```json
+"ChangeTracking": {
+  "Enabled": false,
+  "Tables": ["OINV", "ORIN", "OCRD", "OITM"],
+  "MinRetentionDays": 7,
+  "FallbackToWatermarkOnExpiry": true
+}
+```
+
+- `FallbackToWatermarkOnExpiry: true` — si la `sync_version` expiró, el agente cae automáticamente al modo watermark con full reload de la tabla, alerta al soporte, y reanuda CT desde la nueva versión base.
+
+---
+
+## 44. source_hash
+
+### Propósito
+
+`source_hash` es un hash criptográfico de la representación canónica de una fila, calculado en el agente antes de comprimir el batch y almacenado en `raw.*._source_hash`.
+
+ADR-004 ya menciona `source_hash_hex` como campo que el Ingest API calcula. Esta sección especifica el diseño completo: dónde se calcula, cómo, y para qué.
+
+**Usos:**
+
+| Uso | Descripción |
+|---|---|
+| **Write-skipping** | Si el hash entrante = hash en raw → skip UPDATE. Reduce escrituras en Azure SQL en corridas de lookback amplio donde la mayoría de filas no cambiaron. |
+| **Idempotencia perfecta** | Enviar el mismo batch dos veces produce el mismo hash → segundo upsert no modifica nada → operación segura sin verificación extra. |
+| **Detección de divergencia** | En reconciliación (§ estrategias): recalcular hash sobre datos SAP y comparar con `_source_hash` en raw. Divergencia = corrupción en tránsito o bug de serialización. |
+| **Auditoría forense** | Dado un `_batch_id` + `_source_hash`, soporte puede verificar que raw contiene exactamente lo que SAP tenía al momento del batch. |
+
+### Punto de cálculo
+
+El hash se calcula en el **agente**, sobre la fila normalizada, antes de comprimir el batch (gzip). No se calcula en el Ingest API — el API confía en el hash que recibe y lo almacena tal cual.
+
+Alternativa descartada: calcular en el API — implica deserializar el batch antes de hashear, duplicando el trabajo de parsing; además el agente no podría hacer write-skipping sin el hash.
+
+### Algoritmo
+
+- **Función hash:** SHA-256.
+- **Input:** representación canónica de la fila como string.
+- **Orden de columnas:** alfabético por nombre de columna, case-insensitive.
+- **Columnas excluidas** (técnicas, no originan en SAP): `_company_id`, `_ingested_at`, `_source_hash`, `_batch_id`, `_is_deleted`.
+- **Serialización por tipo:**
+
+| Tipo SAP | Serialización |
+|---|---|
+| NULL | `\N` (literal dos chars) |
+| DATE | `YYYY-MM-DD` |
+| INT | Decimal sin ceros leading, sin notación científica |
+| DECIMAL / NUMERIC | Notación decimal fija, 6 decimales |
+| VARCHAR / NVARCHAR | UTF-8, sin trim |
+| BOOLEAN | `0` o `1` |
+| DATETIME / SECONDDATE | `YYYY-MM-DDTHH:MM:SS` UTC |
+
+- **Separador entre campos:** `|` (pipe).
+- **Output:** hex string 64 caracteres (256 bits).
+
+Ejemplo esquemático (OINV, DocEntry=12345):
+```
+CardCode=ACME01|CancelDate=\N|Canceled=N|CreateDate=2026-01-15|CreateTS=90000|...
+→ SHA-256 → "a1b2c3d4e5f6..."
+```
+
+### Almacenamiento
+
+Columna adicional en cada tabla `raw.*`:
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `_source_hash` | `CHAR(64) NOT NULL` | SHA-256 hex, calculado por agente |
+
+Índice sobre `_source_hash`: **no recomendado** para tablas grandes. El campo tiene alta cardinalidad pero las queries de reconciliación usan PK natural. Solo útil en scans forenses ad hoc.
+
+### Lógica de skip en upsert (write-skipping)
+
+En el MERGE del Ingest API, la condición de UPDATE incluye:
+
+```
+WHEN MATCHED
+  AND src._source_hash <> tgt._source_hash       -- datos cambiaron
+  AND (src.UpdateDate > tgt.UpdateDate
+       OR (src.UpdateDate = tgt.UpdateDate
+           AND src.UpdateTS >= tgt.UpdateTS))     -- versión más reciente
+THEN UPDATE SET ...
+```
+
+Si `_source_hash` coincide (fila no cambió a pesar de entrar al delta por lookback), el UPDATE se omite. Counters del API retornan la fila como `skipped`.
+
+### Trade-offs
+
+| Aspecto | Con source_hash | Sin source_hash |
+|---|---|---|
+| CPU agente | +2–5% (SHA-256 por fila) | Baseline |
+| Escrituras Azure SQL | Reducción significativa en corridas de lookback 24h/7d | Todas las filas matcheadas ejecutan UPDATE |
+| Complejidad upsert | Mayor (condición adicional) | Menor |
+| Idempotencia | Perfecta | Buena (watermark compuesto previene duplicados, no re-writes inofensivos) |
+| Auditoría forense | Habilitada | No disponible |
+| Detección corrupción en tránsito | Sí | Solo a nivel count/sum de reconciliación |
+
+**Recomendación:** habilitar `source_hash` desde MVP. Costo CPU marginal; beneficio en write amplification sostenida y capacidad forense significativo para una plataforma multi-tenant.
+
+### Configuración
+
+```json
+"SourceHash": {
+  "Enabled": true,
+  "Algorithm": "SHA256",
+  "ExcludedColumns": ["_company_id", "_ingested_at", "_source_hash", "_batch_id", "_is_deleted"]
+}
+```
+
+---
+
+## 45. Auto-actualización del agente
+
+### Contexto
+
+§3 menciona la política de update como proceso manual coordinado por soporte. Esta sección define el diseño completo: protocolo técnico, canales, gates de seguridad y modo MVP.
+
+### Filosofía
+
+| Tipo de update | Comportamiento |
+|---|---|
+| Patch de seguridad crítica | Auto-update silencioso (si habilitado por cloud) |
+| Fix de corrupción de datos | Auto-update silencioso (si habilitado) |
+| Feature / mejora / refactor | Solo notificación → soporte coordina con cliente |
+| Breaking change / major version | Siempre manual, requiere ventana con cliente |
+
+### Version manifest
+
+El agente consulta `GET /api/config/agent/version` (autenticado con API key del tenant) cada 1 hora. Respuesta:
+
+```json
+{
+  "current_version": "1.0.3",
+  "latest_stable": {
+    "version": "1.1.0",
+    "released_at": "2026-05-20T00:00:00Z",
+    "channel": "stable",
+    "breaking_changes": false,
+    "min_compatible_from": "1.0.0",
+    "download_url": "https://storage.databision.app/agent/...",
+    "sha256": "abc123...",
+    "changelog_url": "https://databision.app/changelog/1.1.0"
+  },
+  "latest_security": null,
+  "auto_update_allowed": false
+}
+```
+
+- `auto_update_allowed` lo controla el cloud según el canal y el tier. En **MVP siempre `false`** — solo notificaciones.
+- `min_compatible_from` define desde qué versión se puede auto-actualizar. Versiones más viejas requieren intervención manual.
+
+### Protocolo de auto-update (cuando `auto_update_allowed = true`)
+
+Gates de seguridad que deben pasar ANTES de iniciar la actualización:
+
+| Gate | Condición requerida |
+|---|---|
+| Sin corrida activa | Esperar fin de corrida en curso (timeout: 5 min; si supera → abortar update) |
+| Cola offline vacía | No actualizar con batches pendientes de envío |
+| No en carga inicial | Nunca interrumpir `--initial-load` |
+| Espacio en disco | ≥ 2× tamaño del binario libre en `C:\DataBision\` / `/opt/databision/` |
+| No breaking change | `breaking_changes: false` en manifest |
+| No major bump | Versión actual y nueva tienen el mismo major (1.x → 1.y) |
+| Firma válida | HMAC-SHA256 del manifest verificado con API key del tenant |
+| SHA-256 binario válido | Hash del descargado coincide con `manifest.sha256` |
+
+Secuencia del update:
+
+```
+1. Descargar binario a  update/<version>.new  via HTTPS
+2. Verificar SHA-256     → si falla: borrar .new, alertar, abortar
+3. Verificar firma HMAC  → si falla: borrar .new, alertar, abortar
+4. Esperar fin de corrida activa (timeout 5 min)
+5. Backup:  binario_actual  →  update/<version_actual>.bak
+6. Mover:   update/<version>.new  →  binario_actual
+7. Parar servicio
+     Windows: SC stop DataBisionExtractor
+     Linux:   systemctl stop databision-extractor
+8. Iniciar servicio
+9. Health check: GET :8081/health — máx. 3 intentos, 30s entre intentos
+10. Si 200 OK:  borrar .bak → reportar success a /api/config/agent/version/ack
+11. Si falla:   rollback (.bak → binario), reiniciar, alerta crítica
+```
+
+### Rollback
+
+Si el health check post-update falla (3 intentos):
+
+1. Renombrar `.bak` → binario actual.
+2. Iniciar servicio.
+3. Health check post-rollback.
+4. Si rollback OK: loguear warning, reportar failure al cloud, continuar con versión anterior.
+5. Si rollback también falla: alerta crítica — intervención manual requerida.
+
+### Modo MVP (solo notificación)
+
+Con `auto_update_allowed = false`:
+
+1. Agente detecta nueva versión en el manifest.
+2. Registra en log local: `INFO UpdateAvailable version=1.1.0 current=1.0.3`.
+3. Envía evento `agent_update_available` al cloud via `/api/logs`.
+4. Dashboard de soporte muestra indicador "N agentes desactualizados".
+5. Soporte contacta cliente, coordina ventana de mantenimiento, ejecuta update manual (descargar zip, reemplazar binario, reiniciar servicio).
+
+Este modo es deliberado — en MVP preferimos control total sobre el servidor del cliente.
+
+---
+
+## 46. Configuración remota
+
+### Propósito
+
+Permite a DataBision ajustar parámetros operacionales del agente sin acceso al servidor del cliente. Casos de uso:
+
+- Forzar el tier comercial correcto (frecuencias según contrato) sin depender del cliente para editar config.
+- Debug temporal: elevar loglevel a `Debug` para troubleshooting sin ir al servidor.
+- Throttling: reducir `MaxBatchRows` si un cliente satura el Ingest API.
+- Rollout gradual: habilitar nuevas tablas (OINM, UDF) cliente por cliente.
+- Ajustar lookback o circuit breaker sin actualizar el binario.
+
+### Endpoint
+
+```
+GET /api/config/agent
+Authorization: X-DataBision-ApiKey {key}
+```
+
+El cloud devuelve un payload JSON firmado con HMAC-SHA256 usando la API key del tenant. El agente verifica la firma antes de aplicar cualquier cambio. Un payload con firma inválida es rechazado en su totalidad.
+
+### Parámetros modificables remotamente
+
+| Parámetro | Descripción |
+|---|---|
+| `Schedule.Default` | Frecuencia cron default para tablas sin override |
+| `Schedule.Overrides.*` | Frecuencia por tabla — enforcement de tier comercial |
+| `Cloud.MaxBatchRows` | Throttling / tuning de batch size |
+| `Cloud.CompressionLevel` | Ajuste de compresión |
+| `Lookback.DefaultHours` | Ventana lookback normal |
+| `Lookback.NightlyHours` | Ventana lookback nocturno |
+| `Logging.Cloud.MinLevel` | Subir a `Debug` para troubleshooting temporal |
+| `OfflineQueue.MaxBytes` | Si disco del cliente es limitado |
+| `CircuitBreaker.OpenDurationSec` | Tuning de resiliencia |
+| `Retry.MaxAttempts` | Tuning de reintentos |
+| `EnabledTables` | Array de tablas activas (phase-in de nuevas tablas) |
+
+### Parámetros NO modificables remotamente
+
+| Parámetro | Razón |
+|---|---|
+| Credenciales HANA / connection string | Seguridad — datos en infra del cliente |
+| API key del agente | Seguridad — auto-referencial |
+| `Hana.ValidateCertificate` | Seguridad — no se puede bajar configuración TLS remotamente |
+| `SourceHash.Enabled` | Cambiar en caliente rompe integridad del hash en raw |
+| Paths de disco | Seguridad — no navegar el FS del cliente |
+| `Tenant.Slug` / `Tenant.CompanyId` | Identidad del tenant — inmutable después de onboarding |
+
+La config remota **no puede sobreescribir env vars ni la config local del cliente** (ver jerarquía abajo). El cliente siempre puede ganar si setea un valor localmente — útil cuando el cliente tiene restricciones operacionales propias.
+
+### Jerarquía de override
+
+```
+env vars                        ← máxima prioridad (secretos, overrides urgentes)
+  ↑
+appsettings.Customer.json       ← config local del cliente (lo que soporte instaló)
+  ↑
+remote config del cloud         ← override comercial DataBision
+  ↑
+appsettings.json                ← defaults del binario (mínima prioridad)
+```
+
+### Polling y caché
+
+| Aspecto | Valor |
+|---|---|
+| Frecuencia de poll | Cada 1 hora |
+| Storage local de la cache | SQLite: tabla `remote_config_cache (config_version, payload, applied_at, expires_at)` |
+| Comportamiento offline | Continúa con la cache anterior sin degradar operación |
+| TTL de cache | 7 días. Después de 7 días sin refresh: alerta `Warning` (no se detiene la extracción) |
+| Si firma HMAC inválida | Rechazar payload, loguear error, conservar config anterior |
+
+### Config version y idempotencia
+
+El payload incluye `config_version` (entero incremental). El agente aplica únicamente si `config_version > config_version_local`. Garantiza que un polling repetido no re-aplica la misma config innecesariamente.
+
+### Audit trail de cambios remotos
+
+Cada vez que se aplica un cambio de config remota, el agente registra:
+
+- Log local: `INFO RemoteConfigApplied param=Schedule.Default old="0 * * * *" new="*/30 * * * *" config_version=42`.
+- Evento al cloud (`/api/logs`): `{ event: "config_updated", param, old_value, new_value, applied_at, config_version }`.
+
+El equipo de soporte puede ver en el dashboard exactamente cuándo y qué cambió en cada agente, sin acceder al servidor del cliente.
 
 ---
 

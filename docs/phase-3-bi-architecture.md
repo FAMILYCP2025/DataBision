@@ -2,6 +2,8 @@
 
 Status: **Design only — no implementation.** Brutally honest evaluation of the architecture required to take DataBision from stub to enterprise-grade Power BI Embedded multi-tenant SaaS.
 
+> **⚠️ SUPERSEDED (2026-05-29):** Power BI Embedded ya no es el núcleo del producto. DataBision Native BI (React + ECharts) es el motor de visualización principal. Ver [ADR-002](adr/ADR-002-bi-layer.md) y [ADR-006](adr/ADR-006-native-bi-vs-powerbi.md). Este documento se conserva como referencia para cuando se ofrezca Power BI como add-on opcional o se evalúe Embedded en Fase 4 (30+ clientes).
+
 ---
 
 ## 1. Executive summary

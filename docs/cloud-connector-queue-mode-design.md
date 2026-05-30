@@ -1,9 +1,23 @@
 # DataBision Cloud / Restricted Connector — SAP Queue Mode
 
-Status: **Diseño técnico — sin implementación.**
+Status: **Diseño técnico — parcialmente superseded.**
 Modalidad B del producto: cliente SAP B1 en hosting cloud / restringido donde **no se puede instalar agente local**, pero Service Layer está habilitado.
 
-Power BI fuera de alcance salvo como consumidor futuro de Azure SQL.
+> **⚠️ ACTUALIZADO (2026-05-30 — resoluciones C-01, C-02, C-03 auditoría):**
+>
+> **C-01 — Destino:** El destino de los datos NO es Azure SQL. Es **Supabase PostgreSQL** vía DataBision Ingest API. Azure SQL queda documentado en `azure-sql-staging-design.md` como opción Enterprise.
+>
+> **C-02 — Mecanismo:** El conector NO es una Azure Function. Es un **BackgroundService .NET (IHostedService)** dentro del proceso DataBision.Workers. Ver [ADR-007](adr/ADR-007-background-workers.md).
+>
+> **C-03 — Naming canónico de UDTs:** Los nombres `@DBI_SYNC_QUEUE` y `@DBI_SYNC_LOG` que aparecen en este documento son obsoletos. Los nombres canónicos aprobados en [ADR-010](adr/ADR-010-mode-b-canonical-design.md) son:
+> - `@DBS_QUEUE` — cola de ítems pendientes de procesar
+> - `@DBS_CHANGES` — log de cambios recibidos
+>
+> El contenido técnico de este documento (UDT design, TransactionNotification, reconciliación, Service Layer) sigue siendo válido como referencia. Solo cambian el destino, el mecanismo y los nombres de UDT.
+>
+> **Power BI** no es parte de la arquitectura MVP. Es un add-on futuro. Ver [ADR-011](adr/ADR-011-powerbi-as-addon.md).
+>
+> Para el diseño canónico de Mode B, ver [docs/service-layer-delta-design.md](service-layer-delta-design.md) y [ADR-010](adr/ADR-010-mode-b-canonical-design.md).
 
 ---
 
@@ -55,18 +69,18 @@ Power BI fuera de alcance salvo como consumidor futuro de Azure SQL.
 │  │                                                       │                        │
 │  │  1. Leader lock (singleton por tenant)               │                        │
 │  │  2. SL Login                                          │                        │
-│  │  3. GET pending por batch                             │                        │
+│  │  3. GET pending de @DBS_QUEUE por batch               │                        │
 │  │  4. Claim atómico → PROCESSING                        │                        │
 │  │  5. Por entry: GET objeto + POST a Ingest API         │                        │
-│  │  6. PATCH a DONE / ERROR                              │                        │
-│  │  7. POST a @DBI_SYNC_LOG                              │                        │
+│  │  6. PATCH @DBS_QUEUE → DONE / ERROR                   │                        │
+│  │  7. Actualizar @DBS_CHANGES.U_ProcStat = DONE         │                        │
 │  │  8. Rate-limit + circuit breaker                      │                        │
 │  │  9. SL Logout                                          │                        │
 │  └────────────────────┬─────────────────────────────────┘                        │
 │                        │                                                          │
 │                        ▼                                                          │
 │  ┌──────────────────────────────────────────────────────┐                        │
-│  │ DataBision Ingest API + Azure SQL (tenant)           │                        │
+│  │ DataBision Ingest API + Supabase PostgreSQL           │                        │
 │  │ raw.OINV / raw.INV1 / raw.OCRD / ...                 │                        │
 │  │ ctl.extraction_run / ctl.extraction_error            │                        │
 │  └──────────────────────────────────────────────────────┘                        │
@@ -86,7 +100,7 @@ Power BI fuera de alcance salvo como consumidor futuro de Azure SQL.
 3. **Reconciliación periódica suple lo que TN pierde.** No dependemos de un único mecanismo.
 4. **Conector externo lee solo pendientes.** Nunca scan completo de SAP por Service Layer.
 5. **Service Layer es lento. Diseñar para 100–300 req/min sostenidos.**
-6. **Una Azure Function por tenant.** Aislamiento + facturación + límites de concurrencia.
+6. **Un BackgroundService .NET por instancia (no Azure Function).** El conector corre como `IHostedService` dentro de `DataBision.Workers`. Ver [ADR-007](adr/ADR-007-background-workers.md). Aislamiento por tenant via loop interno con try/catch por tenant.
 
 ---
 
@@ -94,11 +108,11 @@ Power BI fuera de alcance salvo como consumidor futuro de Azure SQL.
 
 **SAP Queue Mode** es un patrón (no una feature oficial de SAP B1) que combina tres piezas:
 
-1. **Tabla de cola** dentro de SAP B1 (UDT `@DBI_SYNC_QUEUE`) que guarda **referencias mínimas** a documentos nuevos/modificados.
-2. **Mecanismos de población** que escriben a la cola: `TransactionNotification` / `PostTransactionNotice` (cobertura en línea) + stored procedure de reconciliación (cobertura por barrido).
-3. **Conector externo** (Azure Function) que lee la cola vía Service Layer, fetchea cada objeto referenciado, lo empuja a Azure SQL y marca el entry como procesado.
+1. **Tabla de cola** dentro de SAP B1 (UDT `@DBS_QUEUE`) que guarda **referencias mínimas** a documentos nuevos/modificados.
+2. **Mecanismos de población** que escriben a la cola: `TransactionNotification` / `PostTransactionNotice` (cobertura en línea) + stored procedure de reconciliación (cobertura por barrido). Ver [ADR-010](adr/ADR-010-mode-b-canonical-design.md) para la jerarquía de mecanismos.
+3. **Conector externo** (BackgroundService .NET `SLDeltaWorker`) que lee la cola vía Service Layer, fetchea cada objeto referenciado, lo empuja al Ingest API (→ Supabase PostgreSQL) y marca el entry como procesado en `@DBS_QUEUE`.
 
-Diferencia clave vs polling directo de SL: en Queue Mode el conector consulta `U_DBI_SYNC_QUEUE` (volumen acotado = solo cambios pendientes), no las tablas de negocio completas. Esto reduce el consumo de Service Layer en órdenes de magnitud.
+Diferencia clave vs polling directo de SL: en Queue Mode el conector consulta `@DBS_QUEUE` (volumen acotado = solo cambios pendientes), no las tablas de negocio completas. Esto reduce el consumo de Service Layer en órdenes de magnitud.
 
 ---
 
@@ -123,7 +137,7 @@ Diferencia clave vs polling directo de SL: en Queue Mode el conector consulta `U
 
 ---
 
-## 5. UDT `@DBI_SYNC_QUEUE`
+## 5. UDT `@DBS_QUEUE` *(nombre canónico — antes llamada `@DBI_SYNC_QUEUE` en este documento)*
 
 ### 5.0 Decisión: UDT (No Object) vs UDO registrado
 

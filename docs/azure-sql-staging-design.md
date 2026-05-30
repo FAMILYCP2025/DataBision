@@ -3,6 +3,8 @@
 Status: **Diseño técnico — sin implementación.**
 Capa intermedia común a ambas modalidades de extracción (Dedicated Extractor + Cloud Connector). Power BI fuera de alcance salvo como consumidor downstream.
 
+> **⚠️ REFERENCIA ENTERPRISE (2026-05-29):** Este documento describe el diseño con Azure SQL como motor de base de datos. En el MVP actual, Azure SQL fue reemplazado por Supabase PostgreSQL para reducir costos — ver [ADR-001](adr/ADR-001-database-engine.md). Este documento se conserva como especificación válida para el Plan Enterprise (clientes con contratos Azure, compliance estricto, o integración Synapse/Fabric). La estructura de schemas (raw/stg/dim/fact/ctl/audit) y los patrones de extracción se mantienen intactos.
+
 ---
 
 ## 1. Objetivo de Azure SQL dentro de DataBision
