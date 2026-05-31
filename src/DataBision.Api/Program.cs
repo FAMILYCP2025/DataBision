@@ -56,7 +56,8 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
         var logger = sp.GetRequiredService<ILogger<SapRawRepository>>();
         return new SapRawRepository(stagingConnectionString, logger);
     });
-    builder.Services.AddScoped<IIngestCheckpointRepository, IngestCheckpointRepository>();
+    builder.Services.AddScoped<IIngestCheckpointRepository>(_ =>
+        new IngestCheckpointRepository(stagingConnectionString));
     builder.Services.AddScoped<IIngestService, IngestService>();
     builder.Services.AddScoped<ApiKeyAuthFilter>();
 }
@@ -160,10 +161,9 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
     await scope.ServiceProvider.GetRequiredService<DatabaseSeeder>().SeedAsync();
 
-    // Staging DB migrations (only when configured)
-    var stagingDb = scope.ServiceProvider.GetService<StagingDbContext>();
-    if (stagingDb is not null)
-        stagingDb.Database.Migrate();
+    // StagingDbContext (Supabase PostgreSQL) migrations are intentionally NOT run at startup.
+    // PgBouncer transaction pooler (port 6543) does not support migration transactions.
+    // Run migrations manually: dotnet ef database update --context StagingDbContext
 }
 
 if (app.Environment.IsDevelopment())
