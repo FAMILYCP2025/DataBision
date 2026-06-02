@@ -1,0 +1,75 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using DataBision.Extractor.Options;
+using Microsoft.Extensions.Logging;
+
+namespace DataBision.Extractor.DataBision;
+
+/// <summary>
+/// HTTP client for the DataBision Ingest API.
+/// Sprint 3B: skeleton only — SendAsync is wired but not called yet.
+/// Sprint 3D: full E2E implementation.
+/// </summary>
+public sealed class DataBisionIngestClient : IDataBisionIngestClient, IDisposable
+{
+    private readonly HttpClient _http;
+    private readonly ILogger<DataBisionIngestClient> _log;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public DataBisionIngestClient(DataBisionApiOptions options, ILogger<DataBisionIngestClient> log)
+    {
+        _log = log;
+        _http = new HttpClient
+        {
+            BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/"),
+            Timeout = TimeSpan.FromSeconds(60)
+        };
+        _http.DefaultRequestHeaders.Add("X-DataBision-ApiKey", options.ApiKey);
+    }
+
+    public async Task<IngestResponse> SendAsync<T>(
+        string endpoint, IngestBatch<T> batch, CancellationToken ct = default)
+        where T : class
+    {
+        _log.LogInformation("Sending {Count} rows to {Endpoint}", batch.Rows.Count, endpoint);
+
+        using var response = await _http.PostAsJsonAsync(endpoint, batch, JsonOpts, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _log.LogError("Ingest API error {Status}: {Body}", (int)response.StatusCode, body);
+            return new IngestResponse
+            {
+                Success = false,
+                StatusCode = (int)response.StatusCode,
+                Error = body
+            };
+        }
+
+        try
+        {
+            var doc = JsonSerializer.Deserialize<JsonElement>(body, JsonOpts);
+            var data = doc.GetProperty("data");
+            return new IngestResponse
+            {
+                Success = true,
+                StatusCode = (int)response.StatusCode,
+                RowsInserted = data.TryGetProperty("rowsInserted", out var ins) ? ins.GetInt32() : 0,
+                RowsUpdated  = data.TryGetProperty("rowsUpdated",  out var upd) ? upd.GetInt32() : 0,
+                RowsSkipped  = data.TryGetProperty("rowsSkipped",  out var skp) ? skp.GetInt32() : 0,
+            };
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Could not parse Ingest API response: {Message}", ex.Message);
+            return new IngestResponse { Success = true, StatusCode = (int)response.StatusCode };
+        }
+    }
+
+    public void Dispose() => _http.Dispose();
+}

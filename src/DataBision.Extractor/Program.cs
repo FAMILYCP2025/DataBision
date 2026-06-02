@@ -1,3 +1,5 @@
+using DataBision.Extractor.DataBision;
+using DataBision.Extractor.Extraction;
 using DataBision.Extractor.Options;
 using DataBision.Extractor.ServiceLayer;
 using Microsoft.Extensions.Configuration;
@@ -19,63 +21,111 @@ services.AddLogging(b => b
     .AddConsole()
     .SetMinimumLevel(LogLevel.Information));
 
-var slOptions = config.GetSection(SapServiceLayerOptions.Section).Get<SapServiceLayerOptions>()
-    ?? new SapServiceLayerOptions();
-var apiOptions = config.GetSection(DataBisionApiOptions.Section).Get<DataBisionApiOptions>()
-    ?? new DataBisionApiOptions();
-var extOptions = config.GetSection(ExtractorOptions.Section).Get<ExtractorOptions>()
-    ?? new ExtractorOptions();
+var slOptions  = config.GetSection(SapServiceLayerOptions.Section).Get<SapServiceLayerOptions>()  ?? new SapServiceLayerOptions();
+var apiOptions = config.GetSection(DataBisionApiOptions.Section).Get<DataBisionApiOptions>()       ?? new DataBisionApiOptions();
+var extOptions = config.GetSection(ExtractorOptions.Section).Get<ExtractorOptions>()               ?? new ExtractorOptions();
 
 services.AddSingleton(slOptions);
 services.AddSingleton(apiOptions);
 services.AddSingleton(extOptions);
 services.AddSingleton<IServiceLayerClient, ServiceLayerClient>();
+services.AddSingleton<IDataBisionIngestClient, DataBisionIngestClient>();
+services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
+    [],  // IExtractorJob implementations registered in Sprint 3C
+    sp.GetRequiredService<ExtractorOptions>(),
+    sp.GetRequiredService<ILogger<ExtractorRunner>>()));
 
-var sp = services.BuildServiceProvider();
+var sp  = services.BuildServiceProvider();
 var log = sp.GetRequiredService<ILogger<Program>>();
 
-// ── Args handling ──────────────────────────────────────────────────────────────
-// args is the implicit top-level parameter for command-line arguments
+// ── --help ─────────────────────────────────────────────────────────────────────
 if (args.Contains("--help") || args.Contains("-h"))
 {
     Console.WriteLine("""
-        DataBision SAP Extractor — Sprint 3A (Service Layer Validation)
+        DataBision SAP Extractor
 
         Usage:
           DataBision.Extractor [options]
 
         Options:
-          --help, -h        Show this help
-          --validate        Test login + GET OSLP top 5 + logout (Sprint 3A validation)
-          --object <name>   Extract specific object: OSLP, OCRD, OITM, OINV, ALL
-          --dry-run         Validate without sending to Ingest API
+          --help, -h              Show this help
+          --validate              Test Service Layer login + GET OSLP top 5 + logout
+          --dry-run               Show resolved configuration (no connections, no data)
+          --object <name>         Extract object: OSLP | OCRD | OITM | OINV | ALL
+          --object <name> --dry-run  Validate object name and show planned extraction
+
+        Examples:
+          dotnet run -- --validate
+          dotnet run -- --dry-run
+          dotnet run -- --object OINV
+          dotnet run -- --object ALL --dry-run
         """);
     return 0;
 }
 
-// ── Validate configuration ─────────────────────────────────────────────────────
+// ── Startup log ───────────────────────────────────────────────────────────────
 log.LogInformation("DataBision Extractor starting...");
 
-if (!args.Contains("--validate") && !args.Contains("--object") && args.Length == 0)
+// ── Validate configuration ─────────────────────────────────────────────────────
+if (args.Length == 0)
 {
     log.LogError("No action specified. Use --help for usage.");
     return 1;
 }
 
+// Configuration validation — always run even for --dry-run (minus secret fields for dry-run)
+bool isDryRun = args.Contains("--dry-run");
+string? objectArg = null;
+var objIdx = Array.IndexOf(args, "--object");
+if (objIdx >= 0 && objIdx + 1 < args.Length)
+    objectArg = args[objIdx + 1];
+
+if (isDryRun && !args.Contains("--validate") && objectArg is null)
+{
+    // --dry-run alone: show config without connecting
+    log.LogInformation("=== DRY-RUN: configuration check ===");
+    var slValid  = ValidateSlSilent(slOptions);
+    var apiValid = ValidateApiSilent(apiOptions);
+    var extValid = ValidateExtSilent(extOptions);
+
+    log.LogInformation("SapServiceLayer.BaseUrl:    {Url}",      MaskUrl(slOptions.BaseUrl));
+    log.LogInformation("SapServiceLayer.CompanyDB:  {Db}",       slOptions.CompanyDB.Length > 0 ? "[set]" : "[MISSING]");
+    log.LogInformation("SapServiceLayer.UserName:   {U}",        slOptions.UserName.Length > 0  ? "[set]" : "[MISSING]");
+    log.LogInformation("SapServiceLayer.Password:   {P}",        slOptions.Password.Length > 0  ? "[set]" : "[MISSING]");
+    log.LogInformation("SapServiceLayer.IgnoreSSL:  {Ssl}",      slOptions.IgnoreSslCertificateErrors);
+    log.LogInformation("DataBisionApi.BaseUrl:       {Url}",     apiOptions.BaseUrl);
+    log.LogInformation("DataBisionApi.ApiKey:        {K}",       apiOptions.ApiKey.Length > 0   ? "[set]" : "[MISSING]");
+    log.LogInformation("Extractor.TenantId:          {T}",       extOptions.TenantId.Length > 0  ? "[set]" : "[MISSING]");
+    log.LogInformation("Extractor.CompanyId:         {C}",       extOptions.CompanyId.Length > 0 ? "[set]" : "[MISSING]");
+    log.LogInformation("Extractor.Mode:              {M}",       extOptions.Mode);
+    log.LogInformation("Extractor.PageSize:          {Ps}",      extOptions.PageSize);
+    log.LogInformation("Extractor.LookbackMinutes:   {Lm}",      extOptions.LookbackMinutes);
+
+    if (!slValid || !apiValid || !extValid)
+    {
+        log.LogError("Configuration incomplete — fill in appsettings.Development.json.");
+        return 2;
+    }
+    log.LogInformation("=== DRY-RUN: configuration OK — no connections made ===");
+    return 0;
+}
+
+// For all other modes, full config validation is required
 try
 {
     slOptions.Validate();
-    log.LogInformation("Configuration: BaseUrl={BaseUrl}, CompanyDB={CompanyDB}",
-        MaskUrl(slOptions.BaseUrl), slOptions.CompanyDB);
+    log.LogInformation("SapServiceLayer: {Url} / DB={Db}", MaskUrl(slOptions.BaseUrl), slOptions.CompanyDB);
+    apiOptions.Validate();
+    extOptions.Validate();
 }
 catch (InvalidOperationException ex)
 {
     log.LogError("Configuration error: {Message}", ex.Message);
-    log.LogError("Copy appsettings.Development.template.json to appsettings.Development.json and fill in credentials.");
+    log.LogError("Copy appsettings.Development.template.json → appsettings.Development.json and fill in credentials.");
     return 2;
 }
 
-// ── Sprint 3A: Validation mode ─────────────────────────────────────────────────
+// ── --validate ─────────────────────────────────────────────────────────────────
 if (args.Contains("--validate"))
 {
     log.LogInformation("=== Sprint 3A: Service Layer Validation ===");
@@ -84,13 +134,11 @@ if (args.Contains("--validate"))
 
     try
     {
-        // P-01: Login
         log.LogInformation("[P-01] Testing login...");
         await client.LoginAsync(cts.Token);
         log.LogInformation("[P-01] PASS — Login successful");
 
-        // P-06: GET OSLP top 5
-        // Note: SalesPersons in this SL version does not expose UpdateDate — using minimal select.
+        // Note: SalesPersons does not expose UpdateDate in SL 1000290 — field removed.
         log.LogInformation("[P-06] Testing GET SalesPersons top 5...");
         var oslpRows = await client.GetAsync("SalesPersons",
             "$top=5&$select=SalesEmployeeCode,SalesEmployeeName", cts.Token);
@@ -98,7 +146,6 @@ if (args.Contains("--validate"))
         foreach (var row in oslpRows)
             log.LogInformation("  OSLP: {Row}", row?.ToJsonString());
 
-        // P-04: Logout
         log.LogInformation("[P-04] Testing logout...");
         await client.LogoutAsync(cts.Token);
         log.LogInformation("[P-04] PASS — Logout completed");
@@ -113,8 +160,42 @@ if (args.Contains("--validate"))
     }
 }
 
+// ── --object ───────────────────────────────────────────────────────────────────
+if (objectArg is not null)
+{
+    if (!ExtractorRunner.IsSupported(objectArg))
+    {
+        log.LogError("Unknown object '{Obj}'. Supported: OSLP, OCRD, OITM, OINV, ALL", objectArg);
+        return 1;
+    }
+
+    if (isDryRun)
+    {
+        log.LogInformation("=== DRY-RUN: --object {Obj} ===", objectArg.ToUpperInvariant());
+        log.LogInformation("TenantId:   {T}", extOptions.TenantId);
+        log.LogInformation("CompanyId:  {C}", extOptions.CompanyId);
+        log.LogInformation("Mode:       {M}", extOptions.Mode);
+        log.LogInformation("PageSize:   {Ps}", extOptions.PageSize);
+        log.LogInformation("Lookback:   {Lm} minutes", extOptions.LookbackMinutes);
+        log.LogInformation("Extraction of {Obj}: NOT STARTED (dry-run — no connection made)", objectArg.ToUpperInvariant());
+        log.LogInformation("=== DRY-RUN complete — Sprint 3C will implement real extraction ===");
+        return 0;
+    }
+
+    // Real extraction — Sprint 3C implementation
+    log.LogInformation("=== Extraction: {Obj} ===", objectArg.ToUpperInvariant());
+    var runner = sp.GetRequiredService<ExtractorRunner>();
+    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+
+    var results = await runner.RunAsync(objectArg, dryRun: false, cts.Token);
+    var anyFail = results.Any(r => !r.Success);
+    return anyFail ? 4 : 0;
+}
+
 log.LogWarning("No recognized action. Use --help for usage.");
 return 1;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 static string MaskUrl(string url)
 {
@@ -124,8 +205,19 @@ static string MaskUrl(string url)
         var uri = new Uri(url);
         return $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
     }
-    catch
-    {
-        return "(invalid url)";
-    }
+    catch { return "(invalid url)"; }
 }
+
+static bool ValidateSlSilent(SapServiceLayerOptions o)
+    => !string.IsNullOrWhiteSpace(o.BaseUrl)
+    && !string.IsNullOrWhiteSpace(o.CompanyDB)
+    && !string.IsNullOrWhiteSpace(o.UserName)
+    && !string.IsNullOrWhiteSpace(o.Password);
+
+static bool ValidateApiSilent(DataBisionApiOptions o)
+    => !string.IsNullOrWhiteSpace(o.BaseUrl)
+    && !string.IsNullOrWhiteSpace(o.ApiKey);
+
+static bool ValidateExtSilent(ExtractorOptions o)
+    => !string.IsNullOrWhiteSpace(o.TenantId)
+    && !string.IsNullOrWhiteSpace(o.CompanyId);
