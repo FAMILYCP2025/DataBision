@@ -1,5 +1,6 @@
 using DataBision.Extractor.DataBision;
 using DataBision.Extractor.Extraction;
+using DataBision.Extractor.Extraction.Jobs;
 using DataBision.Extractor.Options;
 using DataBision.Extractor.ServiceLayer;
 using Microsoft.Extensions.Configuration;
@@ -30,8 +31,18 @@ services.AddSingleton(apiOptions);
 services.AddSingleton(extOptions);
 services.AddSingleton<IServiceLayerClient, ServiceLayerClient>();
 services.AddSingleton<IDataBisionIngestClient, DataBisionIngestClient>();
+services.AddSingleton<OslpExtractorJob>();
+services.AddSingleton<OcrdExtractorJob>();
+services.AddSingleton<OitmExtractorJob>();
+services.AddSingleton<OinvExtractorJob>();
 services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
-    [],  // IExtractorJob implementations registered in Sprint 3C
+    new IExtractorJob[]
+    {
+        sp.GetRequiredService<OslpExtractorJob>(),
+        sp.GetRequiredService<OcrdExtractorJob>(),
+        sp.GetRequiredService<OitmExtractorJob>(),
+        sp.GetRequiredService<OinvExtractorJob>(),
+    },
     sp.GetRequiredService<ExtractorOptions>(),
     sp.GetRequiredService<ILogger<ExtractorRunner>>()));
 
@@ -184,12 +195,21 @@ if (objectArg is not null)
 
     // Real extraction — Sprint 3C implementation
     log.LogInformation("=== Extraction: {Obj} ===", objectArg.ToUpperInvariant());
-    var runner = sp.GetRequiredService<ExtractorRunner>();
+    var runner   = sp.GetRequiredService<ExtractorRunner>();
+    var slClient = sp.GetRequiredService<IServiceLayerClient>();
     using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
 
-    var results = await runner.RunAsync(objectArg, dryRun: false, cts.Token);
-    var anyFail = results.Any(r => !r.Success);
-    return anyFail ? 4 : 0;
+    try
+    {
+        await slClient.LoginAsync(cts.Token);
+        var results = await runner.RunAsync(objectArg, dryRun: false, cts.Token);
+        var anyFail = results.Any(r => !r.Success);
+        return anyFail ? 4 : 0;
+    }
+    finally
+    {
+        await slClient.LogoutAsync();
+    }
 }
 
 log.LogWarning("No recognized action. Use --help for usage.");
