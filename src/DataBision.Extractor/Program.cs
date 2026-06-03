@@ -45,6 +45,7 @@ services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
     },
     sp.GetRequiredService<ExtractorOptions>(),
     sp.GetRequiredService<ILogger<ExtractorRunner>>()));
+// jobs above require IDataBisionIngestClient — registered above ✅
 
 var sp  = services.BuildServiceProvider();
 var log = sp.GetRequiredService<ILogger<Program>>();
@@ -63,12 +64,15 @@ if (args.Contains("--help") || args.Contains("-h"))
           --validate              Test Service Layer login + GET OSLP top 5 + logout
           --dry-run               Show resolved configuration (no connections, no data)
           --object <name>         Extract object: OSLP | OCRD | OITM | OINV | ALL
+          --object <name> --send  Extract and send to DataBision Ingest API
           --object <name> --dry-run  Validate object name and show planned extraction
 
         Examples:
           dotnet run -- --validate
           dotnet run -- --dry-run
           dotnet run -- --object OINV
+          dotnet run -- --object OSLP --send
+          dotnet run -- --object ALL --send
           dotnet run -- --object ALL --dry-run
         """);
     return 0;
@@ -85,7 +89,8 @@ if (args.Length == 0)
 }
 
 // Configuration validation — always run even for --dry-run (minus secret fields for dry-run)
-bool isDryRun = args.Contains("--dry-run");
+bool isDryRun  = args.Contains("--dry-run");
+bool isSend    = args.Contains("--send");
 string? objectArg = null;
 var objIdx = Array.IndexOf(args, "--object");
 if (objIdx >= 0 && objIdx + 1 < args.Length)
@@ -193,8 +198,8 @@ if (objectArg is not null)
         return 0;
     }
 
-    // Real extraction — Sprint 3C implementation
-    log.LogInformation("=== Extraction: {Obj} ===", objectArg.ToUpperInvariant());
+    // Real extraction
+    log.LogInformation("=== Extraction: {Obj} (send={Send}) ===", objectArg.ToUpperInvariant(), isSend);
     var runner   = sp.GetRequiredService<ExtractorRunner>();
     var slClient = sp.GetRequiredService<IServiceLayerClient>();
     using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
@@ -202,7 +207,7 @@ if (objectArg is not null)
     try
     {
         await slClient.LoginAsync(cts.Token);
-        var results = await runner.RunAsync(objectArg, dryRun: false, cts.Token);
+        var results = await runner.RunAsync(objectArg, dryRun: false, send: isSend, cts.Token);
         var anyFail = results.Any(r => !r.Success);
         return anyFail ? 4 : 0;
     }

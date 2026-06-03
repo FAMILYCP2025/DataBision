@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
+using DataBision.Application.DTOs.Ingest.Rows;
+using DataBision.Extractor.DataBision;
+using DataBision.Extractor.Mapping;
 using DataBision.Extractor.Options;
 using DataBision.Extractor.ServiceLayer;
 using Microsoft.Extensions.Logging;
@@ -8,26 +11,31 @@ namespace DataBision.Extractor.Extraction.Jobs;
 
 /// <summary>
 /// Extracts SalesPersons (OSLP) from SAP B1 Service Layer.
-/// Full-refresh strategy: UpdateDate is NOT available in SalesPersons on SL 1000290.
+/// Full-refresh strategy: UpdateDate not available in SalesPersons on SL 1000290.
 /// </summary>
 public sealed class OslpExtractorJob : IExtractorJob
 {
     public string SapObject => "OSLP";
 
-    private const string Select = "SalesEmployeeCode,SalesEmployeeName";
+    private const string Endpoint = "api/ingest/sap-b1/salespersons";
+    private const string Select   = "SalesEmployeeCode,SalesEmployeeName";
 
-    private readonly IServiceLayerClient _sl;
-    private readonly ExtractorOptions _options;
+    private readonly IServiceLayerClient    _sl;
+    private readonly IDataBisionIngestClient _ingest;
+    private readonly ExtractorOptions       _options;
     private readonly ILogger<OslpExtractorJob> _log;
 
-    public OslpExtractorJob(IServiceLayerClient sl, ExtractorOptions options, ILogger<OslpExtractorJob> log)
+    public OslpExtractorJob(
+        IServiceLayerClient sl, IDataBisionIngestClient ingest,
+        ExtractorOptions options, ILogger<OslpExtractorJob> log)
     {
-        _sl = sl;
+        _sl      = sl;
+        _ingest  = ingest;
         _options = options;
-        _log = log;
+        _log     = log;
     }
 
-    public async Task<ExtractionResult> RunAsync(bool dryRun, CancellationToken ct = default)
+    public async Task<ExtractionResult> RunAsync(bool dryRun, bool send, CancellationToken ct = default)
     {
         if (dryRun) return ExtractionResult.DryRun(SapObject);
 
@@ -43,13 +51,18 @@ public sealed class OslpExtractorJob : IExtractorJob
             _log.LogInformation("OSLP: {Count} rows in {Ms}ms", rows.Count, sw.ElapsedMilliseconds);
             LogSample(rows);
 
-            return new ExtractionResult
+            if (!send)
             {
-                SapObject    = SapObject,
-                Success      = true,
-                RowsExtracted = rows.Count,
-                Duration     = sw.Elapsed
-            };
+                return new ExtractionResult
+                {
+                    SapObject     = SapObject,
+                    Success       = true,
+                    RowsExtracted = rows.Count,
+                    Duration      = sw.Elapsed
+                };
+            }
+
+            return await SendAsync(rows, sw.Elapsed, ct);
         }
         catch (Exception ex)
         {
@@ -57,6 +70,50 @@ public sealed class OslpExtractorJob : IExtractorJob
             _log.LogError("OSLP: extraction failed — {Message}", ex.Message);
             return new ExtractionResult { SapObject = SapObject, Success = false, Error = ex.Message, Duration = sw.Elapsed };
         }
+    }
+
+    private async Task<ExtractionResult> SendAsync(JsonArray rows, TimeSpan extractDuration, CancellationToken ct)
+    {
+        var sw     = Stopwatch.StartNew();
+        var runId  = Guid.NewGuid().ToString("N");
+        var batchId = Guid.NewGuid().ToString("N");
+        var ctx    = new MappingContext(runId, batchId, DateTime.UtcNow, _options.Mode);
+
+        var mapped = rows.Where(r => r is not null)
+                         .Select(r => SapToIngestMapper.MapOslpRow(r!, ctx))
+                         .ToList();
+
+        var batch = new IngestBatch<SapOslpRow>
+        {
+            TenantId        = _options.TenantId,
+            CompanyId       = _options.CompanyId,
+            SapObject       = SapObject,
+            ExtractionRunId = runId,
+            BatchId         = batchId,
+            IngestionMode   = _options.Mode,
+            Rows            = mapped
+        };
+
+        var resp = await _ingest.SendAsync(Endpoint, batch, ct);
+        sw.Stop();
+
+        if (resp.Success)
+            _log.LogInformation("OSLP sent: inserted={Ins}, updated={Upd}, skipped={Skp} in {Ms}ms",
+                resp.RowsInserted, resp.RowsUpdated, resp.RowsSkipped, sw.ElapsedMilliseconds);
+        else
+            _log.LogError("OSLP send failed (HTTP {Code}): {Error}", resp.StatusCode, resp.Error);
+
+        return new ExtractionResult
+        {
+            SapObject     = SapObject,
+            Success       = resp.Success,
+            RowsExtracted = rows.Count,
+            RowsInserted  = resp.RowsInserted,
+            RowsUpdated   = resp.RowsUpdated,
+            RowsSkipped   = resp.RowsSkipped,
+            Duration      = extractDuration + sw.Elapsed,
+            Error         = resp.Error
+        };
     }
 
     private void LogSample(JsonArray rows)

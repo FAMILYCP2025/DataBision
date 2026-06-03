@@ -32,7 +32,7 @@ public sealed class ExtractorRunner
         SupportedObjects.Contains(objectName);
 
     public async Task<IReadOnlyList<ExtractionResult>> RunAsync(
-        string objectName, bool dryRun, CancellationToken ct = default)
+        string objectName, bool dryRun, bool send, CancellationToken ct = default)
     {
         var targets = objectName.Equals("ALL", StringComparison.OrdinalIgnoreCase)
             ? SupportedObjects.Where(o => !o.Equals("ALL", StringComparison.OrdinalIgnoreCase)).ToList()
@@ -42,17 +42,16 @@ public sealed class ExtractorRunner
 
         foreach (var target in targets)
         {
-            _log.LogInformation("=== Extracting {Object} (dry-run={DryRun}) ===", target, dryRun);
+            _log.LogInformation("=== Extracting {Object} (dry-run={DryRun}, send={Send}) ===", target, dryRun, send);
 
             if (_jobs.TryGetValue(target, out var job))
             {
-                var result = await job.RunAsync(dryRun, ct);
+                var result = await job.RunAsync(dryRun, send, ct);
                 results.Add(result);
                 LogResult(result);
             }
             else
             {
-                // Sprint 3B: no job registered yet — stub result
                 var stub = ExtractionResult.NotImplemented(target);
                 results.Add(stub);
                 _log.LogWarning("{Object}: {Error}", target, stub.Error);
