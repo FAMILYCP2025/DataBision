@@ -35,6 +35,9 @@ services.AddSingleton<OslpExtractorJob>();
 services.AddSingleton<OcrdExtractorJob>();
 services.AddSingleton<OitmExtractorJob>();
 services.AddSingleton<OinvExtractorJob>();
+services.AddSingleton<Inv1ExtractorJob>();
+services.AddSingleton<OrinExtractorJob>();
+services.AddSingleton<Rin1ExtractorJob>();
 services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
     new IExtractorJob[]
     {
@@ -42,10 +45,12 @@ services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
         sp.GetRequiredService<OcrdExtractorJob>(),
         sp.GetRequiredService<OitmExtractorJob>(),
         sp.GetRequiredService<OinvExtractorJob>(),
+        sp.GetRequiredService<Inv1ExtractorJob>(),
+        sp.GetRequiredService<OrinExtractorJob>(),
+        sp.GetRequiredService<Rin1ExtractorJob>(),
     },
     sp.GetRequiredService<ExtractorOptions>(),
     sp.GetRequiredService<ILogger<ExtractorRunner>>()));
-// jobs above require IDataBisionIngestClient — registered above ✅
 
 var sp  = services.BuildServiceProvider();
 var log = sp.GetRequiredService<ILogger<Program>>();
@@ -63,9 +68,10 @@ if (args.Contains("--help") || args.Contains("-h"))
           --help, -h              Show this help
           --validate              Test Service Layer login + GET OSLP top 5 + logout
           --dry-run               Show resolved configuration (no connections, no data)
-          --object <name>         Extract object: OSLP | OCRD | OITM | OINV | ALL
+          --object <name>         Extract object: OSLP|OCRD|OITM|OINV|INV1|ORIN|RIN1|ALL
           --object <name> --send  Extract and send to DataBision Ingest API
           --object <name> --dry-run  Validate object name and show planned extraction
+          Note: ALL includes OSLP/OCRD/OITM/OINV only. Use explicit --object for INV1/ORIN/RIN1.
 
         Examples:
           dotnet run -- --validate
@@ -73,7 +79,9 @@ if (args.Contains("--help") || args.Contains("-h"))
           dotnet run -- --object OINV
           dotnet run -- --object OSLP --send
           dotnet run -- --object ALL --send
-          dotnet run -- --object ALL --dry-run
+          dotnet run -- --object INV1 --send
+          dotnet run -- --object ORIN --send
+          dotnet run -- --object RIN1 --send
         """);
     return 0;
 }

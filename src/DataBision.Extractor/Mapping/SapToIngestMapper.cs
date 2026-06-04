@@ -99,12 +99,105 @@ public static class SapToIngestMapper
         ExtractedAtUtc  = ctx.ExtractedAtUtc,
     };
 
+    // ── INV1 ──────────────────────────────────────────────────────────────────
+    // Lines extracted from Invoices.DocumentLines.
+    // docEntry is taken from the parent document (passed explicitly).
+    // SL field name for description is "ItemDescription" (not SAP OCRD "Dscription").
+    // "UnitPrice" → Price; "WarehouseCode" → WhsCode; "DiscountPercent" → DiscPrcnt.
+    public static SapInv1Row MapInv1Row(int docEntry, JsonNode line, MappingContext ctx) => new()
+    {
+        DocEntry        = docEntry,
+        LineNum         = GetInt(line, "LineNum"),
+        ItemCode        = GetStr(line, "ItemCode"),
+        Dscription      = GetStrAny(line, "ItemDescription", "Dscription"),
+        Quantity        = GetDec(line, "Quantity"),
+        Price           = GetDecAny(line, "UnitPrice", "Price"),
+        LineTotal       = GetDec(line, "LineTotal"),
+        Currency        = GetStrAny(line, "Currency", "DocumentCurrency"),
+        SlpCode         = GetStr(line, "SalesPersonCode"),
+        WhsCode         = GetStrAny(line, "WarehouseCode", "WhsCode"),
+        UomCode         = GetStrAny(line, "UoMCode", "UomCode"),
+        DiscPrcnt       = GetDecAny(line, "DiscountPercent", "DiscPrcnt"),
+        GrossBuyPr      = GetDecAny(line, "GrossPrice", "GrossBuyPr"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── ORIN ──────────────────────────────────────────────────────────────────
+    // Same structure as OINV but for CreditNotes endpoint.
+    public static SapOrinRow MapOrinRow(JsonNode row, MappingContext ctx) => new()
+    {
+        DocEntry        = GetInt(row, "DocEntry"),
+        DocNum          = GetInt(row, "DocNum"),
+        DocDate         = GetDate(row, "DocDate"),
+        DocDueDate      = GetDate(row, "DocDueDate"),
+        TaxDate         = GetDate(row, "TaxDate"),
+        CardCode        = GetStr(row, "CardCode"),
+        CardName        = GetStr(row, "CardName"),
+        DocTotal        = GetDec(row, "DocTotal"),
+        VatSum          = GetDec(row, "VatSum"),
+        DocCur          = GetStr(row, "DocCur"),
+        DocStatus       = MapDocStatus(GetStr(row, "DocStatus")),
+        SlpCode         = GetStr(row, "SalesPersonCode"),
+        ObjType         = GetStr(row, "ObjType"),
+        DocType         = MapDocType(GetStr(row, "DocType")),
+        Cancelled       = MapYesNo(GetStr(row, "Cancelled")),
+        CreateDate      = GetDate(row, "CreateDate"),
+        CreateTS        = GetStr(row, "CreateTS"),
+        UpdateDate      = GetDate(row, "UpdateDate"),
+        UpdateTS        = GetStr(row, "UpdateTS"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── RIN1 ──────────────────────────────────────────────────────────────────
+    // Lines extracted from CreditNotes.DocumentLines.
+    // Extra fields: BaseRef, BaseEntry, BaseLine, BaseType (back-reference to source document).
+    public static SapRin1Row MapRin1Row(int docEntry, JsonNode line, MappingContext ctx) => new()
+    {
+        DocEntry        = docEntry,
+        LineNum         = GetInt(line, "LineNum"),
+        ItemCode        = GetStr(line, "ItemCode"),
+        Dscription      = GetStrAny(line, "ItemDescription", "Dscription"),
+        Quantity        = GetDec(line, "Quantity"),
+        Price           = GetDecAny(line, "UnitPrice", "Price"),
+        LineTotal       = GetDec(line, "LineTotal"),
+        Currency        = GetStrAny(line, "Currency", "DocumentCurrency"),
+        SlpCode         = GetStr(line, "SalesPersonCode"),
+        WhsCode         = GetStrAny(line, "WarehouseCode", "WhsCode"),
+        UomCode         = GetStrAny(line, "UoMCode", "UomCode"),
+        DiscPrcnt       = GetDecAny(line, "DiscountPercent", "DiscPrcnt"),
+        BaseRef         = GetStr(line, "BaseRef"),
+        BaseEntry       = GetIntNullable(line, "BaseEntry"),
+        BaseLine        = GetIntNullable(line, "BaseLine"),
+        BaseType        = GetStr(line, "BaseType"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── Helpers (public entry-point for jobs that need raw int) ────────────────
+
+    /// <summary>Called by line jobs to extract DocEntry from a parent document node.</summary>
+    public static int GetIntPublic(JsonNode? node, string field) => GetInt(node, field);
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static int GetInt(JsonNode? node, string field)
     {
         try { return node?[field]?.GetValue<int>() ?? 0; }
         catch { return 0; }
+    }
+
+    private static int? GetIntNullable(JsonNode? node, string field)
+    {
+        try { return node?[field]?.GetValue<int>(); }
+        catch { return null; }
     }
 
     private static string? GetStr(JsonNode? node, string field)
@@ -115,10 +208,35 @@ public static class SapToIngestMapper
         return v.ToString();
     }
 
+    /// <summary>Tries multiple field names — returns value from the first one found.</summary>
+    private static string? GetStrAny(JsonNode? node, params string[] fields)
+    {
+        foreach (var f in fields)
+        {
+            var v = node?[f];
+            if (v is not null) return v.ToString();
+        }
+        return null;
+    }
+
     private static decimal? GetDec(JsonNode? node, string field)
     {
         try { return node?[field]?.GetValue<decimal>(); }
         catch { return null; }
+    }
+
+    private static decimal? GetDecAny(JsonNode? node, params string[] fields)
+    {
+        foreach (var f in fields)
+        {
+            try
+            {
+                var v = node?[f];
+                if (v is not null) return v.GetValue<decimal>();
+            }
+            catch { /* try next */ }
+        }
+        return null;
     }
 
     private static DateTime? GetDate(JsonNode? node, string field)

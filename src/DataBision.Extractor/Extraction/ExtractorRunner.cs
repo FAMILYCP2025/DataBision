@@ -12,7 +12,12 @@ public sealed class ExtractorRunner
 {
     private static readonly IReadOnlySet<string> SupportedObjects =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "OSLP", "OCRD", "OITM", "OINV", "ALL" };
+        { "OSLP", "OCRD", "OITM", "OINV", "INV1", "ORIN", "RIN1", "ALL" };
+
+    // ALL intentionally excludes INV1/ORIN/RIN1 to avoid uncontrolled line volume.
+    private static readonly IReadOnlySet<string> AllObjects =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "OSLP", "OCRD", "OITM", "OINV" };
 
     private readonly IReadOnlyDictionary<string, IExtractorJob> _jobs;
     private readonly ExtractorOptions _options;
@@ -35,7 +40,7 @@ public sealed class ExtractorRunner
         string objectName, bool dryRun, bool send, CancellationToken ct = default)
     {
         var targets = objectName.Equals("ALL", StringComparison.OrdinalIgnoreCase)
-            ? SupportedObjects.Where(o => !o.Equals("ALL", StringComparison.OrdinalIgnoreCase)).ToList()
+            ? AllObjects.ToList()           // ALL excludes line objects — use explicit --object INV1 etc.
             : [objectName.ToUpperInvariant()];
 
         var results = new List<ExtractionResult>();
