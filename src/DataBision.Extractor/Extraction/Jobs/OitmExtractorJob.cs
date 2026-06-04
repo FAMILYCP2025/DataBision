@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using DataBision.Application.DTOs.Ingest.Rows;
+using DataBision.Extractor.Checkpoint;
 using DataBision.Extractor.DataBision;
 using DataBision.Extractor.Mapping;
 using DataBision.Extractor.Options;
@@ -11,14 +12,15 @@ namespace DataBision.Extractor.Extraction.Jobs;
 
 /// <summary>
 /// Extracts Items (OITM) from SAP B1 Service Layer.
-/// Incremental by UpdateDate. Falls back to minimal $select if extended fields are unavailable.
+/// Incremental by UpdateDate using checkpoint from DataBision API.
+/// Falls back to minimal $select if extended fields are unavailable.
 /// </summary>
 public sealed class OitmExtractorJob : IExtractorJob
 {
     public string SapObject => "OITM";
 
     private const string Endpoint      = "api/ingest/sap-b1/items";
-    private const string FullSelect    = "ItemCode,ItemName,ItemsGroupCode,QuantityOnStock,IsCommited,OnOrder,AvgPrice,CreateDate,CreateTS,UpdateDate,UpdateTS";
+    private const string FullSelect    = "ItemCode,ItemName,ItemsGroupCode,UpdateDate,UpdateTS";
     private const string MinimalSelect = "ItemCode,ItemName,ItemsGroupCode,UpdateDate";
 
     private readonly IServiceLayerClient     _sl;
@@ -43,7 +45,8 @@ public sealed class OitmExtractorJob : IExtractorJob
         var sw = Stopwatch.StartNew();
         try
         {
-            var (rows, usedSelect) = await FetchWithFallback(ct);
+            var filter = await ReadIncrementalFilter(ct);
+            var (rows, usedSelect) = await FetchWithFallback(filter, ct);
             sw.Stop();
 
             _log.LogInformation("OITM: {Count} rows in {Ms}ms (select={Sel})",
@@ -72,18 +75,34 @@ public sealed class OitmExtractorJob : IExtractorJob
         }
     }
 
-    private async Task<(JsonArray rows, string usedSelect)> FetchWithFallback(CancellationToken ct)
+    private async Task<string?> ReadIncrementalFilter(CancellationToken ct)
     {
+        var checkpoint = await _ingest.GetCheckpointAsync(_options.CompanyId, SapObject, ct);
+        var (filter, effectiveFrom) = IncrementalQueryBuilder.Build(checkpoint, _options.LookbackMinutes);
+
+        if (filter is not null)
+            _log.LogInformation("OITM: applying incremental filter — UpdateDate ge '{From}' (watermark={Wm})",
+                effectiveFrom!.Value.ToString("yyyy-MM-dd"), checkpoint!.WatermarkDate);
+        else
+            _log.LogInformation("OITM: no checkpoint — running limited initial extraction (top={Top})", _options.PageSize);
+
+        return filter;
+    }
+
+    private async Task<(JsonArray rows, string usedSelect)> FetchWithFallback(string? filter, CancellationToken ct)
+    {
+        var filterPart = filter is not null ? $"&$filter={filter}" : "";
+
         try
         {
-            var query = $"$top={_options.PageSize}&$select={FullSelect}&$orderby=UpdateDate asc";
-            return (await _sl.GetAsync("Items", query, ct), FullSelect);
+            var q = $"$top={_options.PageSize}&$select={FullSelect}{filterPart}&$orderby=UpdateDate asc";
+            return (await _sl.GetAsync("Items", q, ct), FullSelect);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("invalid", StringComparison.OrdinalIgnoreCase)
                                                  || ex.Message.Contains("400"))
         {
             _log.LogWarning("OITM: full $select failed — retrying with minimal. Error: {Msg}", ex.Message);
-            var q = $"$top={_options.PageSize}&$select={MinimalSelect}&$orderby=UpdateDate asc";
+            var q = $"$top={_options.PageSize}&$select={MinimalSelect}{filterPart}&$orderby=UpdateDate asc";
             return (await _sl.GetAsync("Items", q, ct), MinimalSelect);
         }
     }
@@ -101,13 +120,8 @@ public sealed class OitmExtractorJob : IExtractorJob
 
         var batch = new IngestBatch<SapOitmRow>
         {
-            TenantId        = _options.TenantId,
-            CompanyId       = _options.CompanyId,
-            SapObject       = SapObject,
-            ExtractionRunId = runId,
-            BatchId         = batchId,
-            IngestionMode   = _options.Mode,
-            Rows            = mapped
+            TenantId = _options.TenantId, CompanyId = _options.CompanyId, SapObject = SapObject,
+            ExtractionRunId = runId, BatchId = batchId, IngestionMode = _options.Mode, Rows = mapped
         };
 
         var resp = await _ingest.SendAsync(Endpoint, batch, ct);
@@ -121,14 +135,10 @@ public sealed class OitmExtractorJob : IExtractorJob
 
         return new ExtractionResult
         {
-            SapObject     = SapObject,
-            Success       = resp.Success,
-            RowsExtracted = rows.Count,
-            RowsInserted  = resp.RowsInserted,
-            RowsUpdated   = resp.RowsUpdated,
-            RowsSkipped   = resp.RowsSkipped,
-            Duration      = extractDuration + sw.Elapsed,
-            WatermarkDate = MaxUpdateDate(rows),
+            SapObject     = SapObject, Success   = resp.Success,
+            RowsExtracted = rows.Count, RowsInserted = resp.RowsInserted,
+            RowsUpdated   = resp.RowsUpdated, RowsSkipped = resp.RowsSkipped,
+            Duration      = extractDuration + sw.Elapsed, WatermarkDate = MaxUpdateDate(rows),
             Error         = resp.Error
         };
     }
@@ -137,19 +147,14 @@ public sealed class OitmExtractorJob : IExtractorJob
     {
         foreach (var row in rows.Take(3))
         {
-            var code = row?["ItemCode"]?.ToString()         ?? "?";
-            var name = Truncate(row?["ItemName"]?.ToString() ?? "");
-            var grp  = row?["ItemsGroupCode"];
-            var grpInfo = grp is not null ? $"{grp} (type={grp.GetValueKind()})" : "(not present)";
-            var upd  = row?["UpdateDate"]?.ToString()       ?? "?";
-            _log.LogInformation("  OITM sample: ItemCode={Code}, Name={Name}, ItemsGroupCode={Grp}, UpdateDate={Upd}",
-                code, name, grpInfo, upd);
+            var grp = row?["ItemsGroupCode"];
+            _log.LogInformation("  OITM sample: ItemCode={Code}, ItemsGroupCode={Grp}, UpdateDate={Upd}",
+                row?["ItemCode"]?.ToString() ?? "?",
+                grp is not null ? $"{grp} (type={grp.GetValueKind()})" : "(not present)",
+                row?["UpdateDate"]?.ToString() ?? "?");
         }
     }
 
     private static string? MaxUpdateDate(JsonArray rows) =>
         rows.Select(r => r?["UpdateDate"]?.ToString()).Where(d => d is not null).OrderDescending().FirstOrDefault();
-
-    private static string Truncate(string s, int max = 40) =>
-        s.Length > max ? s[..max] + "…" : s;
 }

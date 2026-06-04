@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using DataBision.Application.DTOs.Ingest.Rows;
+using DataBision.Extractor.Checkpoint;
 using DataBision.Extractor.DataBision;
 using DataBision.Extractor.Mapping;
 using DataBision.Extractor.Options;
@@ -11,14 +12,15 @@ namespace DataBision.Extractor.Extraction.Jobs;
 
 /// <summary>
 /// Extracts BusinessPartners (OCRD) from SAP B1 Service Layer.
-/// Incremental by UpdateDate. Falls back to minimal $select if extended fields are unavailable.
+/// Incremental by UpdateDate using checkpoint from DataBision API.
+/// Falls back to minimal $select if extended fields are unavailable.
 /// </summary>
 public sealed class OcrdExtractorJob : IExtractorJob
 {
     public string SapObject => "OCRD";
 
     private const string Endpoint      = "api/ingest/sap-b1/customers";
-    private const string FullSelect    = "CardCode,CardName,CardType,GroupCode,FederalTaxID,CurrentAccountBalance,SalesPersonCode,CreateDate,CreateTS,UpdateDate,UpdateTS";
+    private const string FullSelect    = "CardCode,CardName,CardType,GroupCode,FederalTaxID,CurrentAccountBalance,SalesPersonCode,UpdateDate,UpdateTS";
     private const string MinimalSelect = "CardCode,CardName,CardType,UpdateDate";
 
     private readonly IServiceLayerClient     _sl;
@@ -43,7 +45,8 @@ public sealed class OcrdExtractorJob : IExtractorJob
         var sw = Stopwatch.StartNew();
         try
         {
-            var (rows, usedSelect) = await FetchWithFallback(ct);
+            var filter = await ReadIncrementalFilter(ct);
+            var (rows, usedSelect) = await FetchWithFallback(filter, ct);
             sw.Stop();
 
             _log.LogInformation("OCRD: {Count} rows in {Ms}ms (select={Sel})",
@@ -72,18 +75,34 @@ public sealed class OcrdExtractorJob : IExtractorJob
         }
     }
 
-    private async Task<(JsonArray rows, string usedSelect)> FetchWithFallback(CancellationToken ct)
+    private async Task<string?> ReadIncrementalFilter(CancellationToken ct)
     {
+        var checkpoint = await _ingest.GetCheckpointAsync(_options.CompanyId, SapObject, ct);
+        var (filter, effectiveFrom) = IncrementalQueryBuilder.Build(checkpoint, _options.LookbackMinutes);
+
+        if (filter is not null)
+            _log.LogInformation("OCRD: applying incremental filter — UpdateDate ge '{From}' (watermark={Wm})",
+                effectiveFrom!.Value.ToString("yyyy-MM-dd"), checkpoint!.WatermarkDate);
+        else
+            _log.LogInformation("OCRD: no checkpoint — running limited initial extraction (top={Top})", _options.PageSize);
+
+        return filter;
+    }
+
+    private async Task<(JsonArray rows, string usedSelect)> FetchWithFallback(string? filter, CancellationToken ct)
+    {
+        var filterPart = filter is not null ? $"&$filter={filter}" : "";
+
         try
         {
-            var query = $"$top={_options.PageSize}&$select={FullSelect}&$orderby=UpdateDate asc";
-            return (await _sl.GetAsync("BusinessPartners", query, ct), FullSelect);
+            var q = $"$top={_options.PageSize}&$select={FullSelect}{filterPart}&$orderby=UpdateDate asc";
+            return (await _sl.GetAsync("BusinessPartners", q, ct), FullSelect);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("invalid", StringComparison.OrdinalIgnoreCase)
                                                  || ex.Message.Contains("400"))
         {
             _log.LogWarning("OCRD: full $select failed — retrying with minimal. Error: {Msg}", ex.Message);
-            var q = $"$top={_options.PageSize}&$select={MinimalSelect}&$orderby=UpdateDate asc";
+            var q = $"$top={_options.PageSize}&$select={MinimalSelect}{filterPart}&$orderby=UpdateDate asc";
             return (await _sl.GetAsync("BusinessPartners", q, ct), MinimalSelect);
         }
     }
@@ -101,13 +120,8 @@ public sealed class OcrdExtractorJob : IExtractorJob
 
         var batch = new IngestBatch<SapOcrdRow>
         {
-            TenantId        = _options.TenantId,
-            CompanyId       = _options.CompanyId,
-            SapObject       = SapObject,
-            ExtractionRunId = runId,
-            BatchId         = batchId,
-            IngestionMode   = _options.Mode,
-            Rows            = mapped
+            TenantId = _options.TenantId, CompanyId = _options.CompanyId, SapObject = SapObject,
+            ExtractionRunId = runId, BatchId = batchId, IngestionMode = _options.Mode, Rows = mapped
         };
 
         var resp = await _ingest.SendAsync(Endpoint, batch, ct);
@@ -121,14 +135,10 @@ public sealed class OcrdExtractorJob : IExtractorJob
 
         return new ExtractionResult
         {
-            SapObject     = SapObject,
-            Success       = resp.Success,
-            RowsExtracted = rows.Count,
-            RowsInserted  = resp.RowsInserted,
-            RowsUpdated   = resp.RowsUpdated,
-            RowsSkipped   = resp.RowsSkipped,
-            Duration      = extractDuration + sw.Elapsed,
-            WatermarkDate = MaxUpdateDate(rows),
+            SapObject     = SapObject, Success   = resp.Success,
+            RowsExtracted = rows.Count, RowsInserted = resp.RowsInserted,
+            RowsUpdated   = resp.RowsUpdated, RowsSkipped = resp.RowsSkipped,
+            Duration      = extractDuration + sw.Elapsed, WatermarkDate = MaxUpdateDate(rows),
             Error         = resp.Error
         };
     }
@@ -136,12 +146,10 @@ public sealed class OcrdExtractorJob : IExtractorJob
     private void LogSample(JsonArray rows)
     {
         foreach (var row in rows.Take(3))
-        {
-            var code = row?["CardCode"]?.ToString()   ?? "?";
-            var type = row?["CardType"]?.ToString()   ?? "?";
-            var upd  = row?["UpdateDate"]?.ToString() ?? "?";
-            _log.LogInformation("  OCRD sample: CardCode={Code}, CardType={Type}, UpdateDate={Upd}", code, type, upd);
-        }
+            _log.LogInformation("  OCRD sample: CardCode={Code}, CardType={Type}, UpdateDate={Upd}",
+                row?["CardCode"]?.ToString() ?? "?",
+                row?["CardType"]?.ToString() ?? "?",
+                row?["UpdateDate"]?.ToString() ?? "?");
     }
 
     private static string? MaxUpdateDate(JsonArray rows) =>

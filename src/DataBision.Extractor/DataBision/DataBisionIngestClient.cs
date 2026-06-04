@@ -71,5 +71,58 @@ public sealed class DataBisionIngestClient : IDataBisionIngestClient, IDisposabl
         }
     }
 
+    public async Task<ExtractorCheckpoint?> GetCheckpointAsync(
+        string companyId, string sapObject, CancellationToken ct = default)
+    {
+        var url = $"api/ingest/checkpoint/{companyId}/{sapObject}";
+
+        try
+        {
+            using var response = await _http.GetAsync(url, ct);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _log.LogInformation("Checkpoint: no prior run for {Obj}", sapObject);
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _log.LogWarning("Checkpoint: API returned {Status} for {Obj} — treating as no checkpoint",
+                    (int)response.StatusCode, sapObject);
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var doc  = JsonSerializer.Deserialize<JsonElement>(body, JsonOpts);
+
+            if (!doc.TryGetProperty("data", out var data) || data.ValueKind == JsonValueKind.Null)
+            {
+                _log.LogInformation("Checkpoint: no prior run for {Obj}", sapObject);
+                return null;
+            }
+
+            var cp = new ExtractorCheckpoint
+            {
+                WatermarkDate = data.TryGetProperty("watermarkDate", out var wd) && wd.ValueKind != JsonValueKind.Null
+                    ? wd.GetString() : null,
+                WatermarkTs = data.TryGetProperty("watermarkTs", out var wt) && wt.ValueKind != JsonValueKind.Null
+                    ? wt.GetString() : null,
+                LastSuccessfulRunUtc = data.TryGetProperty("lastSuccessfulRunUtc", out var lr) && lr.ValueKind != JsonValueKind.Null
+                    ? lr.GetDateTime() : null,
+                TotalRowsIngested = data.TryGetProperty("totalRowsIngested", out var tr) ? tr.GetInt64() : 0
+            };
+
+            _log.LogInformation("Checkpoint: {Obj} — watermark={Wm}, totalIngested={Total}",
+                sapObject, cp.WatermarkDate ?? "(none)", cp.TotalRowsIngested);
+            return cp;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Checkpoint: failed to read for {Obj} — {Msg}", sapObject, ex.Message);
+            return null;
+        }
+    }
+
     public void Dispose() => _http.Dispose();
 }
