@@ -20,7 +20,9 @@ public sealed class OinvExtractorJob : IExtractorJob
     public string SapObject => "OINV";
 
     private const string Endpoint      = "api/ingest/sap-b1/sales-invoices";
-    private const string FullSelect    = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocTotal,VatSum,DocCur,DocStatus,SalesPersonCode,ObjType,DocType,Cancelled,CreateDate,CreateTS,UpdateDate,UpdateTS";
+    // Confirmed valid fields for Invoices in SL 1000290 (progressive validation Sprint 4D).
+    // Removed: DocCur, DocStatus, ObjType, CreateDate, CreateTS (invalid in this SL version).
+    private const string FullSelect    = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocTotal,VatSum,SalesPersonCode,DocType,Cancelled,UpdateDate";
     private const string MinimalSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,UpdateDate";
 
     private readonly IServiceLayerClient     _sl;

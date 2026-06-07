@@ -3,12 +3,68 @@ using DataBision.Extractor.Extraction;
 using DataBision.Extractor.Extraction.Jobs;
 using DataBision.Extractor.Options;
 using DataBision.Extractor.Scheduling;
+using DataBision.Extractor.Service;
 using DataBision.Extractor.ServiceLayer;
+using DataBision.Extractor.Transformations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
 
-// ── Configuration ─────────────────────────────────────────────────────────────
+// ── --service mode: run as Windows Service via Generic Host ───────────────────
+if (args.Contains("--service"))
+{
+    var host = Host.CreateDefaultBuilder(args)
+        .UseWindowsService(o => o.ServiceName = "DataBisionExtractor")
+        .UseSerilog((ctx, logCfg) => ConfigureSerilog(logCfg, isService: true))
+        .ConfigureServices((ctx, services) =>
+        {
+            var extOptions = ctx.Configuration.GetSection(ExtractorOptions.Section)
+                                 .Get<ExtractorOptions>() ?? new ExtractorOptions();
+            var slOptions  = ctx.Configuration.GetSection(SapServiceLayerOptions.Section)
+                                 .Get<SapServiceLayerOptions>() ?? new SapServiceLayerOptions();
+            var apiOptions = ctx.Configuration.GetSection(DataBisionApiOptions.Section)
+                                 .Get<DataBisionApiOptions>() ?? new DataBisionApiOptions();
+
+            services.AddSingleton(extOptions);
+            services.AddSingleton(slOptions);
+            services.AddSingleton(apiOptions);
+            services.AddSingleton<IServiceLayerClient, ServiceLayerClient>();
+            services.AddSingleton<IDataBisionIngestClient, DataBisionIngestClient>();
+            services.AddSingleton<OslpExtractorJob>();
+            services.AddSingleton<OcrdExtractorJob>();
+            services.AddSingleton<OitmExtractorJob>();
+            services.AddSingleton<OinvExtractorJob>();
+            services.AddSingleton<Inv1ExtractorJob>();
+            services.AddSingleton<OrinExtractorJob>();
+            services.AddSingleton<Rin1ExtractorJob>();
+            services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
+                new IExtractorJob[]
+                {
+                    sp.GetRequiredService<OslpExtractorJob>(),
+                    sp.GetRequiredService<OcrdExtractorJob>(),
+                    sp.GetRequiredService<OitmExtractorJob>(),
+                    sp.GetRequiredService<OinvExtractorJob>(),
+                    sp.GetRequiredService<Inv1ExtractorJob>(),
+                    sp.GetRequiredService<OrinExtractorJob>(),
+                    sp.GetRequiredService<Rin1ExtractorJob>(),
+                },
+                sp.GetRequiredService<ExtractorOptions>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ExtractorRunner>>()));
+            services.AddSingleton<ExtractorScheduler>();
+            services.AddHostedService<ExtractorWorkerService>();
+        })
+        .Build();
+
+    await host.RunAsync();
+    return 0;
+}
+
+// ── CLI mode: manual DI + Serilog ─────────────────────────────────────────────
+Log.Logger = ConfigureSerilog(new LoggerConfiguration(), isService: false).CreateLogger();
+
 var config = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false)
@@ -16,12 +72,11 @@ var config = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
-// ── DI Container ──────────────────────────────────────────────────────────────
 var services = new ServiceCollection();
 
 services.AddLogging(b => b
-    .AddConsole()
-    .SetMinimumLevel(LogLevel.Information));
+    .ClearProviders()
+    .AddSerilog(Log.Logger));
 
 var slOptions  = config.GetSection(SapServiceLayerOptions.Section).Get<SapServiceLayerOptions>()  ?? new SapServiceLayerOptions();
 var apiOptions = config.GetSection(DataBisionApiOptions.Section).Get<DataBisionApiOptions>()       ?? new DataBisionApiOptions();
@@ -69,29 +124,27 @@ if (args.Contains("--help") || args.Contains("-h"))
         Options:
           --help, -h                     Show this help
           --validate                     Test Service Layer login + GET OSLP top 5 + logout
-          --dry-run                      Show resolved configuration (no connections, no data)
+          --dry-run                      Show resolved configuration (no connections)
           --object <name>                Extract single object: OSLP|OCRD|OITM|OINV|INV1|ORIN|RIN1|ALL
           --object <name> --send         Extract and send to DataBision Ingest API
-          --object <name> --dry-run      Validate object name and show planned extraction
           --run-once [--send]            Extract Extractor.Objects list once and exit
-          --schedule [--send]            Run Extractor.Objects in a scheduled loop (Ctrl+C to stop)
+          --schedule [--send]            Run Extractor.Objects in a loop (Ctrl+C to stop)
           --interval-minutes N           Override Extractor.IntervalMinutes (default 30)
           --max-cycles N                 Stop after N cycles (useful for testing)
-
-        Note: ALL includes OSLP/OCRD/OITM/OINV only. INV1/ORIN/RIN1 require explicit --object.
+          --transform [--company C]      Refresh all STG tables from RAW (requires Staging:ConnectionString)
+          --service                      Run as Windows Service (uses Extractor.SendEnabled from config)
 
         Examples:
           dotnet run -- --validate
-          dotnet run -- --dry-run
           dotnet run -- --object OCRD --send
           dotnet run -- --run-once --send
           dotnet run -- --schedule --interval-minutes 30 --send
           dotnet run -- --schedule --interval-minutes 1 --max-cycles 1 --send
+          dotnet DataBision.Extractor.exe --service
         """);
     return 0;
 }
 
-// ── Startup log ───────────────────────────────────────────────────────────────
 log.LogInformation("DataBision Extractor starting...");
 
 if (args.Length == 0)
@@ -101,9 +154,9 @@ if (args.Length == 0)
 }
 
 // ── Parse common flags ────────────────────────────────────────────────────────
-bool isDryRun  = args.Contains("--dry-run");
-bool isSend    = args.Contains("--send");
-bool isRunOnce = args.Contains("--run-once");
+bool isDryRun   = args.Contains("--dry-run");
+bool isSend     = args.Contains("--send");
+bool isRunOnce  = args.Contains("--run-once");
 bool isSchedule = args.Contains("--schedule");
 
 string? objectArg = null;
@@ -121,7 +174,7 @@ var maxIdx = Array.IndexOf(args, "--max-cycles");
 if (maxIdx >= 0 && maxIdx + 1 < args.Length && int.TryParse(args[maxIdx + 1], out var parsedMax))
     maxCycles = parsedMax;
 
-// ── --dry-run alone: show config ──────────────────────────────────────────────
+// ── --dry-run alone ───────────────────────────────────────────────────────────
 if (isDryRun && !args.Contains("--validate") && objectArg is null && !isRunOnce && !isSchedule)
 {
     log.LogInformation("=== DRY-RUN: configuration check ===");
@@ -138,20 +191,20 @@ if (isDryRun && !args.Contains("--validate") && objectArg is null && !isRunOnce 
     log.LogInformation("Extractor.TenantId:          {T}",   extOptions.TenantId.Length > 0  ? "[set]" : "[MISSING]");
     log.LogInformation("Extractor.CompanyId:         {C}",   extOptions.CompanyId.Length > 0 ? "[set]" : "[MISSING]");
     log.LogInformation("Extractor.Mode:              {M}",   extOptions.Mode);
-    log.LogInformation("Extractor.PageSize:          {Ps}",  extOptions.PageSize);
     log.LogInformation("Extractor.Objects:           {Obj}", string.Join(", ", extOptions.Objects));
     log.LogInformation("Extractor.IntervalMinutes:   {I}",   extOptions.IntervalMinutes);
+    log.LogInformation("Extractor.SendEnabled:       {S}",   extOptions.SendEnabled);
 
     if (!slValid || !apiValid || !extValid)
     {
         log.LogError("Configuration incomplete — fill in appsettings.Development.json.");
         return 2;
     }
-    log.LogInformation("=== DRY-RUN: configuration OK — no connections made ===");
+    log.LogInformation("=== DRY-RUN: configuration OK ===");
     return 0;
 }
 
-// ── Full config validation (all non-dry-run modes) ────────────────────────────
+// ── Full config validation ────────────────────────────────────────────────────
 try
 {
     slOptions.Validate();
@@ -168,19 +221,14 @@ catch (InvalidOperationException ex)
 // ── --validate ────────────────────────────────────────────────────────────────
 if (args.Contains("--validate"))
 {
-    log.LogInformation("=== Sprint 3A: Service Layer Validation ===");
     var client = sp.GetRequiredService<IServiceLayerClient>();
     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(slOptions.TimeoutSeconds * 2));
-
     try
     {
         await client.LoginAsync(cts.Token);
         log.LogInformation("[P-01] PASS — Login successful");
-
-        var oslpRows = await client.GetAsync("SalesPersons",
-            "$top=5&$select=SalesEmployeeCode,SalesEmployeeName", cts.Token);
-        log.LogInformation("[P-06] PASS — OSLP rows received: {Count}", oslpRows.Count);
-
+        var rows = await client.GetAsync("SalesPersons", "$top=5&$select=SalesEmployeeCode,SalesEmployeeName", cts.Token);
+        log.LogInformation("[P-06] PASS — OSLP rows received: {Count}", rows.Count);
         await client.LogoutAsync(cts.Token);
         log.LogInformation("[P-04] PASS — Logout completed");
         log.LogInformation("=== Validation: ALL PASS ===");
@@ -198,7 +246,6 @@ if (isRunOnce)
 {
     log.LogInformation("=== Run-once: {Objects} (send={Send}) ===",
         string.Join(", ", extOptions.Objects), isSend);
-
     var scheduler = sp.GetRequiredService<ExtractorScheduler>();
     var slClient  = sp.GetRequiredService<IServiceLayerClient>();
     using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
@@ -210,26 +257,18 @@ if (isRunOnce)
         scheduler.LogCycleSummary(1, summaries);
         return summaries.Any(s => !s.Success) ? 4 : 0;
     }
-    finally
-    {
-        await slClient.LogoutAsync();
-    }
+    finally { await slClient.LogoutAsync(); }
 }
 
 // ── --schedule ────────────────────────────────────────────────────────────────
 if (isSchedule)
 {
-    log.LogInformation("=== Schedule mode: objects={Obj}, interval={Min}min, maxCycles={Max}, send={Send} ===",
+    log.LogInformation("=== Schedule: objects={Obj}, interval={Min}min, maxCycles={Max}, send={Send} ===",
         string.Join(", ", extOptions.Objects), intervalMinutes,
         maxCycles?.ToString() ?? "unlimited", isSend);
 
     using var cts = new CancellationTokenSource();
-    Console.CancelKeyPress += (_, e) =>
-    {
-        e.Cancel = true;
-        log.LogInformation("=== Ctrl+C received — stopping after current cycle ===");
-        cts.Cancel();
-    };
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
     var scheduler = sp.GetRequiredService<ExtractorScheduler>();
     var slClient  = sp.GetRequiredService<IServiceLayerClient>();
@@ -239,11 +278,9 @@ if (isSchedule)
     while (!cts.IsCancellationRequested)
     {
         if (maxCycles.HasValue && cycleCount >= maxCycles.Value) break;
-
         cycleCount++;
         log.LogInformation("=== Cycle {N} starting at {Time} ===",
             cycleCount, DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC"));
-
         try
         {
             await slClient.LoginAsync(cts.Token);
@@ -253,32 +290,15 @@ if (isSchedule)
                 scheduler.LogCycleSummary(cycleCount, summaries);
                 if (summaries.Any(s => !s.Success)) exitCode = 4;
             }
-            finally
-            {
-                await slClient.LogoutAsync(CancellationToken.None);
-            }
+            finally { await slClient.LogoutAsync(CancellationToken.None); }
         }
-        catch (OperationCanceledException)
-        {
-            log.LogInformation("=== Cycle {N} cancelled ===", cycleCount);
-            break;
-        }
-        catch (Exception ex)
-        {
-            log.LogError("=== Cycle {N} failed — {Msg} ===", cycleCount, ex.Message);
-            exitCode = 4;
-        }
+        catch (OperationCanceledException) { break; }
+        catch (Exception ex) { log.LogError("=== Cycle {N} failed — {Msg}", cycleCount, ex.Message); exitCode = 4; }
 
         if (maxCycles.HasValue && cycleCount >= maxCycles.Value) break;
         if (cts.IsCancellationRequested) break;
-
-        log.LogInformation("=== Cycle {N} complete. Next in {Min} min (Ctrl+C to stop) ===",
-            cycleCount, intervalMinutes);
-
-        try
-        {
-            await Task.Delay(TimeSpan.FromMinutes(intervalMinutes), cts.Token);
-        }
+        log.LogInformation("=== Cycle {N} complete. Next in {Min} min (Ctrl+C to stop) ===", cycleCount, intervalMinutes);
+        try { await Task.Delay(TimeSpan.FromMinutes(intervalMinutes), cts.Token); }
         catch (OperationCanceledException) { break; }
     }
 
@@ -298,10 +318,6 @@ if (objectArg is not null)
     if (isDryRun)
     {
         log.LogInformation("=== DRY-RUN: --object {Obj} ===", objectArg.ToUpperInvariant());
-        log.LogInformation("TenantId:   {T}", extOptions.TenantId);
-        log.LogInformation("CompanyId:  {C}", extOptions.CompanyId);
-        log.LogInformation("Mode:       {M}", extOptions.Mode);
-        log.LogInformation("PageSize:   {Ps}", extOptions.PageSize);
         log.LogInformation("Extraction of {Obj}: NOT STARTED (dry-run)", objectArg.ToUpperInvariant());
         return 0;
     }
@@ -317,14 +333,79 @@ if (objectArg is not null)
         var results = await runner.RunAsync(objectArg, dryRun: false, send: isSend, cts.Token);
         return results.Any(r => !r.Success) ? 4 : 0;
     }
-    finally
+    finally { await slClient.LogoutAsync(); }
+}
+
+// ── --transform ───────────────────────────────────────────────────────────────
+if (args.Contains("--transform"))
+{
+    var stagingOptions = config.GetSection(StagingOptions.Section).Get<StagingOptions>()
+                         ?? new StagingOptions();
+    try { stagingOptions.Validate(); }
+    catch (InvalidOperationException ex)
     {
-        await slClient.LogoutAsync();
+        log.LogError("Configuration error: {Message}", ex.Message);
+        return 2;
+    }
+
+    string? companyArg = null;
+    var companyIdx = Array.IndexOf(args, "--company");
+    if (companyIdx >= 0 && companyIdx + 1 < args.Length)
+        companyArg = args[companyIdx + 1];
+
+    var companyId = !string.IsNullOrWhiteSpace(companyArg)
+        ? companyArg
+        : extOptions.CompanyId;
+
+    if (string.IsNullOrWhiteSpace(companyId))
+    {
+        log.LogError("No company specified. Use --company <id> or set Extractor:CompanyId in config.");
+        return 2;
+    }
+
+    log.LogInformation("=== STG Transform: company={CompanyId} ===", companyId);
+    var runner = new TransformationRunner(stagingOptions.ConnectionString,
+        sp.GetRequiredService<ILogger<TransformationRunner>>());
+    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+    try
+    {
+        var results = await runner.RefreshAllAsync(companyId, cts.Token);
+        log.LogInformation("=== STG Transform: DONE — {Count} object(s) ===", results.Count);
+        foreach (var (obj, rows) in results)
+            log.LogInformation("  {Object}: {Rows} row(s)", obj, rows);
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        log.LogError(ex, "=== STG Transform: FAILED — {Message}", ex.Message);
+        return 5;
     }
 }
 
 log.LogWarning("No recognized action. Use --help for usage.");
 return 1;
+
+// ── Serilog factory ───────────────────────────────────────────────────────────
+
+static LoggerConfiguration ConfigureSerilog(LoggerConfiguration cfg, bool isService)
+{
+    cfg = cfg
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("System", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
+        .WriteTo.File(
+            path: "logs/databision-extractor-.log",
+            rollingInterval: RollingInterval.Day,
+            outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+            retainedFileCountLimit: 30);
+
+    if (!isService)
+        cfg = cfg.WriteTo.Console(
+            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}");
+
+    return cfg;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

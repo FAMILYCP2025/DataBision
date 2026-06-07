@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using DataBision.Extractor.Options;
+using DataBision.Extractor.Resilience;
 using Microsoft.Extensions.Logging;
 
 namespace DataBision.Extractor.ServiceLayer;
@@ -50,7 +51,10 @@ public sealed class ServiceLayerClient : IServiceLayerClient, IDisposable
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
     }
 
-    public async Task LoginAsync(CancellationToken ct = default)
+    public Task LoginAsync(CancellationToken ct = default)
+        => RetryHelper.ExecuteAsync(LoginOnceAsync, "SL.Login", _log, ct);
+
+    private async Task LoginOnceAsync(CancellationToken ct)
     {
         _log.LogInformation("Service Layer login — CompanyDB: {CompanyDB}, User: {User}",
             _options.CompanyDB, _options.UserName);
@@ -127,7 +131,10 @@ public sealed class ServiceLayerClient : IServiceLayerClient, IDisposable
         }
     }
 
-    public async Task<JsonArray> GetAsync(string entity, string query, CancellationToken ct = default)
+    public Task<JsonArray> GetAsync(string entity, string query, CancellationToken ct = default)
+        => RetryHelper.ExecuteAsync(c => GetOnceAsync(entity, query, c), $"SL.Get({entity})", _log, ct);
+
+    private async Task<JsonArray> GetOnceAsync(string entity, string query, CancellationToken ct)
     {
         if (_session is null || _session.IsExpired)
             throw new InvalidOperationException("Not logged in. Call LoginAsync first.");

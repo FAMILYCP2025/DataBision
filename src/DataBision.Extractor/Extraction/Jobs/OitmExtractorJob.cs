@@ -20,7 +20,8 @@ public sealed class OitmExtractorJob : IExtractorJob
     public string SapObject => "OITM";
 
     private const string Endpoint      = "api/ingest/sap-b1/items";
-    private const string FullSelect    = "ItemCode,ItemName,ItemsGroupCode,UpdateDate,UpdateTS";
+    // UpdateTS is not exposed by Item in SL 1000290 — confirmed Sprint 4B/4C
+    private const string FullSelect    = "ItemCode,ItemName,ItemsGroupCode,UpdateDate";
     private const string MinimalSelect = "ItemCode,ItemName,ItemsGroupCode,UpdateDate";
 
     private readonly IServiceLayerClient     _sl;

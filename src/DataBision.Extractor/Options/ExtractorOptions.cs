@@ -24,6 +24,12 @@ public sealed class ExtractorOptions
     /// </summary>
     public string[] Objects { get; init; } = [];
 
+    /// <summary>
+    /// When true, extracted rows are sent to the Ingest API.
+    /// Default false — must be explicitly enabled in production config or via --send CLI flag.
+    /// </summary>
+    public bool SendEnabled { get; init; } = false;
+
     /// <summary>Minutes between cycles in --schedule mode.</summary>
     public int IntervalMinutes { get; init; } = 30;
 

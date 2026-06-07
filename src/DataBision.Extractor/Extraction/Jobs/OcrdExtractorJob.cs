@@ -20,7 +20,8 @@ public sealed class OcrdExtractorJob : IExtractorJob
     public string SapObject => "OCRD";
 
     private const string Endpoint      = "api/ingest/sap-b1/customers";
-    private const string FullSelect    = "CardCode,CardName,CardType,GroupCode,FederalTaxID,CurrentAccountBalance,SalesPersonCode,UpdateDate,UpdateTS";
+    // UpdateTS is not exposed by BusinessPartner in SL 1000290 — confirmed Sprint 4B/4C
+    private const string FullSelect    = "CardCode,CardName,CardType,GroupCode,FederalTaxID,CurrentAccountBalance,SalesPersonCode,UpdateDate";
     private const string MinimalSelect = "CardCode,CardName,CardType,UpdateDate";
 
     private readonly IServiceLayerClient     _sl;

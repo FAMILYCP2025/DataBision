@@ -19,7 +19,9 @@ public sealed class OrinExtractorJob : IExtractorJob
     public string SapObject => "ORIN";
 
     private const string Endpoint      = "api/ingest/sap-b1/credit-memos";
-    private const string FullSelect    = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocTotal,VatSum,DocStatus,SalesPersonCode,ObjType,DocType,Cancelled,CreateDate,CreateTS,UpdateDate,UpdateTS";
+    // Confirmed valid fields for CreditNotes in SL 1000290 (progressive validation Sprint 4D).
+    // Removed: DocStatus, ObjType, CreateDate, CreateTS (invalid in this SL version).
+    private const string FullSelect    = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocTotal,VatSum,SalesPersonCode,DocType,Cancelled,UpdateDate";
     private const string MinimalSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,UpdateDate";
 
     private int DocTop(int configured) => Math.Min(configured, 10);

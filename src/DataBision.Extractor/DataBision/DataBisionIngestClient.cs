@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using DataBision.Extractor.Options;
+using DataBision.Extractor.Resilience;
 using Microsoft.Extensions.Logging;
 
 namespace DataBision.Extractor.DataBision;
@@ -31,8 +32,13 @@ public sealed class DataBisionIngestClient : IDataBisionIngestClient, IDisposabl
         _http.DefaultRequestHeaders.Add("X-DataBision-ApiKey", options.ApiKey);
     }
 
-    public async Task<IngestResponse> SendAsync<T>(
+    public Task<IngestResponse> SendAsync<T>(
         string endpoint, IngestBatch<T> batch, CancellationToken ct = default)
+        where T : class
+        => RetryHelper.ExecuteAsync(c => SendOnceAsync(endpoint, batch, c), $"Ingest.Send({endpoint})", _log, ct);
+
+    private async Task<IngestResponse> SendOnceAsync<T>(
+        string endpoint, IngestBatch<T> batch, CancellationToken ct)
         where T : class
     {
         _log.LogInformation("Sending {Count} rows to {Endpoint}", batch.Rows.Count, endpoint);
