@@ -15,6 +15,41 @@
 
 ---
 
+## Estado de Implementación por Sprint (actualizado 2026-06-06)
+
+| Sprint | Título | Estado | SHA / Notas |
+|---|---|---|---|
+| Sprint 0 | Limpieza y alineación técnica | ✅ COMPLETADO | Supabase + Npgsql migrado |
+| Sprint 1 | Supabase + Ingest API funcional | ✅ COMPLETADO | INSERT ON CONFLICT, checkpoints |
+| Sprint 2 | Dedicated Extractor MVP | ✅ COMPLETADO | Service Layer OData, retry, schedule |
+| Sprint 3 | Native BI mínimo | ⏸ PAUSADO | Power BI embed como estrategia principal |
+| Sprint 4A | Extractor SAP B1 Service Layer — jobs base | ✅ COMPLETADO | `6192b61` |
+| Sprint 4B | Ingest API → Supabase batch real | ✅ COMPLETADO | `28796d8` |
+| Sprint 4C | Invoice lines + credit memo lines | ✅ COMPLETADO | `d5e3e0f` |
+| Sprint 4D | Checkpoint incremental + scheduled execution | ✅ COMPLETADO | `5177069`, `620403d` |
+| Sprint 5A | STG layer migration + functions | ✅ COMPLETADO | `b877190` — 7 tablas + `stg.refresh_all` |
+| Sprint 5B | MART layer migration + functions | ✅ LISTO PARA APPLY | `20260607030000_AddMartSchema.cs` sin commit |
+| Sprint 5C | TransformationRunner — 3 modos | ✅ COMPLETADO | `--transform`, `--include-mart`, `--transform-mart` |
+| Sprint 5D | KPI validation queries + results template | ✅ COMPLETADO | `docs/sql/kpi-validation-queries.sql` |
+| Sprint 5E | Documentación demo + production checklist | ✅ COMPLETADO | 3 docs + este roadmap actualizado |
+
+### Build status (2026-06-06)
+
+```
+dotnet build DataBision.sln  →  0 errores, 0 warnings
+dotnet test DataBision.sln   →  34/34 tests pass (Application: 25, Api: 9)
+```
+
+### Pendiente antes de próxima demo
+
+- [ ] Ejecutar `dotnet ef database update` en Supabase (aplica MART migration)
+- [ ] Ejecutar `DataBision.Extractor --transform --include-mart --company KSDEPOR`
+- [ ] Validar con `docs/sql/kpi-validation-queries.sql` — todos los deltas = 0
+- [ ] Registrar resultados en `docs/kpi-validation-results-template.md`
+- [ ] Commit de archivos untracked (Sprints 5B–5E)
+
+---
+
 ## Índice
 
 1. [Estado Actual del Código](#estado-actual)

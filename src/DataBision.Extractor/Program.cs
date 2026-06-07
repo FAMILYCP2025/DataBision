@@ -131,7 +131,9 @@ if (args.Contains("--help") || args.Contains("-h"))
           --schedule [--send]            Run Extractor.Objects in a loop (Ctrl+C to stop)
           --interval-minutes N           Override Extractor.IntervalMinutes (default 30)
           --max-cycles N                 Stop after N cycles (useful for testing)
-          --transform [--company C]      Refresh all STG tables from RAW (requires Staging:ConnectionString)
+          --transform [--company C]      Refresh STG tables from RAW (requires Staging:ConnectionString)
+          --transform --include-mart     Refresh STG then MART
+          --transform-mart [--company C] Refresh MART only (STG must already be populated)
           --service                      Run as Windows Service (uses Extractor.SendEnabled from config)
 
         Examples:
@@ -140,6 +142,9 @@ if (args.Contains("--help") || args.Contains("-h"))
           dotnet run -- --run-once --send
           dotnet run -- --schedule --interval-minutes 30 --send
           dotnet run -- --schedule --interval-minutes 1 --max-cycles 1 --send
+          dotnet run -- --transform --company company-dev-001
+          dotnet run -- --transform --include-mart --company company-dev-001
+          dotnet run -- --transform-mart --company company-dev-001
           dotnet DataBision.Extractor.exe --service
         """);
     return 0;
@@ -336,8 +341,12 @@ if (objectArg is not null)
     finally { await slClient.LogoutAsync(); }
 }
 
-// ── --transform ───────────────────────────────────────────────────────────────
-if (args.Contains("--transform"))
+// ── --transform / --transform-mart ───────────────────────────────────────────
+bool isTransform     = args.Contains("--transform");
+bool isTransformMart = args.Contains("--transform-mart");
+bool includeMart     = args.Contains("--include-mart");
+
+if (isTransform || isTransformMart)
 {
     var stagingOptions = config.GetSection(StagingOptions.Section).Get<StagingOptions>()
                          ?? new StagingOptions();
@@ -363,21 +372,54 @@ if (args.Contains("--transform"))
         return 2;
     }
 
-    log.LogInformation("=== STG Transform: company={CompanyId} ===", companyId);
-    var runner = new TransformationRunner(stagingOptions.ConnectionString,
+    var transformRunner = new TransformationRunner(stagingOptions.ConnectionString,
         sp.GetRequiredService<ILogger<TransformationRunner>>());
     using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
     try
     {
-        var results = await runner.RefreshAllAsync(companyId, cts.Token);
-        log.LogInformation("=== STG Transform: DONE — {Count} object(s) ===", results.Count);
-        foreach (var (obj, rows) in results)
-            log.LogInformation("  {Object}: {Rows} row(s)", obj, rows);
+        if (isTransformMart)
+        {
+            // MART only
+            log.LogInformation("=== MART Transform: company={CompanyId} ===", companyId);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var results = await transformRunner.RefreshMartAsync(companyId, cts.Token);
+            sw.Stop();
+            log.LogInformation("=== MART Transform: DONE — {Count} object(s) in {Ms}ms ===",
+                results.Count, sw.ElapsedMilliseconds);
+        }
+        else if (includeMart)
+        {
+            // STG then MART
+            log.LogInformation("=== STG+MART Transform: company={CompanyId} ===", companyId);
+            var swStg = System.Diagnostics.Stopwatch.StartNew();
+            var stgResults = await transformRunner.RefreshStgAsync(companyId, cts.Token);
+            swStg.Stop();
+            log.LogInformation("=== STG done — {Count} object(s) in {Ms}ms ===",
+                stgResults.Count, swStg.ElapsedMilliseconds);
+
+            var swMart = System.Diagnostics.Stopwatch.StartNew();
+            var martResults = await transformRunner.RefreshMartAsync(companyId, cts.Token);
+            swMart.Stop();
+            log.LogInformation("=== MART done — {Count} object(s) in {Ms}ms ===",
+                martResults.Count, swMart.ElapsedMilliseconds);
+            log.LogInformation("=== STG+MART Transform: COMPLETE (STG {StgMs}ms + MART {MartMs}ms) ===",
+                swStg.ElapsedMilliseconds, swMart.ElapsedMilliseconds);
+        }
+        else
+        {
+            // STG only
+            log.LogInformation("=== STG Transform: company={CompanyId} ===", companyId);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var results = await transformRunner.RefreshStgAsync(companyId, cts.Token);
+            sw.Stop();
+            log.LogInformation("=== STG Transform: DONE — {Count} object(s) in {Ms}ms ===",
+                results.Count, sw.ElapsedMilliseconds);
+        }
         return 0;
     }
     catch (Exception ex)
     {
-        log.LogError(ex, "=== STG Transform: FAILED — {Message}", ex.Message);
+        log.LogError(ex, "=== Transform: FAILED — {Message}", ex.Message);
         return 5;
     }
 }
