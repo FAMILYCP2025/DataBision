@@ -2,8 +2,10 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using DataBision.Api.Filters;
 using DataBision.Application.Interfaces;
+using DataBision.Application.Interfaces.Dashboard;
 using DataBision.Application.Interfaces.Ingest;
 using DataBision.Application.Options;
+using DataBision.Application.Services.Dashboard;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using DataBision.Application.Services;
@@ -12,6 +14,7 @@ using DataBision.Infrastructure.Data;
 using DataBision.Infrastructure.Data.Staging;
 using DataBision.Infrastructure.PowerBI;
 using DataBision.Infrastructure.Repositories;
+using DataBision.Infrastructure.Repositories.Dashboard;
 using DataBision.Infrastructure.Repositories.Ingest;
 using DataBision.Infrastructure.Seed;
 using FluentValidation;
@@ -60,6 +63,15 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
         new IngestCheckpointRepository(stagingConnectionString));
     builder.Services.AddScoped<IIngestService, IngestService>();
     builder.Services.AddScoped<ApiKeyAuthFilter>();
+
+    // Native BI — Dashboard, Sales, Sync endpoints (read from mart.* / stg.* / ctl.*)
+    builder.Services.AddScoped<IDashboardRepository>(_ =>
+        new DashboardRepository(stagingConnectionString));
+    builder.Services.AddScoped<ISyncStatusRepository>(_ =>
+        new SyncStatusRepository(stagingConnectionString));
+    builder.Services.AddScoped<IDashboardService, DashboardService>();
+    builder.Services.AddScoped<ISalesService, SalesService>();
+    builder.Services.AddScoped<ISyncStatusService, SyncStatusService>();
 }
 
 // Application services
