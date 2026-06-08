@@ -2,7 +2,7 @@ import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getCompanyUsersClient, getCompanyPermissionsClient, updateCompanyPermissionsClient, getModules, getReportsByModule } from '../../api/clientApi'
 import { useClientAuthStore } from '../../store/useClientAuthStore'
-import type { ModuleWithReports, ClientReport, ClientPermissionItem } from '../../api/clientApi'
+import type { ClientReport, ClientPermissionItem } from '../../api/clientApi'
 
 export default function PermissionsSettingsPage() {
   const queryClient = useQueryClient()

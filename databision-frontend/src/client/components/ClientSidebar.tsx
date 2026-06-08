@@ -1,4 +1,4 @@
-import { NavLink, useParams } from 'react-router-dom'
+import { NavLink, useParams, useLocation } from 'react-router-dom'
 import { useClientModules } from '../hooks/useClientData'
 import { useClientAuthStore } from '../store/useClientAuthStore'
 import { clientLogout } from '../api/clientApi'
@@ -48,6 +48,7 @@ function ModuleIcon({ name }: { name: string | null }) {
 
 export default function ClientSidebar() {
   const { moduleSlug } = useParams()
+  const location = useLocation()
   const { data: modules, isLoading } = useClientModules()
   const { user, clearAuth } = useClientAuthStore()
 
@@ -107,6 +108,52 @@ export default function ClientSidebar() {
             <span className="cp-nav-count">{mod.reportCount}</span>
           </NavLink>
         ))}
+      </nav>
+
+      {/* Native BI */}
+      <nav className="cp-sidebar-nav" style={{ marginTop: 4 }}>
+        <p className="cp-nav-section-label">Análisis</p>
+        <NavLink
+          to="/client/bi/dashboard"
+          className={({ isActive }) =>
+            `cp-nav-item${isActive || location.pathname === '/client/bi/dashboard' ? ' cp-nav-item--active' : ''}`
+          }
+        >
+          <span className="cp-nav-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+            </svg>
+          </span>
+          <span className="cp-nav-label">Dashboard</span>
+        </NavLink>
+        <NavLink
+          to="/client/bi/sales"
+          className={({ isActive }) =>
+            `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`
+          }
+        >
+          <span className="cp-nav-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
+            </svg>
+          </span>
+          <span className="cp-nav-label">Ventas</span>
+        </NavLink>
+        {user?.role === 'CompanyAdmin' && (
+          <NavLink
+            to="/client/bi/diagnostics"
+            className={({ isActive }) =>
+              `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`
+            }
+          >
+            <span className="cp-nav-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+            </span>
+            <span className="cp-nav-label">Diagnósticos</span>
+          </NavLink>
+        )}
       </nav>
 
       {/* Admin Menu (Only for CompanyAdmin) */}

@@ -41,7 +41,7 @@ export default function CreateCompanyPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    mutation.mutate({ name: name.trim(), slug: slug.trim(), status, planName, userLimit })
+    mutation.mutate({ name: name.trim(), slug: slug.trim(), planName, userLimit })
   }
 
   return (

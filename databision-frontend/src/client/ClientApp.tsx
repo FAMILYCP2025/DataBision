@@ -11,6 +11,9 @@ import ReportViewPage from './pages/ReportViewPage'
 import UsersSettingsPage from './pages/settings/UsersSettingsPage'
 import PermissionsSettingsPage from './pages/settings/PermissionsSettingsPage'
 import BrandingSettingsPage from './pages/settings/BrandingSettingsPage'
+import NativeBiDashboardPage from './pages/NativeBiDashboardPage'
+import NativeBiSalesPage from './pages/NativeBiSalesPage'
+import NativeBiDiagnosticsPage from './pages/NativeBiDiagnosticsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +41,11 @@ export default function ClientApp() {
                 <Route path="/client/settings/users" element={<UsersSettingsPage />} />
                 <Route path="/client/settings/permissions" element={<PermissionsSettingsPage />} />
                 <Route path="/client/settings/branding" element={<BrandingSettingsPage />} />
+
+                {/* Native BI */}
+                <Route path="/client/bi/dashboard" element={<NativeBiDashboardPage />} />
+                <Route path="/client/bi/sales" element={<NativeBiSalesPage />} />
+                <Route path="/client/bi/diagnostics" element={<NativeBiDiagnosticsPage />} />
               </Route>
             </Route>
 

@@ -1,10 +1,11 @@
 # DataBision — Frontend UX Architecture
 
-**Versión:** 2.0  
-**Fecha:** 2026-05-29  
+**Versión:** 3.0  
+**Fecha:** 2026-06-03  
 **Autor:** Lead UX Architect  
 **Estado:** Documento de diseño — sin implementación  
-**Stack:** React · TypeScript · shadcn/ui · Apache ECharts · TanStack Query · Zustand · Tailwind CSS
+**Stack:** React · TypeScript · shadcn/ui · Apache ECharts · TanStack Query · Zustand · Tailwind CSS  
+**Relacionado:** `dashboard-information-architecture.md` · `native-bi-screen-specs.md`
 
 > **Dominio canónico:** `{slug}.databision.com` (no `.app`). Todas las URLs de ejemplo en este documento usan `.app` como placeholder — leer como `.com`.
 
@@ -17,27 +18,29 @@
 3. [Arquitectura de Navegación](#3-arquitectura-de-navegación)
 4. [Sistema de Layout](#4-sistema-de-layout)
 5. [Módulo 01 — Login por Tenant](#5-módulo-01--login-por-tenant)
-6. [Módulo 02 — Home Ejecutivo](#6-módulo-02--home-ejecutivo)
-7. [Módulo 03 — Dashboard Ejecutivo](#7-módulo-03--dashboard-ejecutivo)
-8. [Módulo 04 — Native BI](#8-módulo-04--native-bi)
-9. [Módulo 05 — Ventas](#9-módulo-05--ventas)
-10. [Módulo 06 — Clientes](#10-módulo-06--clientes)
-11. [Módulo 07 — Productos](#11-módulo-07--productos)
-12. [Módulo 08 — Inventario](#12-módulo-08--inventario)
-13. [Módulo 09 — Sync Center](#13-módulo-09--sync-center)
-14. [Módulo 10 — Operational Cockpit](#14-módulo-10--operational-cockpit)
-15. [Módulo 11 — Operational Live Layer](#15-módulo-11--operational-live-layer)
-16. [Módulo 12 — Alert Center](#16-módulo-12--alert-center)
-17. [Módulo 13 — Recommendations & Insights](#17-módulo-13--recommendations--insights)
-18. [Módulo 14 — Business Actions](#18-módulo-14--business-actions)
-19. [Responsive Design](#19-responsive-design)
-20. [Mobile para Gerencia](#20-mobile-para-gerencia)
-21. [Dark Mode](#21-dark-mode)
-22. [Branding por Cliente](#22-branding-por-cliente)
-23. [Design System y Componentes Transversales](#23-design-system-y-componentes-transversales)
-24. [Patrones de Interacción](#24-patrones-de-interacción)
-25. [Estructura de Archivos Frontend](#25-estructura-de-archivos-frontend)
-26. [Glosario SAP B1 → UI](#26-glosario-sap-b1--ui)
+6. [Módulo 01b — Selector de Empresa](#6-módulo-01b--selector-de-empresa)
+7. [Módulo 02 — Home Ejecutivo](#7-módulo-02--home-ejecutivo)
+8. [Módulo 03 — Dashboard Ejecutivo](#8-módulo-03--dashboard-ejecutivo)
+9. [Módulo 04 — Native BI](#9-módulo-04--native-bi)
+10. [Módulo 05 — Ventas](#10-módulo-05--ventas)
+11. [Módulo 06 — Clientes](#11-módulo-06--clientes)
+12. [Módulo 07 — Productos](#12-módulo-07--productos)
+13. [Módulo 08 — Vendedores](#13-módulo-08--vendedores)
+14. [Módulo 09 — Inventario](#14-módulo-09--inventario)
+15. [Módulo 10 — Sync Center](#15-módulo-10--sync-center)
+16. [Módulo 11 — Operational Cockpit](#16-módulo-11--operational-cockpit)
+17. [Módulo 12 — Operational Live Layer](#17-módulo-12--operational-live-layer)
+18. [Módulo 13 — Alert Center](#18-módulo-13--alert-center)
+19. [Módulo 14 — Recommendations & Insights](#19-módulo-14--recommendations--insights)
+20. [Módulo 15 — Business Actions](#20-módulo-15--business-actions)
+21. [Responsive Design](#21-responsive-design)
+22. [Mobile para Gerencia](#22-mobile-para-gerencia)
+23. [Dark Mode](#23-dark-mode)
+24. [Branding por Cliente](#24-branding-por-cliente)
+25. [Design System y Componentes Transversales](#25-design-system-y-componentes-transversales)
+26. [Patrones de Interacción](#26-patrones-de-interacción)
+27. [Estructura de Archivos Frontend](#27-estructura-de-archivos-frontend)
+28. [Glosario SAP B1 → UI](#28-glosario-sap-b1--ui)
 
 ---
 
@@ -99,12 +102,14 @@ Los módulos operacionales (Cockpit, Live Layer, Alertas) son transversales a to
 {slug}.databision.app
 │
 ├── /login                      → Login por tenant
+├── /select-company             → Selector de empresa (solo multi-empresa)
 ├── /                           → Home Ejecutivo
-├── /dashboard                  → Dashboard Ejecutivo (configurable)
+├── /dashboard                  → Dashboard Ejecutivo
 │
 ├── /cockpit                    → Operational Cockpit
 ├── /live                       → Operational Live Layer
 ├── /alerts                     → Alert Center
+│   └── /alerts/settings        → Umbrales de alerta
 ├── /insights                   → Recommendations & Insights
 ├── /actions                    → Business Actions
 │
@@ -112,11 +117,13 @@ Los módulos operacionales (Cockpit, Live Layer, Alertas) son transversales a to
 │   ├── /sales/overview
 │   ├── /sales/by-period
 │   ├── /sales/by-salesperson
-│   └── /sales/by-customer
+│   ├── /sales/by-customer
+│   └── /sales/documents
 │
 ├── /customers                  → Clientes
 │   ├── /customers/overview
 │   ├── /customers/ar-aging
+│   ├── /customers/at-risk
 │   └── /customers/:id
 │
 ├── /products                   → Productos
@@ -125,23 +132,34 @@ Los módulos operacionales (Cockpit, Live Layer, Alertas) son transversales a to
 │   ├── /products/slow-moving
 │   └── /products/:id
 │
+├── /salesreps                  → Vendedores
+│   ├── /salesreps/overview
+│   ├── /salesreps/performance
+│   ├── /salesreps/comparison
+│   └── /salesreps/:id
+│
 ├── /inventory                  → Inventario
 │   ├── /inventory/overview
 │   ├── /inventory/by-warehouse
+│   ├── /inventory/critical
 │   └── /inventory/movements
 │
 ├── /sync                       → Sync Center
 │
 └── /settings                   → Configuración
     ├── /settings/users
+    ├── /settings/roles
     ├── /settings/branding
+    ├── /settings/modules
+    ├── /settings/company
+    ├── /settings/connection
     ├── /settings/alerts
-    └── /settings/permissions
+    └── /settings/sync
 ```
 
 ### 3.2. Estructura de la sidebar
 
-La sidebar agrupa los módulos en cuatro categorías semánticas:
+La sidebar agrupa los módulos en cuatro categorías semánticas. Los módulos que no están contratados en el plan del cliente **no aparecen** — no se muestran bloqueados ni con candado.
 
 ```
 SIDEBAR GROUPS
@@ -161,6 +179,7 @@ SIDEBAR GROUPS
   📈  Ventas
   👥  Clientes
   📦  Productos
+  👤  Vendedores
   🏭  Inventario
 
   ── SISTEMA ────────────────────
@@ -288,7 +307,59 @@ Redirección al `returnUrl` si está en query string. Si no, redirige a `/` (Hom
 
 ---
 
-## 6. Módulo 02 — Home Ejecutivo
+## 6. Módulo 01b — Selector de Empresa
+
+**URL:** `{slug}.databision.app/select-company`
+
+### 6.1. Propósito
+
+Permite al usuario con acceso a más de una empresa SAP B1 elegir con cuál trabajar en la sesión actual. Aplica principalmente a holdings o consultores con acceso multi-cliente. Si el usuario tiene acceso a una sola empresa, esta pantalla se salta automáticamente.
+
+### 6.2. Cuándo aparece
+
+- Post-login: si el JWT devuelve `companies.length > 1`.
+- Al hacer click en "Cambiar empresa" en el menú del topbar.
+- No aparece en el 80% de los clientes (empresas con una sola base SAP).
+
+### 6.3. Layout
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  [Logo DataBision pequeño centrado]                            │
+│                                                                │
+│  Selecciona la empresa a consultar                             │
+│  Sesión activa como: nombre@empresa.com                        │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  [Logo]  Comercial Torres S.A.                           │  │
+│  │          Base: Torres_PRD  ·  ● Productivo               │  │
+│  │          Último acceso: hace 2 días              [chip]  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  [Logo]  Holding Torres Norte                            │  │
+│  │          Base: Torres_HLD  ·  ● Productivo               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  [Logo]  Torres Demo                                     │  │
+│  │          Base: Torres_SBX  ·  ○ Sandbox                  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### 6.4. Comportamiento
+
+- Click en card → aplica branding del tenant → redirige a `/`.
+- La última empresa seleccionada tiene chip "Último acceso" y aparece primera en la lista.
+- Si hay > 5 empresas: campo de búsqueda sobre las cards (para consultores con múltiples clientes).
+- Badge de ambiente: `● Productivo` verde · `○ Sandbox` amarillo · `▲ Staging` naranja.
+- El ambiente sandbox tiene un banner amarillo persistente en el topbar durante la sesión: "Ambiente de pruebas — los datos no son reales."
+
+---
+
+## 7. Módulo 02 — Home Ejecutivo
 
 **URL:** `{slug}.databision.app/`
 
@@ -806,11 +877,87 @@ Columnas: Código · Descripción · Última venta (fecha) · Días sin venta ·
 
 ---
 
-## 12. Módulo 08 — Inventario
+## 13. Módulo 08 — Vendedores
+
+**URL:** `{slug}.databision.app/salesreps`
+
+### 13.1. Propósito
+
+Análisis del desempeño del equipo comercial. Ranking, evolución mensual, cumplimiento de metas (si están configuradas) y detalle por vendedor. Es el módulo que el gerente comercial usa para sus reuniones de equipo.
+
+### 13.2. Sub-navegación
+
+Tabs: `Overview / Ranking` · `Comparación Mensual` · `Cumplimiento` (solo si hay metas configuradas)
+
+### 13.3. Overview / Ranking
+
+**KPI Strip (4 tarjetas):**
+- Ventas totales del equipo.
+- Vendedor líder (nombre + monto del período).
+- Promedio de ventas por vendedor.
+- Vendedores activos en el período.
+
+**Gráfico:** `BarChart` horizontal con los vendedores ordenados por ventas descendente. Color `var(--brand-primary)`. Label en cada barra con el monto formateado.
+
+**Tabla de vendedores:**
+Columnas: `#` (posición en ranking) · Vendedor · Ventas período · % total · Facturas · Ticket promedio · Margen % · Delta vs período anterior. Ordenable por cualquier columna.
+
+**Drilldown de vendedor:** click en fila abre Sheet lateral (600px en desktop):
+- Header: nombre, ranking actual vs mes anterior (↑ desde #5 a #3), ventas totales.
+- KPIs: ventas período, clientes atendidos, ticket promedio.
+- `LineChart`: evolución de ventas 12 meses.
+- Tabla: top 10 clientes del vendedor.
+- Tabla: top 10 productos vendidos.
+
+### 13.4. Comparación Mensual
+
+**Gráfico:** `BarChart` agrupado. Cada grupo = un vendedor, cada barra = un mes (últimos 6 meses). Permite ver quién creció y quién decreció mes a mes.
+
+**HeatmapChart de actividad:** eje X = meses, eje Y = vendedores, color = N° de facturas o monto (toggle). Permite identificar vendedores con baja actividad en períodos específicos.
+
+**Tabla comparativa:** una fila por vendedor, columnas = los últimos 6 meses + columna de tendencia (flecha con dirección).
+
+### 13.5. Cumplimiento de metas
+
+Visible solo cuando el administrador ha configurado metas por vendedor en Settings.
+
+**Para N ≤ 6 vendedores:** Gauge semicircular por vendedor (120px) mostrando % de cumplimiento. Verde ≥ 100% · Amarillo 70–99% · Rojo < 70%.
+
+**Para N > 6 vendedores:** `Progress` bar por vendedor en lista vertical. Mismo código de colores.
+
+**Por debajo:** tabla con Vendedor · Meta · Alcanzado · % Cumplimiento · Días restantes del período.
+
+### 13.6. Perfil de Vendedor — `/salesreps/:id`
+
+```
+HEADER
+[Avatar/iniciales]  Nombre del vendedor
+                    Cargo · Zona asignada (si configurada en SAP)
+                    Ranking actual: #3 de 8 (↑ desde #5 el mes anterior)
+                    [Btn: Ver clientes asignados]
+
+TABS: Ventas | Clientes | Productos | Meses
+
+Tab Ventas:
+  KPIs del vendedor + LineChart evolución 12m + tabla facturas del período.
+
+Tab Clientes:
+  Top 20 clientes del vendedor con ventas y CxC del período.
+
+Tab Productos:
+  Top 20 productos vendidos con monto y margen %.
+
+Tab Meses:
+  Tabla comparativa: N° mes | Ventas | Facturas | Ticket prom. | Clientes únicos | Ranking ese mes.
+```
+
+---
+
+## 14. Módulo 09 — Inventario
 
 **URL:** `{slug}.databision.app/inventory`
 
-### 12.1. Propósito
+### 14.1. Propósito
 
 Estado físico del inventario: cuánto hay, dónde, qué movimientos hay, cuáles ítems están críticos.
 
@@ -854,22 +1001,22 @@ Columnas: Fecha · Doc. SAP · Tipo (badge color) · Ítem · Almacén · Cantid
 
 ---
 
-## 13. Módulo 09 — Sync Center
+## 15. Módulo 10 — Sync Center
 
 **URL:** `{slug}.databision.app/sync`
 
-### 13.1. Propósito
+### 15.1. Propósito
 
 Transparencia total sobre el estado de las integraciones con SAP B1. El usuario sabe exactamente cuándo se sincronizó por última vez, qué pasó, y qué error hay si algo falla. La confianza en los datos empieza aquí.
 
-### 13.2. Status global
+### 15.2. Status global
 
 Banner horizontal (48px) en la parte superior de la página:
 - Verde: "Sincronización normal — Última actualización hace X minutos".
 - Amarillo: "Sincronización con retraso — Última actualización hace X horas".
 - Rojo: "Error de sincronización activo — Ver detalles".
 
-### 13.3. Estado por Extractor
+### 15.3. Estado por Extractor
 
 Cada extractor tiene una `ExtractorStatusCard`:
 
@@ -892,7 +1039,7 @@ Cada extractor tiene una `ExtractorStatusCard`:
 
 El color del badge: `RUNNING` verde con pulso animado · `IDLE` gris · `WARNING` amarillo · `ERROR` rojo.
 
-### 13.4. Estado Service Layer (Modalidad B)
+### 15.4. Estado Service Layer (Modalidad B)
 
 Card específica:
 - URL del endpoint (parcialmente oculta: `https://sap-b1.empresa.com:50000/...***`).
@@ -901,13 +1048,13 @@ Card específica:
 - Versión SAP B1 detectada.
 - Credenciales: "Válidas" / "Expiran en X días".
 
-### 13.5. Historial de sincronizaciones
+### 15.5. Historial de sincronizaciones
 
 Tabla con columnas: Timestamp · Extractor · Resultado (badge) · Objetos · Registros procesados · Duración. Paginada 25 filas. Filtros: extractor · resultado · período.
 
 Click en una fila expande el detalle de esa ejecución: todos los objetos sincronizados con su resultado individual.
 
-### 13.6. Errores y logs
+### 15.6. Errores y logs
 
 Lista cronológica de errores. Cada error tiene:
 - Timestamp.
@@ -924,17 +1071,17 @@ Tipos de error en lenguaje de negocio:
 
 ---
 
-## 14. Módulo 10 — Operational Cockpit
+## 16. Módulo 11 — Operational Cockpit
 
 **URL:** `{slug}.databision.app/cockpit`
 
-### 14.1. Propósito
+### 16.1. Propósito
 
 **La pregunta que responde:** "¿Qué necesita atención operacional hoy?"
 
 El Cockpit es un semáforo de la operación diaria. Está diseñado para que en 5 segundos sin scroll se vea si hay algo crítico. No es un módulo analítico — es un módulo de acción. Cada sección del Cockpit es directamente accionable.
 
-### 14.2. Diferencia con el Live Layer
+### 16.2. Diferencia con el Live Layer
 
 El Cockpit muestra el estado acumulado del día (pedidos pendientes hoy, stock crítico hoy). El Live Layer muestra eventos que están ocurriendo ahora mismo (una sincronización en curso, un pedido entrando en este momento).
 
@@ -1002,7 +1149,7 @@ Refetch cada 5 minutos vía TanStack Query `refetchInterval`. Un chip "Actualiza
 
 ---
 
-## 15. Módulo 11 — Operational Live Layer
+## 17. Módulo 12 — Operational Live Layer
 
 **URL:** `{slug}.databision.app/live`
 
@@ -1085,7 +1232,7 @@ El Live Layer usa polling con `refetchInterval: 30000` (30 segundos) para la may
 
 ---
 
-## 16. Módulo 12 — Alert Center
+## 18. Módulo 13 — Alert Center
 
 **URL:** `{slug}.databision.app/alerts`
 
@@ -1167,7 +1314,7 @@ Link "Configurar alertas" en el page header. Navega a `/settings/alerts`. Permit
 
 ---
 
-## 17. Módulo 13 — Recommendations & Insights
+## 19. Módulo 14 — Recommendations & Insights
 
 **URL:** `{slug}.databision.app/insights`
 
@@ -1254,7 +1401,7 @@ Cada indicador tiene una flecha de tendencia (mejoró / empeoró / estable) y la
 
 ---
 
-## 18. Módulo 14 — Business Actions
+## 20. Módulo 15 — Business Actions
 
 **URL:** `{slug}.databision.app/actions`
 
@@ -1326,7 +1473,7 @@ Tab "Métricas" en el módulo muestra:
 
 ---
 
-## 19. Responsive Design
+## 21. Responsive Design
 
 ### 19.1. Breakpoints
 
@@ -1381,7 +1528,7 @@ Para tablas de alta densidad, el contenedor permite scroll horizontal con un ind
 
 ---
 
-## 20. Mobile para Gerencia
+## 22. Mobile para Gerencia
 
 ### 20.1. Principio
 
@@ -1448,7 +1595,7 @@ El diseño prevé soporte de push notifications para:
 
 ---
 
-## 21. Dark Mode
+## 23. Dark Mode
 
 ### 21.1. Estrategia de activación
 
@@ -1497,7 +1644,7 @@ El logo del tenant puede tener versiones para light y dark mode si el cliente pr
 
 ---
 
-## 22. Branding por Cliente
+## 24. Branding por Cliente
 
 ### 22.1. Fuente de verdad
 
@@ -1580,7 +1727,7 @@ Si `favicon_url` está definido, se actualiza el `<link rel="icon">` del documen
 
 ---
 
-## 23. Design System y Componentes Transversales
+## 25. Design System y Componentes Transversales
 
 ### 23.1. Paleta de colores de la plataforma
 
@@ -1676,7 +1823,7 @@ Animación shimmer con `@keyframes shimmer` de izquierda a derecha.
 
 ---
 
-## 24. Patrones de Interacción
+## 26. Patrones de Interacción
 
 ### 24.1. Drill-down
 
@@ -1732,7 +1879,7 @@ Todos los botones de acción que disparan una llamada a API:
 
 ---
 
-## 25. Estructura de Archivos Frontend
+## 27. Estructura de Archivos Frontend
 
 ```
 databision-frontend/src/
@@ -1749,6 +1896,7 @@ databision-frontend/src/
 │       │
 │       ├── pages/
 │       │   ├── LoginPage.tsx
+│       │   ├── SelectCompanyPage.tsx
 │       │   ├── home/
 │       │   │   └── HomePage.tsx
 │       │   ├── dashboard/
@@ -1777,6 +1925,11 @@ databision-frontend/src/
 │       │   │   ├── ProductMarginsPage.tsx
 │       │   │   ├── SlowMovingPage.tsx
 │       │   │   └── ProductDetailPage.tsx
+│       │   ├── salesreps/
+│       │   │   ├── SalesRepsOverviewPage.tsx
+│       │   │   ├── SalesRepsComparisonPage.tsx
+│       │   │   ├── SalesRepsPerformancePage.tsx
+│       │   │   └── SalesRepDetailPage.tsx
 │       │   ├── inventory/
 │       │   │   ├── InventoryOverviewPage.tsx
 │       │   │   ├── InventoryByWarehousePage.tsx
@@ -1831,6 +1984,7 @@ databision-frontend/src/
 │   ├── useCustomerAnalytics.ts
 │   ├── useProductAnalytics.ts
 │   ├── useInventoryAnalytics.ts
+│   ├── useSalesRepsAnalytics.ts
 │   ├── useDashboardData.ts
 │   ├── useCockpitData.ts
 │   ├── useLiveLayer.ts
@@ -1855,7 +2009,7 @@ databision-frontend/src/
 
 ---
 
-## 26. Glosario SAP B1 → UI
+## 28. Glosario SAP B1 → UI
 
 La interfaz habla el idioma del negocio, no del ERP. Los usuarios finales no son consultores SAP.
 

@@ -1,9 +1,8 @@
-import React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getCompanies } from '../api/adminApi'
 import Table from '../components/Table'
-import Badge, { statusBadge } from '../components/Badge'
+import { statusBadge } from '../components/Badge'
 import type { Company } from '../../types'
 import { format } from 'date-fns'
 
