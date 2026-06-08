@@ -17,11 +17,11 @@ public sealed class ClientDiagnosticsController(
     [HttpGet("native-bi")]
     public async Task<IActionResult> GetDiagnostics(CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
-        var result = await diagnostics.GetDiagnosticsAsync(companyId!, ct);
-        return Ok(result);
+        var result = await diagnostics.GetDiagnosticsAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/diagnostics/native-bi/tables
@@ -29,10 +29,10 @@ public sealed class ClientDiagnosticsController(
     [HttpGet("native-bi/tables")]
     public async Task<IActionResult> GetTableCounts(CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
-        var result = await diagnostics.GetTableCountsAsync(companyId!, ct);
-        return Ok(result);
+        var result = await diagnostics.GetTableCountsAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
     }
 }

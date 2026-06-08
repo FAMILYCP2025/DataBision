@@ -1,26 +1,52 @@
-# Native BI API Contract — Sprint 6A–6C
+# Native BI API Contract — Sprint 6A–6L
 
 Backend read-only API over `mart.*`, `stg.*`, and `ctl.*` tables on Supabase PostgreSQL.
-All endpoints are under `/api/client/` and require `companyId` as a query parameter.
+All endpoints are under `/api/client/`.
 
-> **Auth status:** `[AllowAnonymous]` for MVP. JWT enforcement planned for Sprint 6E.
+**Auth:** JWT Bearer token (production) or `?companyId` query param (dev only).  
+**Versión:** Sprint 6I–6L (2026-06-07)
+
+> **Ver también:** `docs/frontend-native-bi-backend-contract.md` para TypeScript interfaces completos.
 
 ---
 
-## Common rules
+## Autenticación (Sprint 6E–6I)
+
+`[AllowAnonymous]` permanece en todos los controllers para que ASP.NET no bloquee el pipeline antes de que `CompanyContextResolver` pueda actuar. La seguridad se aplica manualmente dentro de cada action.
+
+**Claim priority (company):** `company_slug` → `company_id` → `companyId`  
+**Claim priority (role):** `role` → `user_role` → ClaimTypes.Role URI
+
+| Escenario | Resultado |
+|---|---|
+| JWT válido + company claim presente | ✅ 200 con datos del tenant |
+| JWT válido + sin company claim | ❌ 403 `forbidden_no_company` |
+| JWT configurado + sin token | ❌ 401 `unauthorized` |
+| JWT NO configurado + `?companyId` | ✅ DEV fallback |
+| JWT NO configurado + sin `?companyId` | ❌ 400 `missing_company_id` |
+
+SuperAdmin sin company claim → 403 (cross-company access no habilitado todavía).
+
+---
+
+## Reglas comunes
 
 | Rule | Detail |
 |---|---|
-| `companyId` | Required on all endpoints. Returns 400 if missing or blank. |
-| `limit` | Max 100. Values out of range are clamped (not rejected). |
-| `days` | Max 365. Values out of range are clamped. |
-| `months` | Max 36. Values out of range are clamped. |
-| `dateFrom` / `dateTo` | Format: `YYYY-MM-DD`. Default: last 30 days if omitted. |
-| Date validation | `dateFrom` cannot be after `dateTo` → 400. |
-| Success shape | `{ "data": <T> }` |
-| Error shape | `{ "error": "snake_case_code", "message": "Human readable text." }` |
-| Empty data | Returns 200 with `{ "data": [] }` or `{ "data": null }` — never 404. |
-| Internal errors | Never exposed to client. PostgreSQL errors are caught and logged. |
+| `companyId` | DEV only. En producción viene del JWT. |
+| `limit` | Rango 1–100. Fuera de rango → 400 (no se clampea). |
+| `offset` | >= 0. Negativo → 400. |
+| `days` | Rango 1–365. Fuera de rango → 400. |
+| `months` | Rango 1–36. Fuera de rango → 400. |
+| `dateFrom` / `dateTo` | Formato `YYYY-MM-DD`. Default: últimos 30 días si omitido. |
+| Date validation | `dateFrom` no puede ser > `dateTo` → 400. |
+| `sortBy` | Validado contra allowlist por entidad → 400 si inválido. |
+| `sortDir` | Solo `asc` o `desc` → 400 si inválido. |
+| Success shape | `{ "data": <T>, "traceId": "..." }` |
+| Success paged | `{ "data": <T[]>, "meta": { limit, offset, count, hasMore }, "traceId": "..." }` |
+| Error shape | `{ "error": "snake_case_code", "message": "...", "traceId": "..." }` |
+| Empty data | 200 con `{ "data": [] }` o `{ "data": null }` — nunca 404. |
+| Internal errors | PostgreSQL errors capturados y logueados — no expuestos al cliente. |
 
 ---
 
@@ -313,12 +339,30 @@ MART and STG transform freshness + row counts per table.
 
 ## Error codes reference
 
+Todos los errores retornan body `ApiErrorResponse` con `error`, `message` y `traceId`.
+
 | Code | HTTP | Description |
 |---|---|---|
-| `missing_company_id` | 400 | `companyId` param is empty or not provided |
-| `invalid_days` | 400 | `days` outside 1–365 |
-| `invalid_months` | 400 | `months` outside 1–36 |
-| `invalid_limit` | 400 | `limit` outside 1–100 (only when value rejected, not when clamped) |
-| `invalid_date_from` | 400 | `dateFrom` not a valid `YYYY-MM-DD` |
-| `invalid_date_to` | 400 | `dateTo` not a valid `YYYY-MM-DD` |
+| `unauthorized` | 401 | JWT configurado pero request sin token |
+| `forbidden_no_company` | 403 | Token válido pero sin claim de company |
+| `missing_company_id` | 400 | DEV mode — `?companyId` param faltante |
+| `invalid_days` | 400 | `days` fuera de 1–365 |
+| `invalid_months` | 400 | `months` fuera de 1–36 |
+| `invalid_limit` | 400 | `limit` fuera de 1–100 |
+| `invalid_offset` | 400 | `offset` < 0 |
+| `invalid_sort_by` | 400 | `sortBy` no está en el allowlist del endpoint |
+| `invalid_sort_dir` | 400 | `sortDir` no es `asc` ni `desc` |
+| `invalid_date_from` | 400 | `dateFrom` no es fecha válida YYYY-MM-DD |
+| `invalid_date_to` | 400 | `dateTo` no es fecha válida YYYY-MM-DD |
 | `invalid_date_range` | 400 | `dateFrom` > `dateTo` |
+
+## Diagnostics endpoints (Sprint 6H)
+
+Agregados en Sprint 6H. Ver descripción completa en `docs/frontend-native-bi-backend-contract.md`.
+
+```
+GET /api/client/diagnostics/native-bi
+GET /api/client/diagnostics/native-bi/tables
+```
+
+Checks de salud incluidos: `staging_connection`, `mart_data_freshness`, `mart_tables_populated`, `checkpoints_exist`, `last_extraction_run`.

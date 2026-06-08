@@ -19,14 +19,11 @@ public sealed class ClientDashboardController(
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
-        var result = await dashboard.GetSummaryAsync(companyId!, ct);
-        if (result is null)
-            return Ok(new { data = (object?)null });
-
-        return Ok(new { data = result });
+        var result = await dashboard.GetSummaryAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/dashboard/sales-daily?days=30
@@ -35,14 +32,14 @@ public sealed class ClientDashboardController(
         [FromQuery] int days = 30,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (days < 1 || days > 365)
-            return BadRequest(new { error = "invalid_days", message = "days must be between 1 and 365." });
+            return this.BadRequestError("invalid_days", "days must be between 1 and 365.");
 
-        var result = await dashboard.GetSalesDailyAsync(companyId!, days, ct);
-        return Ok(new { data = result });
+        var result = await dashboard.GetSalesDailyAsync(ctx.CompanyId!, days, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/dashboard/sales-monthly?months=12
@@ -51,14 +48,14 @@ public sealed class ClientDashboardController(
         [FromQuery] int months = 12,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (months < 1 || months > 36)
-            return BadRequest(new { error = "invalid_months", message = "months must be between 1 and 36." });
+            return this.BadRequestError("invalid_months", "months must be between 1 and 36.");
 
-        var result = await dashboard.GetSalesMonthlyAsync(companyId!, months, ct);
-        return Ok(new { data = result });
+        var result = await dashboard.GetSalesMonthlyAsync(ctx.CompanyId!, months, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/dashboard/top-customers?limit=10&offset=0&sortBy=netSalesAmount&sortDir=desc
@@ -70,21 +67,22 @@ public sealed class ClientDashboardController(
         [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (limit < 1 || limit > 100)
-            return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 100.");
         if (offset < 0)
-            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+            return this.BadRequestError("invalid_offset", "offset must be >= 0.");
         if (sortBy is not null && !CustomerSortFields.Contains(sortBy))
-            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", CustomerSortFields)}." });
+            return this.BadRequestError("invalid_sort_by",
+                $"sortBy must be one of: {string.Join(", ", CustomerSortFields)}.");
         if (!IsValidSortDir(sortDir))
-            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
+            return this.BadRequestError("invalid_sort_dir", "sortDir must be 'asc' or 'desc'.");
 
         var pagination = new DataBision.Application.DTOs.Dashboard.PaginationOptions(limit, offset, sortBy, sortDir);
-        var result = await dashboard.GetTopCustomersAsync(companyId!, pagination, ct);
-        return Ok(new { data = result.Data, meta = result.Meta });
+        var result = await dashboard.GetTopCustomersAsync(ctx.CompanyId!, pagination, ct);
+        return this.OkPaged(result.Data, result.Meta);
     }
 
     // GET /api/client/dashboard/top-items?limit=10&offset=0&sortBy=grossSalesAmount&sortDir=desc
@@ -96,21 +94,22 @@ public sealed class ClientDashboardController(
         [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (limit < 1 || limit > 100)
-            return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 100.");
         if (offset < 0)
-            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+            return this.BadRequestError("invalid_offset", "offset must be >= 0.");
         if (sortBy is not null && !ItemSortFields.Contains(sortBy))
-            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", ItemSortFields)}." });
+            return this.BadRequestError("invalid_sort_by",
+                $"sortBy must be one of: {string.Join(", ", ItemSortFields)}.");
         if (!IsValidSortDir(sortDir))
-            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
+            return this.BadRequestError("invalid_sort_dir", "sortDir must be 'asc' or 'desc'.");
 
         var pagination = new DataBision.Application.DTOs.Dashboard.PaginationOptions(limit, offset, sortBy, sortDir);
-        var result = await dashboard.GetTopItemsAsync(companyId!, pagination, ct);
-        return Ok(new { data = result.Data, meta = result.Meta });
+        var result = await dashboard.GetTopItemsAsync(ctx.CompanyId!, pagination, ct);
+        return this.OkPaged(result.Data, result.Meta);
     }
 
     // GET /api/client/dashboard/salespersons?limit=20&offset=0&sortBy=netSalesAmount&sortDir=desc
@@ -122,21 +121,22 @@ public sealed class ClientDashboardController(
         [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (limit < 1 || limit > 100)
-            return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 100.");
         if (offset < 0)
-            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+            return this.BadRequestError("invalid_offset", "offset must be >= 0.");
         if (sortBy is not null && !SalespersonSortFields.Contains(sortBy))
-            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", SalespersonSortFields)}." });
+            return this.BadRequestError("invalid_sort_by",
+                $"sortBy must be one of: {string.Join(", ", SalespersonSortFields)}.");
         if (!IsValidSortDir(sortDir))
-            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
+            return this.BadRequestError("invalid_sort_dir", "sortDir must be 'asc' or 'desc'.");
 
         var pagination = new DataBision.Application.DTOs.Dashboard.PaginationOptions(limit, offset, sortBy, sortDir);
-        var result = await dashboard.GetSalespersonsAsync(companyId!, pagination, ct);
-        return Ok(new { data = result.Data, meta = result.Meta });
+        var result = await dashboard.GetSalespersonsAsync(ctx.CompanyId!, pagination, ct);
+        return this.OkPaged(result.Data, result.Meta);
     }
 
     // ── Sort allowlists ────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@
 
 ---
 
-## Estado de Implementación por Sprint (actualizado 2026-06-06)
+## Estado de Implementación por Sprint (actualizado 2026-06-07)
 
 | Sprint | Título | Estado | SHA / Notas |
 |---|---|---|---|
@@ -28,25 +28,41 @@
 | Sprint 4C | Invoice lines + credit memo lines | ✅ COMPLETADO | `d5e3e0f` |
 | Sprint 4D | Checkpoint incremental + scheduled execution | ✅ COMPLETADO | `5177069`, `620403d` |
 | Sprint 5A | STG layer migration + functions | ✅ COMPLETADO | `b877190` — 7 tablas + `stg.refresh_all` |
-| Sprint 5B | MART layer migration + functions | ✅ LISTO PARA APPLY | `20260607030000_AddMartSchema.cs` sin commit |
+| Sprint 5B | MART layer migration + functions | ✅ COMPLETADO | `ce84e6b` — 6 tablas mart.* |
 | Sprint 5C | TransformationRunner — 3 modos | ✅ COMPLETADO | `--transform`, `--include-mart`, `--transform-mart` |
 | Sprint 5D | KPI validation queries + results template | ✅ COMPLETADO | `docs/sql/kpi-validation-queries.sql` |
-| Sprint 5E | Documentación demo + production checklist | ✅ COMPLETADO | 3 docs + este roadmap actualizado |
+| Sprint 5E | Documentación demo + production checklist | ✅ COMPLETADO | 3 docs |
+| Sprint 6A | Dashboard backend endpoints | ✅ COMPLETADO | `fb0edfb` — 6 endpoints |
+| Sprint 6B | Sales backend endpoints | ✅ COMPLETADO | `fb0edfb` — 6 endpoints |
+| Sprint 6C | Sync backend endpoints | ✅ COMPLETADO | `fb0edfb` — 3 endpoints |
+| Sprint 6D | Backend tests (34 → 59) | ✅ COMPLETADO | `fb0edfb` — Application + Api |
+| Sprint 6E | JWT multi-tenant security (CompanyContextResolver) | ✅ COMPLETADO | `09fcc28` |
+| Sprint 6F | E2E script (test-native-bi-endpoints.ps1) | ✅ COMPLETADO | `09fcc28` |
+| Sprint 6G | Pagination (PagedResultDto, offset, sortBy, hasMore) | ✅ COMPLETADO | `09fcc28` |
+| Sprint 6H | Diagnostics endpoints + operational runbook | ✅ COMPLETADO | `09fcc28` — 2 endpoints |
+| Sprint 6I | Auth hardening — multi-claim + CompanyContextResult | ✅ COMPLETADO | pendiente commit — claims: company_slug/company_id/companyId |
+| Sprint 6J | E2E script mejoras — exit code, meta validation | ✅ COMPLETADO | pendiente commit |
+| Sprint 6K | API response contracts (ApiErrorResponse, ApiResponse) | ✅ COMPLETADO | pendiente commit — traceId en todos los errores |
+| Sprint 6L | Frontend readiness docs + roadmap update | ✅ COMPLETADO | pendiente commit |
+| Sprint 7A | Frontend — API client + auth token handling | ⏳ PENDIENTE | Próxima sesión frontend |
+| Sprint 7B | Frontend — Dashboard executive layout | ⏳ PENDIENTE | |
+| Sprint 7C | Frontend — Sales module UI | ⏳ PENDIENTE | |
+| Sprint 7D | Frontend — Sync/diagnostics UI | ⏳ PENDIENTE | |
+| Sprint 7E | Frontend — Tenant branding / navigation | ⏳ PENDIENTE | |
 
-### Build status (2026-06-06)
+### Build status (2026-06-07)
 
 ```
 dotnet build DataBision.sln  →  0 errores, 0 warnings
-dotnet test DataBision.sln   →  34/34 tests pass (Application: 25, Api: 9)
+dotnet test DataBision.sln   →  67/67 tests pass (Application: 45, Api: 22)
 ```
 
-### Pendiente antes de próxima demo
+### Pendiente antes de iniciar frontend (Sprint 7A)
 
-- [ ] Ejecutar `dotnet ef database update` en Supabase (aplica MART migration)
-- [ ] Ejecutar `DataBision.Extractor --transform --include-mart --company KSDEPOR`
-- [ ] Validar con `docs/sql/kpi-validation-queries.sql` — todos los deltas = 0
-- [ ] Registrar resultados en `docs/kpi-validation-results-template.md`
-- [ ] Commit de archivos untracked (Sprints 5B–5E)
+- [ ] Commit manual de Sprints 6I–6L (usuario hace commit manualmente)
+- [ ] Verificar `GET /api/client/diagnostics/native-bi` retorna `status = "ok"` contra Supabase
+- [ ] Ejecutar `.\scripts\dev\test-native-bi-endpoints.ps1` — todos los endpoints PASS
+- [ ] Revisar `docs/frontend-native-bi-backend-contract.md` antes de sesión frontend
 
 ---
 

@@ -21,19 +21,22 @@ public sealed class ClientSalesController(
         [FromQuery] string? dateTo,
         CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         var (from, to) = ParseDateRange(dateFrom, dateTo);
         if (from is null)
-            return BadRequest(new { error = "invalid_date_from", message = "dateFrom must be a valid date (YYYY-MM-DD)." });
+            return this.BadRequestError("invalid_date_from",
+                "dateFrom must be a valid date (YYYY-MM-DD).");
         if (to is null)
-            return BadRequest(new { error = "invalid_date_to", message = "dateTo must be a valid date (YYYY-MM-DD)." });
+            return this.BadRequestError("invalid_date_to",
+                "dateTo must be a valid date (YYYY-MM-DD).");
         if (from > to)
-            return BadRequest(new { error = "invalid_date_range", message = "dateFrom cannot be after dateTo." });
+            return this.BadRequestError("invalid_date_range",
+                "dateFrom cannot be after dateTo.");
 
-        var result = await sales.GetOverviewAsync(companyId!, from.Value, to.Value, ct);
-        return Ok(new { data = result });
+        var result = await sales.GetOverviewAsync(ctx.CompanyId!, from.Value, to.Value, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/sales/daily?dateFrom=...&dateTo=...
@@ -43,17 +46,19 @@ public sealed class ClientSalesController(
         [FromQuery] string? dateTo,
         CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         var (from, to) = ParseDateRange(dateFrom, dateTo);
         if (from is null || to is null)
-            return BadRequest(new { error = "invalid_date_range", message = "dateFrom and dateTo must be valid dates (YYYY-MM-DD)." });
+            return this.BadRequestError("invalid_date_range",
+                "dateFrom and dateTo must be valid dates (YYYY-MM-DD).");
         if (from > to)
-            return BadRequest(new { error = "invalid_date_range", message = "dateFrom cannot be after dateTo." });
+            return this.BadRequestError("invalid_date_range",
+                "dateFrom cannot be after dateTo.");
 
-        var result = await sales.GetDailyAsync(companyId!, from.Value, to.Value, ct);
-        return Ok(new { data = result });
+        var result = await sales.GetDailyAsync(ctx.CompanyId!, from.Value, to.Value, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/sales/monthly?dateFrom=...&dateTo=...
@@ -63,17 +68,19 @@ public sealed class ClientSalesController(
         [FromQuery] string? dateTo,
         CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         var (from, to) = ParseDateRange(dateFrom, dateTo);
         if (from is null || to is null)
-            return BadRequest(new { error = "invalid_date_range", message = "dateFrom and dateTo must be valid dates (YYYY-MM-DD)." });
+            return this.BadRequestError("invalid_date_range",
+                "dateFrom and dateTo must be valid dates (YYYY-MM-DD).");
         if (from > to)
-            return BadRequest(new { error = "invalid_date_range", message = "dateFrom cannot be after dateTo." });
+            return this.BadRequestError("invalid_date_range",
+                "dateFrom cannot be after dateTo.");
 
-        var result = await sales.GetMonthlyAsync(companyId!, from.Value, to.Value, ct);
-        return Ok(new { data = result });
+        var result = await sales.GetMonthlyAsync(ctx.CompanyId!, from.Value, to.Value, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/sales/customers?limit=50&offset=0&sortBy=netSalesAmount&sortDir=desc
@@ -85,21 +92,22 @@ public sealed class ClientSalesController(
         [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (limit < 1 || limit > 100)
-            return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 100.");
         if (offset < 0)
-            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+            return this.BadRequestError("invalid_offset", "offset must be >= 0.");
         if (sortBy is not null && !ClientDashboardController.CustomerSortFields.Contains(sortBy))
-            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", ClientDashboardController.CustomerSortFields)}." });
+            return this.BadRequestError("invalid_sort_by",
+                $"sortBy must be one of: {string.Join(", ", ClientDashboardController.CustomerSortFields)}.");
         if (!IsValidSortDir(sortDir))
-            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
+            return this.BadRequestError("invalid_sort_dir", "sortDir must be 'asc' or 'desc'.");
 
         var pagination = new PaginationOptions(limit, offset, sortBy, sortDir);
-        var result = await sales.GetCustomersAsync(companyId!, pagination, ct);
-        return Ok(new { data = result.Data, meta = result.Meta });
+        var result = await sales.GetCustomersAsync(ctx.CompanyId!, pagination, ct);
+        return this.OkPaged(result.Data, result.Meta);
     }
 
     // GET /api/client/sales/items?limit=50&offset=0
@@ -111,21 +119,22 @@ public sealed class ClientSalesController(
         [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (limit < 1 || limit > 100)
-            return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 100.");
         if (offset < 0)
-            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+            return this.BadRequestError("invalid_offset", "offset must be >= 0.");
         if (sortBy is not null && !ClientDashboardController.ItemSortFields.Contains(sortBy))
-            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", ClientDashboardController.ItemSortFields)}." });
+            return this.BadRequestError("invalid_sort_by",
+                $"sortBy must be one of: {string.Join(", ", ClientDashboardController.ItemSortFields)}.");
         if (!IsValidSortDir(sortDir))
-            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
+            return this.BadRequestError("invalid_sort_dir", "sortDir must be 'asc' or 'desc'.");
 
         var pagination = new PaginationOptions(limit, offset, sortBy, sortDir);
-        var result = await sales.GetItemsAsync(companyId!, pagination, ct);
-        return Ok(new { data = result.Data, meta = result.Meta });
+        var result = await sales.GetItemsAsync(ctx.CompanyId!, pagination, ct);
+        return this.OkPaged(result.Data, result.Meta);
     }
 
     // GET /api/client/sales/salespersons?limit=50&offset=0
@@ -137,21 +146,22 @@ public sealed class ClientSalesController(
         [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
         if (limit < 1 || limit > 100)
-            return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 100.");
         if (offset < 0)
-            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+            return this.BadRequestError("invalid_offset", "offset must be >= 0.");
         if (sortBy is not null && !ClientDashboardController.SalespersonSortFields.Contains(sortBy))
-            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", ClientDashboardController.SalespersonSortFields)}." });
+            return this.BadRequestError("invalid_sort_by",
+                $"sortBy must be one of: {string.Join(", ", ClientDashboardController.SalespersonSortFields)}.");
         if (!IsValidSortDir(sortDir))
-            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
+            return this.BadRequestError("invalid_sort_dir", "sortDir must be 'asc' or 'desc'.");
 
         var pagination = new PaginationOptions(limit, offset, sortBy, sortDir);
-        var result = await sales.GetSalespersonsAsync(companyId!, pagination, ct);
-        return Ok(new { data = result.Data, meta = result.Meta });
+        var result = await sales.GetSalespersonsAsync(ctx.CompanyId!, pagination, ct);
+        return this.OkPaged(result.Data, result.Meta);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

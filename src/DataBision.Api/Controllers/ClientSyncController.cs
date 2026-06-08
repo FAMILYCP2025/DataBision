@@ -16,32 +16,32 @@ public sealed class ClientSyncController(
     [HttpGet("status")]
     public async Task<IActionResult> GetStatus(CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
-        var result = await sync.GetStatusAsync(companyId!, ct);
-        return Ok(new { data = result });
+        var result = await sync.GetStatusAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/sync/objects
     [HttpGet("objects")]
     public async Task<IActionResult> GetObjects(CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
-        var result = await sync.GetObjectsAsync(companyId!, ct);
-        return Ok(new { data = result });
+        var result = await sync.GetObjectsAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
     }
 
     // GET /api/client/sync/transform-status
     [HttpGet("transform-status")]
     public async Task<IActionResult> GetTransformStatus(CancellationToken ct)
     {
-        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
-        if (err is not null) return err;
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
 
-        var result = await sync.GetTransformStatusAsync(companyId!, ct);
-        return Ok(new { data = result });
+        var result = await sync.GetTransformStatusAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
     }
 }
