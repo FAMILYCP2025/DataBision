@@ -1,112 +1,155 @@
+using DataBision.Api.Security;
 using DataBision.Application.Interfaces.Dashboard;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DataBision.Api.Controllers;
 
+// Security enforced by CompanyContextResolver in each action.
+// [AllowAnonymous] lets ASP.NET populate User claims when JWT is present
+// without blocking the request at the pipeline level — the resolver handles 401/403.
 [ApiController]
 [Route("api/client/dashboard")]
-[AllowAnonymous] // TODO Sprint-6E: enforce JWT company_id claim validation
-public sealed class ClientDashboardController(IDashboardService dashboard) : ControllerBase
+[AllowAnonymous]
+public sealed class ClientDashboardController(
+    IDashboardService dashboard,
+    IConfiguration config) : ControllerBase
 {
-    // GET /api/client/dashboard/summary?companyId=company-dev-001
+    // GET /api/client/dashboard/summary
     [HttpGet("summary")]
-    public async Task<IActionResult> GetSummary(
-        [FromQuery] string companyId,
-        CancellationToken ct)
+    public async Task<IActionResult> GetSummary(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
-        var result = await dashboard.GetSummaryAsync(companyId, ct);
+        var result = await dashboard.GetSummaryAsync(companyId!, ct);
         if (result is null)
             return Ok(new { data = (object?)null });
 
         return Ok(new { data = result });
     }
 
-    // GET /api/client/dashboard/sales-daily?companyId=...&days=30
+    // GET /api/client/dashboard/sales-daily?days=30
     [HttpGet("sales-daily")]
     public async Task<IActionResult> GetSalesDaily(
-        [FromQuery] string companyId,
         [FromQuery] int days = 30,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
         if (days < 1 || days > 365)
             return BadRequest(new { error = "invalid_days", message = "days must be between 1 and 365." });
 
-        var result = await dashboard.GetSalesDailyAsync(companyId, days, ct);
+        var result = await dashboard.GetSalesDailyAsync(companyId!, days, ct);
         return Ok(new { data = result });
     }
 
-    // GET /api/client/dashboard/sales-monthly?companyId=...&months=12
+    // GET /api/client/dashboard/sales-monthly?months=12
     [HttpGet("sales-monthly")]
     public async Task<IActionResult> GetSalesMonthly(
-        [FromQuery] string companyId,
         [FromQuery] int months = 12,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
         if (months < 1 || months > 36)
             return BadRequest(new { error = "invalid_months", message = "months must be between 1 and 36." });
 
-        var result = await dashboard.GetSalesMonthlyAsync(companyId, months, ct);
+        var result = await dashboard.GetSalesMonthlyAsync(companyId!, months, ct);
         return Ok(new { data = result });
     }
 
-    // GET /api/client/dashboard/top-customers?companyId=...&limit=10
+    // GET /api/client/dashboard/top-customers?limit=10&offset=0&sortBy=netSalesAmount&sortDir=desc
     [HttpGet("top-customers")]
     public async Task<IActionResult> GetTopCustomers(
-        [FromQuery] string companyId,
         [FromQuery] int limit = 10,
+        [FromQuery] int offset = 0,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
         if (limit < 1 || limit > 100)
             return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+        if (offset < 0)
+            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+        if (sortBy is not null && !CustomerSortFields.Contains(sortBy))
+            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", CustomerSortFields)}." });
+        if (!IsValidSortDir(sortDir))
+            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
 
-        var result = await dashboard.GetTopCustomersAsync(companyId, limit, ct);
-        return Ok(new { data = result });
+        var pagination = new DataBision.Application.DTOs.Dashboard.PaginationOptions(limit, offset, sortBy, sortDir);
+        var result = await dashboard.GetTopCustomersAsync(companyId!, pagination, ct);
+        return Ok(new { data = result.Data, meta = result.Meta });
     }
 
-    // GET /api/client/dashboard/top-items?companyId=...&limit=10
+    // GET /api/client/dashboard/top-items?limit=10&offset=0&sortBy=grossSalesAmount&sortDir=desc
     [HttpGet("top-items")]
     public async Task<IActionResult> GetTopItems(
-        [FromQuery] string companyId,
         [FromQuery] int limit = 10,
+        [FromQuery] int offset = 0,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
         if (limit < 1 || limit > 100)
             return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+        if (offset < 0)
+            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+        if (sortBy is not null && !ItemSortFields.Contains(sortBy))
+            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", ItemSortFields)}." });
+        if (!IsValidSortDir(sortDir))
+            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
 
-        var result = await dashboard.GetTopItemsAsync(companyId, limit, ct);
-        return Ok(new { data = result });
+        var pagination = new DataBision.Application.DTOs.Dashboard.PaginationOptions(limit, offset, sortBy, sortDir);
+        var result = await dashboard.GetTopItemsAsync(companyId!, pagination, ct);
+        return Ok(new { data = result.Data, meta = result.Meta });
     }
 
-    // GET /api/client/dashboard/salespersons?companyId=...&limit=20
+    // GET /api/client/dashboard/salespersons?limit=20&offset=0&sortBy=netSalesAmount&sortDir=desc
     [HttpGet("salespersons")]
     public async Task<IActionResult> GetSalespersons(
-        [FromQuery] string companyId,
         [FromQuery] int limit = 20,
+        [FromQuery] int offset = 0,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
         if (limit < 1 || limit > 100)
             return BadRequest(new { error = "invalid_limit", message = "limit must be between 1 and 100." });
+        if (offset < 0)
+            return BadRequest(new { error = "invalid_offset", message = "offset must be >= 0." });
+        if (sortBy is not null && !SalespersonSortFields.Contains(sortBy))
+            return BadRequest(new { error = "invalid_sort_by", message = $"sortBy must be one of: {string.Join(", ", SalespersonSortFields)}." });
+        if (!IsValidSortDir(sortDir))
+            return BadRequest(new { error = "invalid_sort_dir", message = "sortDir must be 'asc' or 'desc'." });
 
-        var result = await dashboard.GetSalespersonsAsync(companyId, limit, ct);
-        return Ok(new { data = result });
+        var pagination = new DataBision.Application.DTOs.Dashboard.PaginationOptions(limit, offset, sortBy, sortDir);
+        var result = await dashboard.GetSalespersonsAsync(companyId!, pagination, ct);
+        return Ok(new { data = result.Data, meta = result.Meta });
     }
+
+    // ── Sort allowlists ────────────────────────────────────────────────────────
+
+    internal static readonly HashSet<string> CustomerSortFields =
+        ["netSalesAmount", "salesAmount", "invoiceCount", "lastInvoiceDate", "cardCode"];
+
+    internal static readonly HashSet<string> ItemSortFields =
+        ["grossSalesAmount", "quantitySold", "invoiceCount", "itemCode"];
+
+    internal static readonly HashSet<string> SalespersonSortFields =
+        ["netSalesAmount", "salesAmount", "invoiceCount", "salesPersonCode"];
+
+    private static bool IsValidSortDir(string? sortDir) =>
+        sortDir is null || sortDir == "asc" || sortDir == "desc";
 }

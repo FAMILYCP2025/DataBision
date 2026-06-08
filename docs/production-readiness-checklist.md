@@ -99,6 +99,24 @@ Pre-launch checklist for DataBision. Complete all items before going live with a
 - [ ] Backup strategy: database nightly backup, retention ≥ 30 days
 - [ ] Disaster recovery: RTO and RPO defined
 
+## Native BI Backend readiness
+
+- [ ] `dotnet build` 0 errors after Sprint 6E–6H
+- [ ] All 59 tests pass (`dotnet test --no-build`)
+- [ ] `CompanyContextResolver` active on all `/api/client/*` endpoints
+- [ ] `[AllowAnonymous]` on Native BI controllers is intentional (resolver enforces 401/403 manually)
+- [ ] JWT `Jwt:PublicKey` configured in production — resolver will reject unauthenticated requests with 401
+- [ ] `?companyId` query param accepted ONLY in dev (when `Jwt:PublicKey` absent)
+- [ ] Pagination validated: list endpoints return `{ data, meta }` with `hasMore`
+- [ ] `sortBy` validated against allowlist; invalid values return 400
+- [ ] Diagnostics endpoint `/api/client/diagnostics/native-bi` returns `status = "ok"` for production company
+- [ ] MART tables populated: all 6 tables non-empty for each active company
+- [ ] MART `transformed_at_utc` < 24h at go-live (diagnostics `mart_data_freshness = "ok"`)
+- [ ] E2E script passes: `scripts/dev/test-native-bi-endpoints.ps1` 0 failures
+- [ ] No connection strings or secrets exposed in diagnostics responses
+- [ ] `docs/native-bi-operational-runbook.md` reviewed by ops team
+- [ ] Extractor scheduled to run + transform automatically (see runbook section 5)
+
 ## Go-live sign-off
 
 | Item | Owner | Status |

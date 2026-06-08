@@ -101,40 +101,67 @@ public sealed class DashboardServiceTests
     [Fact]
     public async Task GetTopCustomers_ClampsLimitToMax100()
     {
-        _repo.Setup(r => r.GetCustomersAsync("c1", 100, It.IsAny<CancellationToken>()))
+        // Service clamps 999 → 100, then requests limit+1=101 from repo for hasMore detection
+        _repo.Setup(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101 && p.Offset == 0),
+                         It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
-        await NewService().GetTopCustomersAsync("c1", 999);
+        var result = await NewService().GetTopCustomersAsync("c1", new PaginationOptions(999));
 
-        _repo.Verify(r => r.GetCustomersAsync("c1", 100, It.IsAny<CancellationToken>()), Times.Once);
+        result.Meta.Limit.Should().Be(100);
+        result.Data.Should().BeEmpty();
+        _repo.Verify(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task GetTopCustomers_ClampsLimitToMin1()
     {
-        _repo.Setup(r => r.GetCustomersAsync("c1", 1, It.IsAny<CancellationToken>()))
+        _repo.Setup(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 2),
+                         It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
-        await NewService().GetTopCustomersAsync("c1", 0);
+        var result = await NewService().GetTopCustomersAsync("c1", new PaginationOptions(0));
 
-        _repo.Verify(r => r.GetCustomersAsync("c1", 1, It.IsAny<CancellationToken>()), Times.Once);
+        result.Meta.Limit.Should().Be(1);
     }
 
     [Fact]
-    public async Task GetTopCustomers_ReturnsListOrdered()
+    public async Task GetTopCustomers_HasMore_WhenRepoReturnsLimitPlusOne()
     {
-        var expected = new List<CustomerSalesDto>
-        {
-            new() { CardCode = "C001", NetSalesAmount = 500_000m },
-            new() { CardCode = "C002", NetSalesAmount = 300_000m },
-        };
-        _repo.Setup(r => r.GetCustomersAsync("c1", 10, It.IsAny<CancellationToken>()))
-             .ReturnsAsync(expected);
+        var items = Enumerable.Range(1, 11)
+            .Select(i => new CustomerSalesDto { CardCode = $"C{i:D3}", NetSalesAmount = 1000m - i })
+            .ToList();
 
-        var result = await NewService().GetTopCustomersAsync("c1", 10);
+        _repo.Setup(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 11),
+                         It.IsAny<CancellationToken>()))
+             .ReturnsAsync(items);
 
-        result.Should().HaveCount(2);
-        result[0].CardCode.Should().Be("C001");
+        var result = await NewService().GetTopCustomersAsync("c1", new PaginationOptions(10));
+
+        result.Meta.HasMore.Should().BeTrue();
+        result.Meta.Count.Should().Be(10);
+        result.Data.Should().HaveCount(10);
+        result.Data[0].CardCode.Should().Be("C001");
+    }
+
+    [Fact]
+    public async Task GetTopCustomers_PassesOffsetAndSort()
+    {
+        _repo.Setup(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Offset == 20 && p.SortBy == "cardCode" && p.SortDir == "asc"),
+                         It.IsAny<CancellationToken>()))
+             .ReturnsAsync([]);
+
+        await NewService().GetTopCustomersAsync("c1", new PaginationOptions(10, 20, "cardCode", "asc"));
+
+        _repo.Verify(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Offset == 20),
+                         It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── GetTopItems ───────────────────────────────────────────────────────────
@@ -142,12 +169,16 @@ public sealed class DashboardServiceTests
     [Fact]
     public async Task GetTopItems_ClampsLimitToMax100()
     {
-        _repo.Setup(r => r.GetItemsAsync("c1", 100, It.IsAny<CancellationToken>()))
+        _repo.Setup(r => r.GetItemsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
-        await NewService().GetTopItemsAsync("c1", 500);
+        await NewService().GetTopItemsAsync("c1", new PaginationOptions(500));
 
-        _repo.Verify(r => r.GetItemsAsync("c1", 100, It.IsAny<CancellationToken>()), Times.Once);
+        _repo.Verify(r => r.GetItemsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── GetSalespersons ───────────────────────────────────────────────────────
@@ -155,11 +186,15 @@ public sealed class DashboardServiceTests
     [Fact]
     public async Task GetSalespersons_ClampsLimitToMax100()
     {
-        _repo.Setup(r => r.GetSalespersonsAsync("c1", 100, It.IsAny<CancellationToken>()))
+        _repo.Setup(r => r.GetSalespersonsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
-        await NewService().GetSalespersonsAsync("c1", 200);
+        await NewService().GetSalespersonsAsync("c1", new PaginationOptions(200));
 
-        _repo.Verify(r => r.GetSalespersonsAsync("c1", 100, It.IsAny<CancellationToken>()), Times.Once);
+        _repo.Verify(r => r.GetSalespersonsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()), Times.Once);
     }
 }

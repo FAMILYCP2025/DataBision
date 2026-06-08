@@ -68,39 +68,70 @@ public sealed class SalesServiceTests
         result.Should().BeEmpty();
     }
 
-    // ── Customers / Items / Salespersons (limit clamping) ─────────────────────
+    // ── Customers ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetCustomers_ClampsLimitToMax100()
     {
-        _repo.Setup(r => r.GetCustomersAsync("c1", 100, It.IsAny<CancellationToken>()))
+        _repo.Setup(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
-        await NewService().GetCustomersAsync("c1", 999);
+        await NewService().GetCustomersAsync("c1", new PaginationOptions(999));
 
-        _repo.Verify(r => r.GetCustomersAsync("c1", 100, It.IsAny<CancellationToken>()), Times.Once);
+        _repo.Verify(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task GetCustomers_ReturnsPagedResult()
+    {
+        _repo.Setup(r => r.GetCustomersAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 51),
+                         It.IsAny<CancellationToken>()))
+             .ReturnsAsync([new CustomerSalesDto { CardCode = "C001" }]);
+
+        var result = await NewService().GetCustomersAsync("c1", new PaginationOptions(50));
+
+        result.Data.Should().HaveCount(1);
+        result.Meta.HasMore.Should().BeFalse();
+        result.Meta.Limit.Should().Be(50);
+    }
+
+    // ── Items ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetItems_ClampsLimitToMax100()
     {
-        _repo.Setup(r => r.GetItemsAsync("c1", 100, It.IsAny<CancellationToken>()))
+        _repo.Setup(r => r.GetItemsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
-        await NewService().GetItemsAsync("c1", 999);
+        await NewService().GetItemsAsync("c1", new PaginationOptions(999));
 
-        _repo.Verify(r => r.GetItemsAsync("c1", 100, It.IsAny<CancellationToken>()), Times.Once);
+        _repo.Verify(r => r.GetItemsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    // ── Salespersons ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetSalespersons_ClampsLimitToMax100()
     {
-        _repo.Setup(r => r.GetSalespersonsAsync("c1", 100, It.IsAny<CancellationToken>()))
+        _repo.Setup(r => r.GetSalespersonsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
-        await NewService().GetSalespersonsAsync("c1", 999);
+        await NewService().GetSalespersonsAsync("c1", new PaginationOptions(999));
 
-        _repo.Verify(r => r.GetSalespersonsAsync("c1", 100, It.IsAny<CancellationToken>()), Times.Once);
+        _repo.Verify(r => r.GetSalespersonsAsync("c1",
+                         It.Is<PaginationOptions>(p => p.Limit == 101),
+                         It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── DefaultDateRange ──────────────────────────────────────────────────────

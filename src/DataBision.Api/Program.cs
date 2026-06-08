@@ -72,6 +72,9 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
     builder.Services.AddScoped<IDashboardService, DashboardService>();
     builder.Services.AddScoped<ISalesService, SalesService>();
     builder.Services.AddScoped<ISyncStatusService, SyncStatusService>();
+    builder.Services.AddScoped<IDiagnosticsRepository>(_ =>
+        new DiagnosticsRepository(stagingConnectionString));
+    builder.Services.AddScoped<IDiagnosticsService, DiagnosticsService>();
 }
 
 // Application services

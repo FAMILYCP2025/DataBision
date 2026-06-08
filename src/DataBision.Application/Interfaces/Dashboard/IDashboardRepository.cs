@@ -24,13 +24,13 @@ public interface IDashboardRepository
     Task<SalesOverviewDto> GetSalesOverviewByRangeAsync(
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default);
 
-    // ── Ranking lists ─────────────────────────────────────────────────────────
+    // ── Paginatable ranking lists ─────────────────────────────────────────────
     Task<IReadOnlyList<CustomerSalesDto>> GetCustomersAsync(
-        string companyId, int limit, CancellationToken ct = default);
+        string companyId, PaginationOptions pagination, CancellationToken ct = default);
 
     Task<IReadOnlyList<ItemSalesDto>> GetItemsAsync(
-        string companyId, int limit, CancellationToken ct = default);
+        string companyId, PaginationOptions pagination, CancellationToken ct = default);
 
     Task<IReadOnlyList<SalespersonSalesDto>> GetSalespersonsAsync(
-        string companyId, int limit, CancellationToken ct = default);
+        string companyId, PaginationOptions pagination, CancellationToken ct = default);
 }

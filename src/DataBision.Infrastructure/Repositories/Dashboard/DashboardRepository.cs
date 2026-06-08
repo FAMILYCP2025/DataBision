@@ -5,13 +5,45 @@ using Npgsql;
 
 namespace DataBision.Infrastructure.Repositories.Dashboard;
 
-/// <summary>
-/// Dapper-based read-only repository against mart.* tables on Supabase PostgreSQL.
-/// Uses the same NpgsqlConnection pattern as IngestCheckpointRepository.
-/// </summary>
 public sealed class DashboardRepository(string connectionString) : IDashboardRepository
 {
     private NpgsqlConnection OpenConnection() => new(connectionString);
+
+    // ── Sort column allowlists (SQL injection prevention) ─────────────────────
+
+    private static readonly IReadOnlyDictionary<string, string> CustomerSortCols =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["netSalesAmount"]  = "net_sales_amount",
+            ["salesAmount"]     = "sales_amount",
+            ["invoiceCount"]    = "invoice_count",
+            ["lastInvoiceDate"] = "last_invoice_date",
+            ["cardCode"]        = "card_code",
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> ItemSortCols =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["grossSalesAmount"] = "gross_sales_amount",
+            ["quantitySold"]     = "quantity_sold",
+            ["invoiceCount"]     = "invoice_count",
+            ["itemCode"]         = "item_code",
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> SalespersonSortCols =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["netSalesAmount"]   = "net_sales_amount",
+            ["salesAmount"]      = "sales_amount",
+            ["invoiceCount"]     = "invoice_count",
+            ["salesPersonCode"]  = "sales_person_code",
+        };
+
+    private static string ResolveCol(string? sortBy, IReadOnlyDictionary<string, string> map, string defaultCol)
+        => (sortBy is not null && map.TryGetValue(sortBy, out var col)) ? col : defaultCol;
+
+    private static string ResolveDir(string? sortDir)
+        => sortDir?.ToLowerInvariant() == "asc" ? "ASC" : "DESC";
 
     // ── Summary ──────────────────────────────────────────────────────────────
 
@@ -48,21 +80,21 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
 
         return new DashboardSummaryDto
         {
-            CompanyId           = row.CompanyId,
-            GrossSalesAmount    = row.GrossSalesAmount,
-            CreditMemoAmount    = row.CreditMemoAmount,
-            NetSalesAmount      = row.NetSalesAmount,
-            InvoiceCount        = row.InvoiceCount,
-            CreditMemoCount     = row.CreditMemoCount,
-            ActiveCustomers     = row.ActiveCustomers,
-            ActiveItems         = row.ActiveItems,
-            AvgTicketAmount     = row.AvgTicketAmount,
-            LastInvoiceDate     = row.LastInvoiceDate.HasValue
+            CompanyId          = row.CompanyId,
+            GrossSalesAmount   = row.GrossSalesAmount,
+            CreditMemoAmount   = row.CreditMemoAmount,
+            NetSalesAmount     = row.NetSalesAmount,
+            InvoiceCount       = row.InvoiceCount,
+            CreditMemoCount    = row.CreditMemoCount,
+            ActiveCustomers    = row.ActiveCustomers,
+            ActiveItems        = row.ActiveItems,
+            AvgTicketAmount    = row.AvgTicketAmount,
+            LastInvoiceDate    = row.LastInvoiceDate.HasValue
                 ? DateOnly.FromDateTime(row.LastInvoiceDate.Value) : null,
-            LastCreditMemoDate  = row.LastCreditMemoDate.HasValue
+            LastCreditMemoDate = row.LastCreditMemoDate.HasValue
                 ? DateOnly.FromDateTime(row.LastCreditMemoDate.Value) : null,
-            LastSyncAtUtc       = row.LastSyncAtUtc,
-            TransformedAtUtc    = row.TransformedAtUtc,
+            LastSyncAtUtc      = row.LastSyncAtUtc,
+            TransformedAtUtc   = row.TransformedAtUtc,
         };
     }
 
@@ -74,8 +106,6 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
         var cutoff = DateTime.UtcNow.Date.AddDays(-days);
         return await QuerySalesDailyAsync(companyId, cutoff, DateTime.UtcNow.Date, ct);
     }
-
-    // ── Daily — explicit date range ───────────────────────────────────────────
 
     public Task<IReadOnlyList<SalesDailyDto>> GetSalesDailyByRangeAsync(
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default)
@@ -111,14 +141,14 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
 
         return rows.Select(r => new SalesDailyDto
         {
-            SalesDate          = DateOnly.FromDateTime(r.SalesDate),
-            GrossSalesAmount   = r.GrossSalesAmount,
-            CreditMemoAmount   = r.CreditMemoAmount,
-            NetSalesAmount     = r.NetSalesAmount,
-            InvoiceCount       = r.InvoiceCount,
-            CreditMemoCount    = r.CreditMemoCount,
-            ActiveCustomers    = r.ActiveCustomers,
-            AvgTicketAmount    = r.AvgTicketAmount,
+            SalesDate         = DateOnly.FromDateTime(r.SalesDate),
+            GrossSalesAmount  = r.GrossSalesAmount,
+            CreditMemoAmount  = r.CreditMemoAmount,
+            NetSalesAmount    = r.NetSalesAmount,
+            InvoiceCount      = r.InvoiceCount,
+            CreditMemoCount   = r.CreditMemoCount,
+            ActiveCustomers   = r.ActiveCustomers,
+            AvgTicketAmount   = r.AvgTicketAmount,
         }).ToList();
     }
 
@@ -131,8 +161,6 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
             .AddMonths(-months);
         return await QuerySalesMonthlyAsync(companyId, cutoff, DateTime.UtcNow, ct);
     }
-
-    // ── Monthly — explicit date range ─────────────────────────────────────────
 
     public Task<IReadOnlyList<SalesMonthlyDto>> GetSalesMonthlyByRangeAsync(
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default)
@@ -168,18 +196,18 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
 
         return rows.Select(r => new SalesMonthlyDto
         {
-            SalesMonth         = DateOnly.FromDateTime(r.SalesMonth),
-            GrossSalesAmount   = r.GrossSalesAmount,
-            CreditMemoAmount   = r.CreditMemoAmount,
-            NetSalesAmount     = r.NetSalesAmount,
-            InvoiceCount       = r.InvoiceCount,
-            CreditMemoCount    = r.CreditMemoCount,
-            ActiveCustomers    = r.ActiveCustomers,
-            AvgTicketAmount    = r.AvgTicketAmount,
+            SalesMonth        = DateOnly.FromDateTime(r.SalesMonth),
+            GrossSalesAmount  = r.GrossSalesAmount,
+            CreditMemoAmount  = r.CreditMemoAmount,
+            NetSalesAmount    = r.NetSalesAmount,
+            InvoiceCount      = r.InvoiceCount,
+            CreditMemoCount   = r.CreditMemoCount,
+            ActiveCustomers   = r.ActiveCustomers,
+            AvgTicketAmount   = r.AvgTicketAmount,
         }).ToList();
     }
 
-    // ── Aggregated overview (from sales_daily) ────────────────────────────────
+    // ── Aggregated overview ───────────────────────────────────────────────────
 
     public async Task<SalesOverviewDto> GetSalesOverviewByRangeAsync(
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default)
@@ -226,9 +254,11 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
     // ── Customers ─────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<CustomerSalesDto>> GetCustomersAsync(
-        string companyId, int limit, CancellationToken ct = default)
+        string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
-        const string sql = """
+        var col = ResolveCol(pagination.SortBy, CustomerSortCols, "net_sales_amount");
+        var dir = ResolveDir(pagination.SortDir);
+        var sql = $"""
             SELECT
                 card_code               AS "CardCode",
                 card_name               AS "CardName",
@@ -242,8 +272,8 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
                 avg_ticket_amount       AS "AvgTicketAmount"
             FROM mart.customer_sales
             WHERE company_id = @company_id
-            ORDER BY net_sales_amount DESC
-            LIMIT @limit;
+            ORDER BY {col} {dir}
+            LIMIT @limit OFFSET @offset;
             """;
 
         await using var conn = OpenConnection();
@@ -251,7 +281,7 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
 
         var rows = await conn.QueryAsync<CustomerRow>(
             new CommandDefinition(sql,
-                new { company_id = companyId, limit },
+                new { company_id = companyId, limit = pagination.Limit, offset = pagination.Offset },
                 cancellationToken: ct));
 
         return rows.Select(r => new CustomerSalesDto
@@ -274,9 +304,11 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
     // ── Items ─────────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<ItemSalesDto>> GetItemsAsync(
-        string companyId, int limit, CancellationToken ct = default)
+        string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
-        const string sql = """
+        var col = ResolveCol(pagination.SortBy, ItemSortCols, "gross_sales_amount");
+        var dir = ResolveDir(pagination.SortDir);
+        var sql = $"""
             SELECT
                 item_code           AS "ItemCode",
                 item_name           AS "ItemName",
@@ -287,8 +319,8 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
                 last_sale_date      AS "LastSaleDate"
             FROM mart.item_sales
             WHERE company_id = @company_id
-            ORDER BY gross_sales_amount DESC
-            LIMIT @limit;
+            ORDER BY {col} {dir}
+            LIMIT @limit OFFSET @offset;
             """;
 
         await using var conn = OpenConnection();
@@ -296,7 +328,7 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
 
         var rows = await conn.QueryAsync<ItemRow>(
             new CommandDefinition(sql,
-                new { company_id = companyId, limit },
+                new { company_id = companyId, limit = pagination.Limit, offset = pagination.Offset },
                 cancellationToken: ct));
 
         return rows.Select(r => new ItemSalesDto
@@ -315,9 +347,11 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
     // ── Salespersons ──────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<SalespersonSalesDto>> GetSalespersonsAsync(
-        string companyId, int limit, CancellationToken ct = default)
+        string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
-        const string sql = """
+        var col = ResolveCol(pagination.SortBy, SalespersonSortCols, "net_sales_amount");
+        var dir = ResolveDir(pagination.SortDir);
+        var sql = $"""
             SELECT
                 sales_person_code   AS "SalesPersonCode",
                 sales_person_name   AS "SalesPersonName",
@@ -330,8 +364,8 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
                 avg_ticket_amount   AS "AvgTicketAmount"
             FROM mart.salesperson_sales
             WHERE company_id = @company_id
-            ORDER BY net_sales_amount DESC
-            LIMIT @limit;
+            ORDER BY {col} {dir}
+            LIMIT @limit OFFSET @offset;
             """;
 
         await using var conn = OpenConnection();
@@ -339,7 +373,7 @@ public sealed class DashboardRepository(string connectionString) : IDashboardRep
 
         var rows = await conn.QueryAsync<SalespersonRow>(
             new CommandDefinition(sql,
-                new { company_id = companyId, limit },
+                new { company_id = companyId, limit = pagination.Limit, offset = pagination.Offset },
                 cancellationToken: ct));
 
         return rows.Select(r => new SalespersonSalesDto

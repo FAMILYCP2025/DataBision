@@ -1,3 +1,4 @@
+using DataBision.Api.Security;
 using DataBision.Application.Interfaces.Dashboard;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,45 +7,41 @@ namespace DataBision.Api.Controllers;
 
 [ApiController]
 [Route("api/client/sync")]
-[AllowAnonymous] // TODO Sprint-6E: enforce JWT company_id claim validation
-public sealed class ClientSyncController(ISyncStatusService sync) : ControllerBase
+[AllowAnonymous]
+public sealed class ClientSyncController(
+    ISyncStatusService sync,
+    IConfiguration config) : ControllerBase
 {
-    // GET /api/client/sync/status?companyId=company-dev-001
+    // GET /api/client/sync/status
     [HttpGet("status")]
-    public async Task<IActionResult> GetStatus(
-        [FromQuery] string companyId,
-        CancellationToken ct)
+    public async Task<IActionResult> GetStatus(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
-        var result = await sync.GetStatusAsync(companyId, ct);
+        var result = await sync.GetStatusAsync(companyId!, ct);
         return Ok(new { data = result });
     }
 
-    // GET /api/client/sync/objects?companyId=company-dev-001
+    // GET /api/client/sync/objects
     [HttpGet("objects")]
-    public async Task<IActionResult> GetObjects(
-        [FromQuery] string companyId,
-        CancellationToken ct)
+    public async Task<IActionResult> GetObjects(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
-        var result = await sync.GetObjectsAsync(companyId, ct);
+        var result = await sync.GetObjectsAsync(companyId!, ct);
         return Ok(new { data = result });
     }
 
-    // GET /api/client/sync/transform-status?companyId=company-dev-001
+    // GET /api/client/sync/transform-status
     [HttpGet("transform-status")]
-    public async Task<IActionResult> GetTransformStatus(
-        [FromQuery] string companyId,
-        CancellationToken ct)
+    public async Task<IActionResult> GetTransformStatus(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(companyId))
-            return BadRequest(new { error = "missing_company_id", message = "companyId is required." });
+        var (companyId, err) = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (err is not null) return err;
 
-        var result = await sync.GetTransformStatusAsync(companyId, ct);
+        var result = await sync.GetTransformStatusAsync(companyId!, ct);
         return Ok(new { data = result });
     }
 }

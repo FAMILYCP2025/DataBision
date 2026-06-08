@@ -20,27 +20,47 @@ public sealed class SalesService(IDashboardRepository repo) : ISalesService
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default)
         => repo.GetSalesMonthlyByRangeAsync(companyId, dateFrom, dateTo, ct);
 
-    public Task<IReadOnlyList<CustomerSalesDto>> GetCustomersAsync(
-        string companyId, int limit, CancellationToken ct = default)
+    public async Task<PagedResultDto<CustomerSalesDto>> GetCustomersAsync(
+        string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
-        limit = Math.Clamp(limit, 1, MaxLimit);
-        return repo.GetCustomersAsync(companyId, limit, ct);
+        var limit = Math.Clamp(pagination.Limit, 1, MaxLimit);
+        var items = await repo.GetCustomersAsync(companyId, pagination with { Limit = limit + 1 }, ct);
+        return BuildPaged(items, limit, pagination.Offset);
     }
 
-    public Task<IReadOnlyList<ItemSalesDto>> GetItemsAsync(
-        string companyId, int limit, CancellationToken ct = default)
+    public async Task<PagedResultDto<ItemSalesDto>> GetItemsAsync(
+        string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
-        limit = Math.Clamp(limit, 1, MaxLimit);
-        return repo.GetItemsAsync(companyId, limit, ct);
+        var limit = Math.Clamp(pagination.Limit, 1, MaxLimit);
+        var items = await repo.GetItemsAsync(companyId, pagination with { Limit = limit + 1 }, ct);
+        return BuildPaged(items, limit, pagination.Offset);
     }
 
-    public Task<IReadOnlyList<SalespersonSalesDto>> GetSalespersonsAsync(
-        string companyId, int limit, CancellationToken ct = default)
+    public async Task<PagedResultDto<SalespersonSalesDto>> GetSalespersonsAsync(
+        string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
-        limit = Math.Clamp(limit, 1, MaxLimit);
-        return repo.GetSalespersonsAsync(companyId, limit, ct);
+        var limit = Math.Clamp(pagination.Limit, 1, MaxLimit);
+        var items = await repo.GetSalespersonsAsync(companyId, pagination with { Limit = limit + 1 }, ct);
+        return BuildPaged(items, limit, pagination.Offset);
     }
 
     public static (DateTime from, DateTime to) DefaultDateRange()
         => (DateTime.UtcNow.Date.Subtract(DefaultLookback), DateTime.UtcNow.Date);
+
+    private static PagedResultDto<T> BuildPaged<T>(IReadOnlyList<T> items, int limit, int offset)
+    {
+        var hasMore = items.Count > limit;
+        var data = hasMore ? items.Take(limit).ToList() : (IReadOnlyList<T>)items;
+        return new PagedResultDto<T>
+        {
+            Data = data,
+            Meta = new PagedMetaDto
+            {
+                Limit   = limit,
+                Offset  = offset,
+                Count   = data.Count,
+                HasMore = hasMore,
+            }
+        };
+    }
 }
