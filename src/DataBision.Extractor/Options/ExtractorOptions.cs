@@ -12,6 +12,9 @@ public sealed class ExtractorOptions
     public string Mode { get; init; } = "INCREMENTAL";
     public int PageSize { get; init; } = 100;
 
+    /// <summary>Safety cap: max pages per object per run. Default 500 (= 50k rows at PageSize 100).</summary>
+    public int MaxPages { get; init; } = 500;
+
     /// <summary>Minutes to look back from the watermark when building the incremental filter.</summary>
     public int LookbackMinutes { get; init; } = 10;
 

@@ -11,33 +11,33 @@ using Microsoft.Extensions.Logging;
 namespace DataBision.Extractor.Extraction.Jobs;
 
 /// <summary>
-/// Extracts Invoices (OINV) from SAP B1 Service Layer.
-/// Incremental by UpdateDate using checkpoint from DataBision API.
-/// Falls back to minimal $select if extended fields are unavailable.
+/// Extracts Invoices (OINV). Incremental by UpdateDate. Multi-page via ServiceLayerPaginator.
 /// </summary>
 public sealed class OinvExtractorJob : IExtractorJob
 {
     public string SapObject => "OINV";
 
     private const string Endpoint      = "api/ingest/sap-b1/sales-invoices";
-    // Confirmed valid fields for Invoices in SL 1000290 (progressive validation Sprint 4D).
-    // Removed: DocCur, DocStatus, ObjType, CreateDate, CreateTS (invalid in this SL version).
+    // Confirmed valid fields for SL 1000290 (Sprint 4D).
     private const string FullSelect    = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocTotal,VatSum,SalesPersonCode,DocType,Cancelled,UpdateDate";
     private const string MinimalSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,UpdateDate";
 
-    private readonly IServiceLayerClient     _sl;
-    private readonly IDataBisionIngestClient _ingest;
-    private readonly ExtractorOptions        _options;
+    private readonly IServiceLayerClient       _sl;
+    private readonly IDataBisionIngestClient   _ingest;
+    private readonly ExtractorOptions          _options;
     private readonly ILogger<OinvExtractorJob> _log;
+    private readonly ServiceLayerPaginator     _paginator;
 
     public OinvExtractorJob(
         IServiceLayerClient sl, IDataBisionIngestClient ingest,
-        ExtractorOptions options, ILogger<OinvExtractorJob> log)
+        ExtractorOptions options, ILogger<OinvExtractorJob> log,
+        ServiceLayerPaginator paginator)
     {
-        _sl      = sl;
-        _ingest  = ingest;
-        _options = options;
-        _log     = log;
+        _sl        = sl;
+        _ingest    = ingest;
+        _options   = options;
+        _log       = log;
+        _paginator = paginator;
     }
 
     public async Task<ExtractionResult> RunAsync(bool dryRun, bool send, CancellationToken ct = default)
@@ -48,13 +48,12 @@ public sealed class OinvExtractorJob : IExtractorJob
         try
         {
             var filter = await ReadIncrementalFilter(ct);
-            var (rows, usedSelect) = await FetchWithFallback(filter, ct);
+            var (allRows, usedSelect) = await PaginateWithFallback(filter, ct);
             sw.Stop();
 
-            var isLastPage = rows.Count < _options.PageSize;
-            _log.LogInformation("OINV: {Count} rows in {Ms}ms — last-page={Lp} (select={Sel})",
-                rows.Count, sw.ElapsedMilliseconds, isLastPage, usedSelect);
-            LogSample(rows);
+            _log.LogInformation("OINV: {Count} rows in {Ms}ms (select={Sel})",
+                allRows.Count, sw.ElapsedMilliseconds, usedSelect);
+            LogSample(allRows);
 
             if (!send)
             {
@@ -62,13 +61,13 @@ public sealed class OinvExtractorJob : IExtractorJob
                 {
                     SapObject     = SapObject,
                     Success       = true,
-                    RowsExtracted = rows.Count,
+                    RowsExtracted = allRows.Count,
                     Duration      = sw.Elapsed,
-                    WatermarkDate = MaxUpdateDate(rows)
+                    WatermarkDate = MaxUpdateDate(allRows)
                 };
             }
 
-            return await SendAsync(rows, sw.Elapsed, ct);
+            return await SendAsync(allRows, sw.Elapsed, ct);
         }
         catch (Exception ex)
         {
@@ -84,42 +83,47 @@ public sealed class OinvExtractorJob : IExtractorJob
         var (filter, effectiveFrom) = IncrementalQueryBuilder.Build(checkpoint, _options.LookbackMinutes);
 
         if (filter is not null)
-            _log.LogInformation("OINV: applying incremental filter — UpdateDate ge '{From}' (watermark={Wm})",
-                effectiveFrom!.Value.ToString("yyyy-MM-dd"), checkpoint!.WatermarkDate);
+            _log.LogInformation("OINV: incremental filter — UpdateDate ge '{From}'", effectiveFrom!.Value.ToString("yyyy-MM-dd"));
         else
-            _log.LogInformation("OINV: no checkpoint — running limited initial extraction (top={Top})", _options.PageSize);
+            _log.LogInformation("OINV: no checkpoint — full extraction (pageSize={Top})", _options.PageSize);
 
         return filter;
     }
 
-    private async Task<(JsonArray rows, string usedSelect)> FetchWithFallback(string? filter, CancellationToken ct)
+    private async Task<(JsonArray allRows, string usedSelect)> PaginateWithFallback(string? filter, CancellationToken ct)
     {
-        var filterPart = filter is not null ? $"&$filter={filter}" : "";
+        var filterPart    = filter is not null ? $"&$filter={filter}" : "";
+        var baseQueryFull = $"$select={FullSelect}{filterPart}&$orderby=UpdateDate asc";
 
-        try
+        var result = await _paginator.PaginateAsync(SapObject, "Invoices", baseQueryFull,
+            _options.PageSize, _options.MaxPages, ct);
+
+        if (result.LastError is null)
+            return (result.AllRows, FullSelect);
+
+        if (result.LastError.Contains("400", StringComparison.Ordinal)
+            || result.LastError.Contains("invalid", StringComparison.OrdinalIgnoreCase))
         {
-            var q = $"$top={_options.PageSize}&$select={FullSelect}{filterPart}&$orderby=UpdateDate asc";
-            return (await _sl.GetAsync("Invoices", q, ct), FullSelect);
+            _log.LogWarning("OINV: full $select failed — retrying with minimal. Error: {Err}", result.LastError);
+            var baseQueryMin = $"$select={MinimalSelect}{filterPart}&$orderby=UpdateDate asc";
+            var minResult = await _paginator.PaginateAsync(SapObject, "Invoices", baseQueryMin,
+                _options.PageSize, _options.MaxPages, ct);
+            return (minResult.AllRows, MinimalSelect);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("invalid", StringComparison.OrdinalIgnoreCase)
-                                                 || ex.Message.Contains("400"))
-        {
-            _log.LogWarning("OINV: full $select failed — retrying with minimal. Error: {Msg}", ex.Message);
-            var q = $"$top={_options.PageSize}&$select={MinimalSelect}{filterPart}&$orderby=UpdateDate asc";
-            return (await _sl.GetAsync("Invoices", q, ct), MinimalSelect);
-        }
+
+        return (result.AllRows, FullSelect);
     }
 
-    private async Task<ExtractionResult> SendAsync(JsonArray rows, TimeSpan extractDuration, CancellationToken ct)
+    private async Task<ExtractionResult> SendAsync(JsonArray allRows, TimeSpan extractDuration, CancellationToken ct)
     {
         var sw      = Stopwatch.StartNew();
         var runId   = Guid.NewGuid().ToString("N");
         var batchId = Guid.NewGuid().ToString("N");
         var ctx     = new MappingContext(runId, batchId, DateTime.UtcNow, _options.Mode);
 
-        var mapped = rows.Where(r => r is not null)
-                         .Select(r => SapToIngestMapper.MapOinvRow(r!, ctx))
-                         .ToList();
+        var mapped = allRows.Where(r => r is not null)
+                            .Select(r => SapToIngestMapper.MapOinvRow(r!, ctx))
+                            .ToList();
 
         var batch = new IngestBatch<SapOinvRow>
         {
@@ -139,9 +143,9 @@ public sealed class OinvExtractorJob : IExtractorJob
         return new ExtractionResult
         {
             SapObject     = SapObject, Success   = resp.Success,
-            RowsExtracted = rows.Count, RowsInserted = resp.RowsInserted,
+            RowsExtracted = allRows.Count, RowsInserted = resp.RowsInserted,
             RowsUpdated   = resp.RowsUpdated, RowsSkipped = resp.RowsSkipped,
-            Duration      = extractDuration + sw.Elapsed, WatermarkDate = MaxUpdateDate(rows),
+            Duration      = extractDuration + sw.Elapsed, WatermarkDate = MaxUpdateDate(allRows),
             Error         = resp.Error
         };
     }

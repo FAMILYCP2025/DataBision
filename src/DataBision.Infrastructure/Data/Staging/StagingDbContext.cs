@@ -13,6 +13,7 @@ public sealed class StagingDbContext(DbContextOptions<StagingDbContext> options)
     public DbSet<ExtractionRun> ExtractionRuns => Set<ExtractionRun>();
     public DbSet<IngestCheckpoint> IngestCheckpoints => Set<IngestCheckpoint>();
     public DbSet<IngestAuditLog> IngestAuditLogs => Set<IngestAuditLog>();
+    public DbSet<CompanyProcessEnabled> CompanyProcessesEnabled => Set<CompanyProcessEnabled>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

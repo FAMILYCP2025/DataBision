@@ -21,6 +21,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{4D667B3D-9A1
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataBision.Extractor", "src\DataBision.Extractor\DataBision.Extractor.csproj", "{156EDBD7-1F65-4F09-8FF0-293A2187CB3C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataBision.Extractor.Tests", "tests\DataBision.Extractor.Tests\DataBision.Extractor.Tests.csproj", "{88888888-8888-8888-8888-888888888888}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -59,6 +61,10 @@ Global
 		{156EDBD7-1F65-4F09-8FF0-293A2187CB3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{156EDBD7-1F65-4F09-8FF0-293A2187CB3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{156EDBD7-1F65-4F09-8FF0-293A2187CB3C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{88888888-8888-8888-8888-888888888888}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{88888888-8888-8888-8888-888888888888}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{88888888-8888-8888-8888-888888888888}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{88888888-8888-8888-8888-888888888888}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{156EDBD7-1F65-4F09-8FF0-293A2187CB3C} = {4D667B3D-9A1F-45B0-8805-A0DA2355F4E0}

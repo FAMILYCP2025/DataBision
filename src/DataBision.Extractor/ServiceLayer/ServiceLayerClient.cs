@@ -134,6 +134,9 @@ public sealed class ServiceLayerClient : IServiceLayerClient, IDisposable
     public Task<JsonArray> GetAsync(string entity, string query, CancellationToken ct = default)
         => RetryHelper.ExecuteAsync(c => GetOnceAsync(entity, query, c), $"SL.Get({entity})", _log, ct);
 
+    public Task<ServiceLayerPage> GetPageAsync(string entity, string query, CancellationToken ct = default)
+        => GetPageOnceAsync(entity, query, ct);
+
     private async Task<JsonArray> GetOnceAsync(string entity, string query, CancellationToken ct)
     {
         if (_session is null || _session.IsExpired)
@@ -185,6 +188,61 @@ public sealed class ServiceLayerClient : IServiceLayerClient, IDisposable
         _log.LogWarning("Unexpected response structure from {Entity}. Raw: {Json}", entity,
             json.Length > 500 ? json[..500] + "..." : json);
         return [];
+    }
+
+    private async Task<ServiceLayerPage> GetPageOnceAsync(string entity, string query, CancellationToken ct)
+    {
+        if (_session is null || _session.IsExpired)
+            throw new InvalidOperationException("Not logged in. Call LoginAsync first.");
+
+        if (_session.IsNearExpiry)
+        {
+            _log.LogInformation("Session near expiry — renewing before request.");
+            await LoginAsync(ct);
+        }
+
+        var url = string.IsNullOrWhiteSpace(query)
+            ? entity
+            : $"{entity}?{query.TrimStart('?')}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("Cookie", _session.Cookie);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var response = await _http.SendAsync(request, ct);
+        sw.Stop();
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            _log.LogWarning("HTTP 401 (page) — session expired. Re-logging in.");
+            _session = null;
+            await LoginAsync(ct);
+            return await GetPageOnceAsync(entity, query, ct);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(
+                $"GET {entity} failed. HTTP {(int)response.StatusCode}: {body}");
+        }
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        _log.LogDebug("GET {Entity} (page) completed in {Ms} ms", entity, sw.ElapsedMilliseconds);
+
+        var doc = JsonNode.Parse(json);
+        if (doc is JsonObject obj)
+        {
+            var rows = obj["value"] as JsonArray ?? [];
+            var nextLink = obj["@odata.nextLink"]?.ToString();
+            return new ServiceLayerPage(rows, nextLink);
+        }
+
+        if (doc is JsonArray directArr)
+            return new ServiceLayerPage(directArr, null);
+
+        _log.LogWarning("Unexpected response structure from {Entity} (page)", entity);
+        return new ServiceLayerPage([], null);
     }
 
     public void Dispose()

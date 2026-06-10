@@ -33,6 +33,7 @@ if (args.Contains("--service"))
             services.AddSingleton(apiOptions);
             services.AddSingleton<IServiceLayerClient, ServiceLayerClient>();
             services.AddSingleton<IDataBisionIngestClient, DataBisionIngestClient>();
+            services.AddSingleton<ServiceLayerPaginator>();
             services.AddSingleton<OslpExtractorJob>();
             services.AddSingleton<OcrdExtractorJob>();
             services.AddSingleton<OitmExtractorJob>();
@@ -87,6 +88,7 @@ services.AddSingleton(apiOptions);
 services.AddSingleton(extOptions);
 services.AddSingleton<IServiceLayerClient, ServiceLayerClient>();
 services.AddSingleton<IDataBisionIngestClient, DataBisionIngestClient>();
+services.AddSingleton<ServiceLayerPaginator>();
 services.AddSingleton<OslpExtractorJob>();
 services.AddSingleton<OcrdExtractorJob>();
 services.AddSingleton<OitmExtractorJob>();

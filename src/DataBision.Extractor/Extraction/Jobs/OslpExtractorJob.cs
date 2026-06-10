@@ -10,8 +10,8 @@ using Microsoft.Extensions.Logging;
 namespace DataBision.Extractor.Extraction.Jobs;
 
 /// <summary>
-/// Extracts SalesPersons (OSLP) from SAP B1 Service Layer.
-/// Full-refresh strategy: UpdateDate not available in SalesPersons on SL 1000290.
+/// Extracts SalesPersons (OSLP). Full-refresh — UpdateDate not available in SL 1000290.
+/// Paginator handles multi-page extraction.
 /// </summary>
 public sealed class OslpExtractorJob : IExtractorJob
 {
@@ -20,19 +20,22 @@ public sealed class OslpExtractorJob : IExtractorJob
     private const string Endpoint = "api/ingest/sap-b1/salespersons";
     private const string Select   = "SalesEmployeeCode,SalesEmployeeName";
 
-    private readonly IServiceLayerClient    _sl;
-    private readonly IDataBisionIngestClient _ingest;
-    private readonly ExtractorOptions       _options;
+    private readonly IServiceLayerClient       _sl;
+    private readonly IDataBisionIngestClient   _ingest;
+    private readonly ExtractorOptions          _options;
     private readonly ILogger<OslpExtractorJob> _log;
+    private readonly ServiceLayerPaginator     _paginator;
 
     public OslpExtractorJob(
         IServiceLayerClient sl, IDataBisionIngestClient ingest,
-        ExtractorOptions options, ILogger<OslpExtractorJob> log)
+        ExtractorOptions options, ILogger<OslpExtractorJob> log,
+        ServiceLayerPaginator paginator)
     {
-        _sl      = sl;
-        _ingest  = ingest;
-        _options = options;
-        _log     = log;
+        _sl        = sl;
+        _ingest    = ingest;
+        _options   = options;
+        _log       = log;
+        _paginator = paginator;
     }
 
     public async Task<ExtractionResult> RunAsync(bool dryRun, bool send, CancellationToken ct = default)
@@ -42,14 +45,19 @@ public sealed class OslpExtractorJob : IExtractorJob
         var sw = Stopwatch.StartNew();
         try
         {
-            var query = $"$top={_options.PageSize}&$select={Select}";
-            _log.LogInformation("OSLP: fetching (strategy=full-refresh, top={Top})", _options.PageSize);
+            _log.LogInformation("OSLP: fetching (strategy=full-refresh, pageSize={Top})", _options.PageSize);
 
-            var rows = await _sl.GetAsync("SalesPersons", query, ct);
+            var result = await _paginator.PaginateAsync(
+                SapObject, "SalesPersons", $"$select={Select}",
+                _options.PageSize, _options.MaxPages, ct);
+
             sw.Stop();
 
-            _log.LogInformation("OSLP: {Count} rows in {Ms}ms", rows.Count, sw.ElapsedMilliseconds);
-            LogSample(rows);
+            _log.LogInformation("OSLP: {Count} rows in {Ms}ms", result.AllRows.Count, sw.ElapsedMilliseconds);
+            LogSample(result.AllRows);
+
+            if (result.LastError is not null)
+                throw new InvalidOperationException(result.LastError);
 
             if (!send)
             {
@@ -57,12 +65,12 @@ public sealed class OslpExtractorJob : IExtractorJob
                 {
                     SapObject     = SapObject,
                     Success       = true,
-                    RowsExtracted = rows.Count,
+                    RowsExtracted = result.AllRows.Count,
                     Duration      = sw.Elapsed
                 };
             }
 
-            return await SendAsync(rows, sw.Elapsed, ct);
+            return await SendAsync(result.AllRows, sw.Elapsed, ct);
         }
         catch (Exception ex)
         {
@@ -72,16 +80,16 @@ public sealed class OslpExtractorJob : IExtractorJob
         }
     }
 
-    private async Task<ExtractionResult> SendAsync(JsonArray rows, TimeSpan extractDuration, CancellationToken ct)
+    private async Task<ExtractionResult> SendAsync(JsonArray allRows, TimeSpan extractDuration, CancellationToken ct)
     {
         var sw     = Stopwatch.StartNew();
         var runId  = Guid.NewGuid().ToString("N");
         var batchId = Guid.NewGuid().ToString("N");
         var ctx    = new MappingContext(runId, batchId, DateTime.UtcNow, _options.Mode);
 
-        var mapped = rows.Where(r => r is not null)
-                         .Select(r => SapToIngestMapper.MapOslpRow(r!, ctx))
-                         .ToList();
+        var mapped = allRows.Where(r => r is not null)
+                            .Select(r => SapToIngestMapper.MapOslpRow(r!, ctx))
+                            .ToList();
 
         var batch = new IngestBatch<SapOslpRow>
         {
@@ -107,7 +115,7 @@ public sealed class OslpExtractorJob : IExtractorJob
         {
             SapObject     = SapObject,
             Success       = resp.Success,
-            RowsExtracted = rows.Count,
+            RowsExtracted = allRows.Count,
             RowsInserted  = resp.RowsInserted,
             RowsUpdated   = resp.RowsUpdated,
             RowsSkipped   = resp.RowsSkipped,
