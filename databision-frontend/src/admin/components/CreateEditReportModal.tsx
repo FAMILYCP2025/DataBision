@@ -31,6 +31,7 @@ export default function CreateEditReportModal({ companyId, moduleId, reportId, o
 
   useEffect(() => {
     if (report) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(report.name)
       setDescription(report.description || '')
       setWorkspaceId(report.workspaceId || '')
@@ -62,8 +63,9 @@ export default function CreateEditReportModal({ companyId, moduleId, reportId, o
       queryClient.invalidateQueries({ queryKey: ['admin', 'companies', companyId, 'modules', moduleId, 'reports'] })
       onClose()
     },
-    onError: (err: any) => {
-      setError(err?.response?.data?.message || 'Error al guardar reporte.')
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { message?: string } } }
+      setError(axiosErr?.response?.data?.message ?? 'Error al guardar reporte.')
     }
   })
 

@@ -30,6 +30,7 @@ export default function CompanyDetailPage() {
 
   React.useEffect(() => {
     if (company) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(company.name)
       setStatus(company.status)
       setPlanName(company.planName)

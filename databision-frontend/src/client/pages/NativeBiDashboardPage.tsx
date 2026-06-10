@@ -3,6 +3,8 @@ import KpiCard from '../components/nativebi/KpiCard'
 import SalesBarChart from '../components/nativebi/SalesBarChart'
 import TopCustomersTable from '../components/nativebi/TopCustomersTable'
 import SyncStatusWidget from '../components/nativebi/SyncStatusWidget'
+import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
+import { NbErrorState } from '../components/nativebi/NativeBiState'
 
 function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
@@ -27,24 +29,18 @@ export default function NativeBiDashboardPage() {
 
   return (
     <div className="cp-page">
-      <div className="cp-page-header">
-        <div>
-          <h1 className="cp-page-title">Dashboard</h1>
-          <p className="cp-page-subtitle">
-            {updatedAt ? `Datos actualizados: ${updatedAt}` : 'Resumen ejecutivo de ventas'}
-          </p>
-        </div>
-        <SyncStatusWidget />
-      </div>
+      <NativeBiPageHeader
+        title="Dashboard"
+        description={updatedAt ? `Datos actualizados: ${updatedAt}` : 'Resumen ejecutivo de ventas'}
+        actions={<SyncStatusWidget />}
+      />
 
       {errorSummary && (
-        <div className="db-alert db-alert--error">
-          Error al cargar el resumen. Intenta recargar la página.
-        </div>
+        <NbErrorState message="Error al cargar el resumen. Intenta recargar la página." />
       )}
 
       {/* KPI Cards */}
-      <div className="db-stats-grid">
+      <div className="nb-card-grid">
         <KpiCard
           label="Ventas netas"
           value={summary ? fmtAmt(summary.netSalesAmount) : '—'}

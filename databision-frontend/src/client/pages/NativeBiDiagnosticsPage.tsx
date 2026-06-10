@@ -1,16 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { useNativeBiDiagnostics, useNativeBiTableCounts } from '../hooks/useNativeBiDiagnostics'
 import { useClientAuthStore } from '../store/useClientAuthStore'
-import type { SyncStatusLevel } from '../types/nativeBi'
-
-function badgeClass(s: SyncStatusLevel) {
-  switch (s) {
-    case 'ok':      return 'db-badge db-badge--success'
-    case 'warning': return 'db-badge db-badge--warning'
-    case 'error':   return 'db-badge db-badge--danger'
-    default:        return 'db-badge db-badge--neutral'
-  }
-}
+import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
+import NativeBiStatusBadge from '../components/nativebi/NativeBiStatusBadge'
+import { NbLoadingSkeleton, NbErrorState } from '../components/nativebi/NativeBiState'
 
 function fmtDatetime(iso: string | null) {
   if (!iso) return '—'
@@ -58,39 +51,36 @@ export default function NativeBiDiagnosticsPage() {
 
   return (
     <div className="cp-page">
-      <div className="cp-page-header">
-        <div>
-          <h1 className="cp-page-title">Diagnósticos Native BI</h1>
-          <p className="cp-page-subtitle">Estado del pipeline de datos — vista técnica</p>
-        </div>
-        <button
-          className="db-btn db-btn--ghost db-btn--sm"
-          onClick={() => void refetchDiag()}
-        >
-          Actualizar
-        </button>
-      </div>
+      <NativeBiPageHeader
+        title="Diagnósticos"
+        description="Estado del pipeline de datos — vista técnica"
+        actions={
+          <button
+            className="db-btn db-btn--ghost db-btn--sm"
+            aria-label="Actualizar diagnósticos"
+            onClick={() => void refetchDiag()}
+          >
+            Actualizar
+          </button>
+        }
+      />
 
       {/* Health checks */}
       <div className="db-card">
         <div className="db-card-header">
           <span className="db-card-title">Verificaciones del sistema</span>
-          {diag && <span className={badgeClass(diag.status)}>{diag.status}</span>}
+          {diag && <NativeBiStatusBadge status={diag.status} />}
         </div>
 
         {loadingDiag ? (
-          <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="cp-skeleton" style={{ height: 44, borderRadius: 6 }} />
-            ))}
-          </div>
+          <NbLoadingSkeleton rows={5} height={44} />
         ) : errDiag ? (
-          <div className="db-alert db-alert--error" style={{ margin: 16 }}>
-            Error al cargar diagnósticos:{' '}
-            {diagErr instanceof Error ? diagErr.message : 'Error desconocido'}
-          </div>
+          <NbErrorState
+            message={`Error al cargar diagnósticos: ${diagErr instanceof Error ? diagErr.message : 'Error desconocido'}`}
+            onRetry={() => void refetchDiag()}
+          />
         ) : (
-          <div className="db-table-wrapper">
+          <div className="nb-table-scroll">
             <table className="db-table">
               <thead>
                 <tr>
@@ -113,7 +103,7 @@ export default function NativeBiDiagnosticsPage() {
                       <code className="db-code">{c.name}</code>
                     </td>
                     <td>
-                      <span className={badgeClass(c.status)}>{c.status}</span>
+                      <NativeBiStatusBadge status={c.status} label={c.status} />
                     </td>
                     <td style={{ color: 'var(--c-text-muted)', fontSize: 13 }}>
                       {c.detail ?? '—'}
@@ -146,11 +136,9 @@ export default function NativeBiDiagnosticsPage() {
         </div>
 
         {loadingTables ? (
-          <div style={{ padding: 24 }}>
-            <div className="cp-skeleton" style={{ height: 180, borderRadius: 6 }} />
-          </div>
+          <NbLoadingSkeleton rows={1} height={180} />
         ) : (
-          <div className="db-table-wrapper">
+          <div className="nb-table-scroll">
             <table className="db-table">
               <thead>
                 <tr>

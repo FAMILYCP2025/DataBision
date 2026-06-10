@@ -17,6 +17,7 @@ export default function BrandingSettingsPage() {
 
   React.useEffect(() => {
     if (branding) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalBrand(branding)
     }
   }, [branding])

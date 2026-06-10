@@ -31,6 +31,7 @@ export default function EditUserPage() {
 
   React.useEffect(() => {
     if (user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFirstName(user.firstName)
       setLastName(user.lastName)
       setRole(user.role)

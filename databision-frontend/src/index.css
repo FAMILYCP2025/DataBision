@@ -1720,3 +1720,89 @@
 
 .db-text-right { text-align: right; }
 
+/* ── Native BI — responsive utilities (Sprint 7F) ─────────────────────────── */
+
+.nb-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.nb-page-header__left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nb-page-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nb-page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* KPI card grid: 4 cols → 2 cols → 1 col */
+.nb-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* Generic responsive grid */
+.nb-grid {
+  display: grid;
+  gap: 16px;
+}
+
+/* Horizontally-scrollable table wrapper */
+.nb-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Flex row that stacks vertically on small screens */
+.nb-mobile-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .nb-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 540px) {
+  .nb-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nb-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nb-page-header__actions {
+    flex-shrink: unset;
+  }
+
+  .nb-mobile-stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+

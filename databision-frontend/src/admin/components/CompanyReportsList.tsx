@@ -24,6 +24,7 @@ export default function CompanyReportsList({ companyId }: { companyId: number })
   // Auto-select first module when loaded
   React.useEffect(() => {
     if (modules.length > 0 && !selectedModuleId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedModuleId(modules[0].id)
     }
   }, [modules, selectedModuleId])

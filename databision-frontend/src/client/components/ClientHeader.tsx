@@ -8,7 +8,7 @@ export default function ClientHeader() {
   const user = useClientAuthStore((s) => s.user)
 
   const currentModule = modules?.find((m) => m.slug === moduleSlug)
-  const companyName = (user as any)?.companyName ?? 'Mi Empresa'
+  const companyName = (user as { companyName?: string } | null)?.companyName ?? 'Mi Empresa'
 
   return (
     <header className="cp-header">

@@ -53,6 +53,7 @@ export default function PermissionsSettingsPage() {
           map[`${group.userId}-${p.moduleSlug}-${p.reportId}`] = p.enabled
         })
       })
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalPerms(map)
     }
   }, [permissionGroups])

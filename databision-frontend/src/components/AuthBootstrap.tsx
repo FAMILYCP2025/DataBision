@@ -59,6 +59,7 @@ export default function AuthBootstrap({ context, children }: Props) {
     const needsRefresh = persistedAuth && !getAccessToken()
 
     if (!needsRefresh) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHydrating(false)
       return () => { cancelled = true }
     }

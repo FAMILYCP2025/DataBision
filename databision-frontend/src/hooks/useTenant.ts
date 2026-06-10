@@ -29,6 +29,7 @@ export function useTenant() {
   // Apply cached theme immediately to prevent flash
   useEffect(() => {
     if (branding) applyTheme(branding)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return { branding: query.data ?? branding, slug, isLoading: query.isLoading }

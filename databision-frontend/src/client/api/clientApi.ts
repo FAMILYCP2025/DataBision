@@ -93,7 +93,7 @@ export async function getReportsByModule(moduleSlug: string): Promise<ClientRepo
 
   const { data } = await api.get<ApiResponse<ClientReport[]>>(`/modules/${moduleSlug}/reports${tenantParam}`)
   
-  return data.data.map((r: any) => ({
+  return data.data.map((r) => ({
     id: r.id,
     name: r.name,
     description: r.description,

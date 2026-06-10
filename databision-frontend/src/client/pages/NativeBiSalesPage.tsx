@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import DateRangePicker from '../components/nativebi/DateRangePicker'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
+import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import {
   useSalesOverview,
   useSalesCustomers,
@@ -205,21 +206,20 @@ export default function NativeBiSalesPage() {
 
   return (
     <div className="cp-page">
-      {/* Header */}
-      <div className="cp-page-header" style={{ flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 className="cp-page-title">Ventas</h1>
-          <p className="cp-page-subtitle">Análisis de ventas por rango de fechas</p>
-        </div>
-        <DateRangePicker
-          dateFrom={dates.dateFrom}
-          dateTo={dates.dateTo}
-          onChange={(dateFrom, dateTo) => setDates({ dateFrom, dateTo })}
-        />
-      </div>
+      <NativeBiPageHeader
+        title="Ventas"
+        description="Análisis de ventas por rango de fechas"
+        actions={
+          <DateRangePicker
+            dateFrom={dates.dateFrom}
+            dateTo={dates.dateTo}
+            onChange={(dateFrom, dateTo) => setDates({ dateFrom, dateTo })}
+          />
+        }
+      />
 
       {/* Overview cards */}
-      <div className="db-stats-grid">
+      <div className="nb-card-grid">
         {loadingOv ? (
           Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="db-stat-card">
@@ -261,12 +261,17 @@ export default function NativeBiSalesPage() {
       <div className="db-card">
         {/* Tab bar */}
         <div
-          className="db-card-header"
-          style={{ paddingLeft: 4, paddingRight: 16, gap: 0, borderBottom: '1px solid var(--c-border)' }}
+          className="db-card-header nb-tab-bar"
+          style={{ paddingLeft: 4, paddingRight: 16, gap: 0, borderBottom: '1px solid var(--c-border)', overflowX: 'auto' }}
+          role="tablist"
+          aria-label="Secciones de ventas"
         >
           {tabs.map((t) => (
             <button
               key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              aria-controls={`tab-panel-${t.id}`}
               onClick={() => setTab(t.id)}
               style={{
                 padding: '0 16px',

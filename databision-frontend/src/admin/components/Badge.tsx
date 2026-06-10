@@ -1,3 +1,5 @@
+import React from 'react'
+
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'neutral' | 'info'
 
 interface BadgeProps {
@@ -16,12 +18,11 @@ const variantMap: Record<string, BadgeVariant> = {
   false: 'danger',
 }
 
-export function statusBadge(status: string): React.ReactElement {
-  return <Badge label={status} variant={variantMap[status] ?? 'neutral'} />
-}
-
-import React from 'react'
-
 export default function Badge({ label, variant = 'neutral' }: BadgeProps) {
   return <span className={`db-badge db-badge--${variant}`}>{label}</span>
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function statusBadge(status: string): React.ReactElement {
+  return <Badge label={status} variant={variantMap[status] ?? 'neutral'} />
 }
