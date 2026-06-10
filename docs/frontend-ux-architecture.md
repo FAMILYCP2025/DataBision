@@ -672,6 +672,78 @@ Todos los gráficos tienen un menú contextual (ícono `⋮` en la esquina super
 
 La exportación de imagen usa el método `echartsInstance.getDataURL()` de ECharts. Incluye el logo del tenant en la esquina inferior derecha de la imagen exportada.
 
+### 8.8. Implementación actual — Native BI Portal (Sprints 7A–7H)
+
+> Esta subsección documenta el estado **implementado** del módulo Native BI a 2026-06-08.
+> La sección 8.1–8.7 describe la especificación de diseño target; esta subsección es el estado real del código.
+
+#### Rutas y páginas
+
+| Ruta | Componente | Acceso |
+|---|---|---|
+| `/client/bi/dashboard` | `NativeBiDashboardPage` | Todos los usuarios |
+| `/client/bi/sales` | `NativeBiSalesPage` | Todos los usuarios |
+| `/client/bi/diagnostics` | `NativeBiDiagnosticsPage` | Solo `CompanyAdmin` |
+
+#### Estructura de archivos
+
+```
+src/client/
+├── pages/
+│   ├── NativeBiDashboardPage.tsx
+│   ├── NativeBiSalesPage.tsx
+│   └── NativeBiDiagnosticsPage.tsx
+├── components/nativebi/
+│   ├── NativeBiPageHeader.tsx      ← header compartido (título + badge + acciones)
+│   ├── NativeBiStatusBadge.tsx     ← badge de estado SyncStatusLevel
+│   ├── NativeBiState.tsx           ← NbLoadingSkeleton, NbErrorState, NbEmptyState
+│   ├── KpiCard.tsx
+│   ├── SalesBarChart.tsx           ← ECharts BarChart (ventas diarias)
+│   ├── TopCustomersTable.tsx
+│   ├── SyncStatusWidget.tsx        ← widget inline para el header
+│   ├── DateRangePicker.tsx
+│   └── SortableTable.tsx           ← tabla genérica paginable y ordenable
+├── hooks/
+│   ├── useNativeBiDashboard.ts     ← useDashboardSummary, useDashboardSalesDaily, useTopCustomers
+│   ├── useNativeBiSales.ts         ← useSalesOverview, useSalesCustomers, useSalesItems, useSalesSalespersons
+│   └── useNativeBiDiagnostics.ts   ← useNativeBiDiagnostics, useNativeBiTableCounts
+└── types/
+    └── nativeBi.ts                 ← todos los tipos del módulo (SyncStatusLevel, NbPagedMeta, etc.)
+```
+
+#### API endpoints consumidos
+
+| Endpoint | Hook | Página |
+|---|---|---|
+| `GET /api/client/bi/dashboard/summary` | `useDashboardSummary` | Dashboard |
+| `GET /api/client/bi/dashboard/sales-daily` | `useDashboardSalesDaily` | Dashboard |
+| `GET /api/client/bi/dashboard/top-customers` | `useTopCustomers` | Dashboard |
+| `GET /api/client/bi/sales/overview` | `useSalesOverview` | Ventas |
+| `GET /api/client/bi/sales/customers` | `useSalesCustomers` | Ventas |
+| `GET /api/client/bi/sales/items` | `useSalesItems` | Ventas |
+| `GET /api/client/bi/sales/salespersons` | `useSalesSalespersons` | Ventas |
+| `GET /api/client/bi/diagnostics` | `useNativeBiDiagnostics` | Diagnósticos |
+| `GET /api/client/bi/diagnostics/table-counts` | `useNativeBiTableCounts` | Diagnósticos |
+
+#### Clases CSS `nb-*` (Sprint 7F — `src/index.css`)
+
+| Clase | Propósito | Breakpoints |
+|---|---|---|
+| `nb-page-header` | Header flex con actions | `flex-direction: column` @ 540px |
+| `nb-card-grid` | Grid KPI 4 columnas | 2 col @ 900px · 1 col @ 540px |
+| `nb-table-scroll` | `overflow-x: auto` para tablas | — |
+| `nb-mobile-stack` | Flex wrap para controles | `flex-direction: column` @ 540px |
+| `nb-grid` | Grid genérico con gap | — |
+| `nb-tab-bar` | Tab bar con `overflow-x: auto` | — |
+
+#### Convenciones de componentes compartidos
+
+- **`NativeBiPageHeader`** — todos los NativeBi pages usan este componente. Props: `title`, `description?`, `badge?` (default `'Native BI'`), `actions?`.
+- **`NativeBiStatusBadge`** — mapea `SyncStatusLevel` (`ok` · `warning` · `error` · `unknown`) a clases `db-badge--*`.
+- **`NbLoadingSkeleton`** — skeletons con `cp-skeleton`. Props: `rows` (default 5), `height` (default 44px).
+- **`NbErrorState`** — alerta de error con botón opcional de reintento. Props: `message?`, `onRetry?`.
+- **`NbEmptyState`** — estado vacío con ícono SVG. Props: `message?`, `icon?` (`'table'` · `'chart'` · `'search'`).
+
 ---
 
 ## 9. Módulo 05 — Ventas

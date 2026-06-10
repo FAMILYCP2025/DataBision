@@ -1410,5 +1410,57 @@ Veinte reglas que definen qué puede y qué no puede hacer la interfaz de DataBi
 
 ---
 
-*Documento de especificación de pantallas — versión 1.0 — 2026-06-03*  
+## 20. Estado de Implementación — Sprints 7A–7H
+
+> **Última actualización:** 2026-06-08 — Sprints 7A–7H completados.
+
+### 20.1. Pantallas implementadas
+
+| Spec | Pantalla | Estado | Sprint | Observaciones |
+|---|---|---|---|---|
+| Spec 04 (parcial) | Dashboard Ejecutivo | ✅ Implementado | 7A–7E | KPI Strip (4 cards), SalesBarChart (30 días), TopCustomersTable. Faltan: comparación período, DonutChart, granularidad. |
+| Spec 05 (parcial) | Ventas | ✅ Implementado | 7A–7E | Overview cards, tabs Clientes/Productos/Vendedores con SortableTable, DateRangePicker. Faltan: gráficos de tendencia, drilldown, exportación. |
+| Spec 10 (parcial) | Diagnósticos / Sync Center | ✅ Implementado | 7A–7E | Health checks table, table row counts, SyncStatusWidget inline. Faltan: timeline de jobs, alertas configurables. |
+| Spec 01–03 | Cockpit, AR/CxC, Compras | ❌ No implementado | — | Fuera del alcance de Sprints 7A–7H. |
+| Spec 06–09 | Clientes, Productos, Inventario, Vendedores | ❌ No implementado | — | Fuera del alcance. |
+| Spec 11–12 | Flujo de caja, Margen | ❌ No implementado | — | Fuera del alcance. |
+
+### 20.2. Componentes construidos (Sprints 7A–7H)
+
+| Componente | Tipo | Sprint | Ubicación |
+|---|---|---|---|
+| `KpiCard` | Visual | 7A | `components/nativebi/KpiCard.tsx` |
+| `SalesBarChart` | ECharts | 7A | `components/nativebi/SalesBarChart.tsx` |
+| `TopCustomersTable` | Tabla | 7A | `components/nativebi/TopCustomersTable.tsx` |
+| `SyncStatusWidget` | Estado | 7A | `components/nativebi/SyncStatusWidget.tsx` |
+| `DateRangePicker` | Filtro | 7B | `components/nativebi/DateRangePicker.tsx` |
+| `SortableTable` | Tabla genérica | 7B | `components/nativebi/SortableTable.tsx` |
+| `NativeBiPageHeader` | Layout compartido | 7E | `components/nativebi/NativeBiPageHeader.tsx` |
+| `NativeBiStatusBadge` | Badge compartido | 7E | `components/nativebi/NativeBiStatusBadge.tsx` |
+| `NbLoadingSkeleton` | Estado compartido | 7E | `components/nativebi/NativeBiState.tsx` |
+| `NbErrorState` | Estado compartido | 7E | `components/nativebi/NativeBiState.tsx` |
+| `NbEmptyState` | Estado compartido | 7E | `components/nativebi/NativeBiState.tsx` |
+
+### 20.3. Rutas activas
+
+```
+/client/bi/dashboard   → NativeBiDashboardPage
+/client/bi/sales       → NativeBiSalesPage
+/client/bi/diagnostics → NativeBiDiagnosticsPage  (solo CompanyAdmin)
+```
+
+### 20.4. Clases CSS NativeBI (`nb-*`)
+
+| Clase | Propósito |
+|---|---|
+| `nb-page-header` | Header flex responsivo con acciones |
+| `nb-card-grid` | Grid KPI 4→2→1 col (breakpoints 900px / 540px) |
+| `nb-table-scroll` | Wrapper `overflow-x: auto` para tablas |
+| `nb-mobile-stack` | Flex wrap para controles en mobile |
+| `nb-grid` | Grid genérico con gap |
+| `nb-tab-bar` | Tab bar con scroll horizontal |
+
+---
+
+*Documento de especificación de pantallas — versión 1.1 — 2026-06-08*  
 *Relacionado: `frontend-ux-architecture.md` · `dashboard-information-architecture.md`*
