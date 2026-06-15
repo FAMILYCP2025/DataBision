@@ -37,6 +37,63 @@ public sealed class TransformationRunner(string connectionString, ILogger<Transf
         return (stg, mart);
     }
 
+    // Dashboard tables populated by mart.refresh_all_processes
+    private static readonly (string Table, string Label)[] ProcessDashboardTables =
+    [
+        ("mart.sales_customer_dashboard",    "sales_customer_dashboard"),
+        ("mart.sales_item_dashboard",        "sales_item_dashboard"),
+        ("mart.sales_fulfillment_dashboard", "sales_fulfillment_dashboard"),
+        ("mart.finance_ar_aging_dashboard",  "finance_ar_aging_dashboard"),
+        ("mart.finance_ap_aging_dashboard",  "finance_ap_aging_dashboard"),
+        ("mart.finance_executive_daily",     "finance_executive_daily"),
+        ("mart.inventory_rotation_dashboard","inventory_rotation_dashboard"),
+        ("mart.inventory_stock_dashboard",   "inventory_stock_dashboard"),
+        ("mart.inventory_warehouse_dashboard","inventory_warehouse_dashboard"),
+        ("mart.purchase_executive_daily",    "purchase_executive_daily"),
+        ("mart.purchase_supplier_dashboard", "purchase_supplier_dashboard"),
+        ("mart.purchase_receiving_dashboard","purchase_receiving_dashboard"),
+    ];
+
+    public async Task<IReadOnlyList<(string Object, int RowsAffected)>> RefreshProcessMartAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        logger.LogInformation("MART process-dashboard refresh starting — company_id={CompanyId}", companyId);
+        try
+        {
+            await using var conn = new NpgsqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+
+            // mart.refresh_all_processes returns VOID — use ExecuteNonQueryAsync
+            await using (var cmd = new NpgsqlCommand(
+                "SELECT mart.refresh_all_processes(@company_id)", conn))
+            {
+                cmd.Parameters.AddWithValue("company_id", companyId);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            // Query row counts per dashboard table to report results
+            var results = new List<(string, int)>();
+            foreach (var (table, label) in ProcessDashboardTables)
+            {
+                await using var countCmd = new NpgsqlCommand(
+                    $"SELECT COUNT(*)::int FROM {table} WHERE company_id = @company_id", conn);
+                countCmd.Parameters.AddWithValue("company_id", companyId);
+                var count = (int)(await countCmd.ExecuteScalarAsync(ct) ?? 0);
+                results.Add((label, count));
+                logger.LogInformation("  mart.refresh_all_processes.{Label}: {Count} row(s)", label, count);
+            }
+
+            logger.LogInformation("MART process-dashboard refresh complete — {Count} table(s) populated", results.Count);
+            return results;
+        }
+        catch (Npgsql.PostgresException pgEx) when (pgEx.SqlState == "42883")
+        {
+            // 42883 = undefined_function — migration not yet applied
+            logger.LogError("mart.refresh_all_processes does not exist in Supabase. Apply Sprint 8C migrations first.");
+            throw;
+        }
+    }
+
     private async Task<IReadOnlyList<(string, int)>> ExecuteFunctionAsync(
         string functionName, string companyId, CancellationToken ct)
     {

@@ -83,6 +83,30 @@ var slOptions  = config.GetSection(SapServiceLayerOptions.Section).Get<SapServic
 var apiOptions = config.GetSection(DataBisionApiOptions.Section).Get<DataBisionApiOptions>()       ?? new DataBisionApiOptions();
 var extOptions = config.GetSection(ExtractorOptions.Section).Get<ExtractorOptions>()               ?? new ExtractorOptions();
 
+// CLI overrides for PageSize / MaxPages — parsed before DI so all jobs receive overridden values
+{
+    var pgIdx = Array.IndexOf(args, "--page-size");
+    var mpIdx = Array.IndexOf(args, "--max-pages");
+    int? cliPg = pgIdx >= 0 && pgIdx + 1 < args.Length && int.TryParse(args[pgIdx + 1], out var pg) && pg > 0 ? pg : null;
+    int? cliMp = mpIdx >= 0 && mpIdx + 1 < args.Length && int.TryParse(args[mpIdx + 1], out var mp) && mp > 0 ? mp : null;
+    if (cliPg.HasValue || cliMp.HasValue)
+    {
+        extOptions = new ExtractorOptions
+        {
+            TenantId        = extOptions.TenantId,
+            CompanyId       = extOptions.CompanyId,
+            Mode            = extOptions.Mode,
+            PageSize        = cliPg ?? extOptions.PageSize,
+            MaxPages        = cliMp ?? extOptions.MaxPages,
+            LookbackMinutes = extOptions.LookbackMinutes,
+            Objects         = extOptions.Objects,
+            SendEnabled     = extOptions.SendEnabled,
+            IntervalMinutes = extOptions.IntervalMinutes,
+            MaxCycles       = extOptions.MaxCycles,
+        };
+    }
+}
+
 services.AddSingleton(slOptions);
 services.AddSingleton(apiOptions);
 services.AddSingleton(extOptions);
@@ -126,9 +150,12 @@ if (args.Contains("--help") || args.Contains("-h"))
         Options:
           --help, -h                     Show this help
           --validate                     Test Service Layer login + GET OSLP top 5 + logout
+          --validate-staging             Validate Supabase schemas and table counts (no SAP required)
           --dry-run                      Show resolved configuration (no connections)
           --object <name>                Extract single object: OSLP|OCRD|OITM|OINV|INV1|ORIN|RIN1|ALL
           --object <name> --send         Extract and send to DataBision Ingest API
+          --page-size N                  Override Extractor.PageSize for this run (default from config)
+          --max-pages N                  Override Extractor.MaxPages for this run (default from config)
           --run-once [--send]            Extract Extractor.Objects list once and exit
           --schedule [--send]            Run Extractor.Objects in a loop (Ctrl+C to stop)
           --interval-minutes N           Override Extractor.IntervalMinutes (default 30)
@@ -140,7 +167,9 @@ if (args.Contains("--help") || args.Contains("-h"))
 
         Examples:
           dotnet run -- --validate
+          dotnet run -- --validate-staging
           dotnet run -- --object OCRD --send
+          dotnet run -- --object OINV --send --page-size 20 --max-pages 2
           dotnet run -- --run-once --send
           dotnet run -- --schedule --interval-minutes 30 --send
           dotnet run -- --schedule --interval-minutes 1 --max-cycles 1 --send
@@ -209,6 +238,72 @@ if (isDryRun && !args.Contains("--validate") && objectArg is null && !isRunOnce 
     }
     log.LogInformation("=== DRY-RUN: configuration OK ===");
     return 0;
+}
+
+// ── --validate-staging ─────────────────────────────────────────────────────────
+if (args.Contains("--validate-staging"))
+{
+    var stagingOpts = config.GetSection(StagingOptions.Section).Get<StagingOptions>() ?? new StagingOptions();
+    try { stagingOpts.Validate(); }
+    catch (InvalidOperationException ex)
+    {
+        log.LogError("Staging config error: {Message}", ex.Message);
+        return 2;
+    }
+
+    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    try
+    {
+        await using var conn = new Npgsql.NpgsqlConnection(stagingOpts.ConnectionString);
+        await conn.OpenAsync(cts.Token);
+        log.LogInformation("[VS-01] PASS — Supabase connection open");
+
+        async Task<long> Scalar(string sql)
+        {
+            await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+            var r = await cmd.ExecuteScalarAsync(cts.Token);
+            return r is long l ? l : r is int i ? i : 0L;
+        }
+
+        // Schemas — reader closed before any subsequent commands
+        var schemas = new List<string>();
+        {
+            await using var schemaCmd = new Npgsql.NpgsqlCommand(
+                "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('ctl','raw','stg','mart','cfg','ops') ORDER BY schema_name;", conn);
+            await using var sr = await schemaCmd.ExecuteReaderAsync(cts.Token);
+            while (await sr.ReadAsync(cts.Token)) schemas.Add(sr.GetString(0));
+        }
+        log.LogInformation("[VS-02] Schemas present: {Schemas}", string.Join(", ", schemas));
+
+        // cfg counts
+        var cfgProcess   = await Scalar("SELECT COUNT(*) FROM cfg.process;");
+        var cfgDashboard = await Scalar("SELECT COUNT(*) FROM cfg.dashboard;");
+        var cfgCpe       = await Scalar("SELECT COUNT(*) FROM cfg.company_process_enabled;");
+        log.LogInformation("[VS-03] cfg.process={Proc}, cfg.dashboard={Dash}, cfg.company_process_enabled={Cpe}",
+            cfgProcess, cfgDashboard, cfgCpe);
+
+        // ops.alert_rule
+        var alertRules = await Scalar("SELECT COUNT(*) FROM ops.alert_rule;");
+        log.LogInformation("[VS-04] ops.alert_rule={Rules} (expected 8)", alertRules);
+
+        // table list cfg/mart/ops — reader closed before return
+        var tables = new List<string>();
+        {
+            await using var tabCmd = new Npgsql.NpgsqlCommand(
+                "SELECT table_schema || '.' || table_name FROM information_schema.tables WHERE table_schema IN ('cfg','mart','ops') ORDER BY table_schema, table_name;", conn);
+            await using var tr2 = await tabCmd.ExecuteReaderAsync(cts.Token);
+            while (await tr2.ReadAsync(cts.Token)) tables.Add(tr2.GetString(0));
+        }
+        log.LogInformation("[VS-05] Tables ({Count}): {Tables}", tables.Count, string.Join(", ", tables));
+
+        log.LogInformation("=== --validate-staging: ALL PASS ===");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        log.LogError(ex, "=== --validate-staging: FAIL — {Message}", ex.Message);
+        return 3;
+    }
 }
 
 // ── Full config validation ────────────────────────────────────────────────────
@@ -381,17 +476,25 @@ if (isTransform || isTransformMart)
     {
         if (isTransformMart)
         {
-            // MART only
+            // MART only (base + process dashboards)
             log.LogInformation("=== MART Transform: company={CompanyId} ===", companyId);
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var results = await transformRunner.RefreshMartAsync(companyId, cts.Token);
             sw.Stop();
-            log.LogInformation("=== MART Transform: DONE — {Count} object(s) in {Ms}ms ===",
+            log.LogInformation("=== MART base done — {Count} object(s) in {Ms}ms ===",
                 results.Count, sw.ElapsedMilliseconds);
+
+            var swProc = System.Diagnostics.Stopwatch.StartNew();
+            var procResults = await transformRunner.RefreshProcessMartAsync(companyId, cts.Token);
+            swProc.Stop();
+            log.LogInformation("=== MART process-dashboards done — {Count} object(s) in {Ms}ms ===",
+                procResults.Count, swProc.ElapsedMilliseconds);
+            log.LogInformation("=== MART Transform: DONE (base {BaseMs}ms + processes {ProcMs}ms) ===",
+                sw.ElapsedMilliseconds, swProc.ElapsedMilliseconds);
         }
         else if (includeMart)
         {
-            // STG then MART
+            // STG then MART base then MART process dashboards
             log.LogInformation("=== STG+MART Transform: company={CompanyId} ===", companyId);
             var swStg = System.Diagnostics.Stopwatch.StartNew();
             var stgResults = await transformRunner.RefreshStgAsync(companyId, cts.Token);
@@ -402,10 +505,16 @@ if (isTransform || isTransformMart)
             var swMart = System.Diagnostics.Stopwatch.StartNew();
             var martResults = await transformRunner.RefreshMartAsync(companyId, cts.Token);
             swMart.Stop();
-            log.LogInformation("=== MART done — {Count} object(s) in {Ms}ms ===",
+            log.LogInformation("=== MART base done — {Count} object(s) in {Ms}ms ===",
                 martResults.Count, swMart.ElapsedMilliseconds);
-            log.LogInformation("=== STG+MART Transform: COMPLETE (STG {StgMs}ms + MART {MartMs}ms) ===",
-                swStg.ElapsedMilliseconds, swMart.ElapsedMilliseconds);
+
+            var swProc = System.Diagnostics.Stopwatch.StartNew();
+            var procResults = await transformRunner.RefreshProcessMartAsync(companyId, cts.Token);
+            swProc.Stop();
+            log.LogInformation("=== MART process-dashboards done — {Count} object(s) in {Ms}ms ===",
+                procResults.Count, swProc.ElapsedMilliseconds);
+            log.LogInformation("=== STG+MART Transform: COMPLETE (STG {StgMs}ms + MART {MartMs}ms + proc {ProcMs}ms) ===",
+                swStg.ElapsedMilliseconds, swMart.ElapsedMilliseconds, swProc.ElapsedMilliseconds);
         }
         else
         {

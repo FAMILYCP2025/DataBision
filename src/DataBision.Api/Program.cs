@@ -75,6 +75,14 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
     builder.Services.AddScoped<IDiagnosticsRepository>(_ =>
         new DiagnosticsRepository(stagingConnectionString));
     builder.Services.AddScoped<IDiagnosticsService, DiagnosticsService>();
+
+    // Process catalog + process dashboards (cfg.* + mart new tables + ops.*)
+    builder.Services.AddScoped<IProcessRepository>(_ =>
+        new ProcessRepository(stagingConnectionString));
+    builder.Services.AddScoped<IProcessDashboardRepository>(_ =>
+        new ProcessDashboardRepository(stagingConnectionString));
+    builder.Services.AddScoped<IProcessService, ProcessService>();
+    builder.Services.AddScoped<IProcessDashboardService, ProcessDashboardService>();
 }
 
 // Application services
