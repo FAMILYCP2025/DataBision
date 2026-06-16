@@ -26,7 +26,7 @@ function fmtDate(iso: string | null) {
   })
 }
 
-type Tab = 'ar' | 'ap'
+type Tab = 'ar' | 'ap' | 'risk'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -38,6 +38,7 @@ function initPag(sortBy: string): PaginationParams {
 const tabs: { id: Tab; label: string }[] = [
   { id: 'ar', label: 'Cuentas por cobrar (AR)' },
   { id: 'ap', label: 'Cuentas por pagar (AP)' },
+  { id: 'risk', label: 'Riesgo +90d' },
 ]
 
 export default function FinanceDashboardPage() {
@@ -50,11 +51,13 @@ export default function FinanceDashboardPage() {
   const { data: apData, isLoading: loadingAp } = useBiFinanceApAging(apP)
 
   // KPIs from most recent period
-  const latest     = execData && execData.length > 0 ? execData[execData.length - 1] : null
-  const totalArOv  = execData?.reduce((s, d) => s + d.arOverdue, 0) ?? 0
+  const latest      = execData && execData.length > 0 ? execData[execData.length - 1] : null
+  const totalArOv   = execData?.reduce((s, d) => s + d.arOverdue, 0) ?? 0
   const totalInvAmt = execData?.reduce((s, d) => s + d.newInvoicesAmount, 0) ?? 0
   const totalInvCnt = execData?.reduce((s, d) => s + d.newInvoicesCount, 0) ?? 0
-  const avgOvPct   = latest?.arOverduePct ?? 0
+  const avgOvPct    = latest?.arOverduePct ?? 0
+  // Clients with aging over 90 days (client-side filter from already-fetched AR data)
+  const riskItems   = arData?.data.filter((r) => r.aging90Plus > 0) ?? []
 
   const arCols: ColumnDef<FinanceArAging>[] = [
     {
@@ -271,6 +274,22 @@ export default function FinanceDashboardPage() {
               onSortChange={(sortBy, sortDir) => setApP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
               isLoading={loadingAp}
               rowKey={(r) => r.supplierCode}
+            />
+          )
+        )}
+
+        {tab === 'risk' && (
+          riskItems.length === 0 && !loadingAr ? (
+            <NbEmptyState message="Sin cuentas con aging superior a 90 días en el período analizado." icon="table" />
+          ) : (
+            <SortableTable
+              data={riskItems}
+              columns={arCols}
+              meta={{ limit: riskItems.length, offset: 0, count: riskItems.length, hasMore: false }}
+              isLoading={loadingAr}
+              rowKey={(r) => r.cardCode}
+              onPageChange={() => {}}
+              onSortChange={() => {}}
             />
           )
         )}

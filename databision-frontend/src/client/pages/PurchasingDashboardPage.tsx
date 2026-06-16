@@ -8,7 +8,7 @@ import {
   useBiPurchasingSuppliers,
   useBiPurchasingReceiving,
 } from '../hooks/useProcessBi'
-import type { PurchasingSupplier, PurchasingReceiving } from '../types/processBi'
+import type { PurchasingSupplier, PurchasingReceiving, PurchasingExecutive } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
 
 function fmtAmt(n: number) {
@@ -22,7 +22,7 @@ function fmtDate(iso: string | null) {
   })
 }
 
-type Tab = 'suppliers' | 'receiving'
+type Tab = 'suppliers' | 'receiving' | 'evolution'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -34,6 +34,7 @@ function initPag(sortBy: string): PaginationParams {
 const tabs: { id: Tab; label: string }[] = [
   { id: 'suppliers', label: 'Proveedores' },
   { id: 'receiving', label: 'Recepciones' },
+  { id: 'evolution', label: 'Evolución OC (30d)' },
 ]
 
 export default function PurchasingDashboardPage() {
@@ -50,6 +51,44 @@ export default function PurchasingDashboardPage() {
   const totalPoAmt   = execData?.reduce((s, d) => s + d.poAmount, 0) ?? 0
   const totalRecvAmt = execData?.reduce((s, d) => s + d.receivedAmount, 0) ?? 0
   const maxSuppliers = execData?.reduce((m, d) => Math.max(m, d.activeSuppliers), 0) ?? 0
+
+  const execCols: ColumnDef<PurchasingExecutive>[] = [
+    {
+      key: 'date',
+      label: 'Fecha',
+      render: (r) => fmtDate(r.purchaseDate),
+    },
+    {
+      key: 'poCount',
+      label: 'OC',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.poCount}</span>,
+    },
+    {
+      key: 'poAmount',
+      label: 'Monto OC',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.poAmount)}</span>,
+    },
+    {
+      key: 'receivedCount',
+      label: 'Recepciones',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.receivedCount}</span>,
+    },
+    {
+      key: 'receivedAmount',
+      label: 'Monto recibido',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.receivedAmount)}</span>,
+    },
+    {
+      key: 'activeSuppliers',
+      label: 'Prov. activos',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.activeSuppliers}</span>,
+    },
+  ]
 
   const suppCols: ColumnDef<PurchasingSupplier>[] = [
     {
@@ -218,6 +257,22 @@ export default function PurchasingDashboardPage() {
               onSortChange={(sortBy, sortDir) => setRecvP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
               isLoading={loadingRecv}
               rowKey={(r) => r.supplierCode}
+            />
+          )
+        )}
+
+        {tab === 'evolution' && (
+          !execData || execData.length === 0 ? (
+            <NbEmptyState message="Sin datos de evolución de órdenes de compra en el período." icon="chart" />
+          ) : (
+            <SortableTable
+              data={execData}
+              columns={execCols}
+              meta={{ limit: execData.length, offset: 0, count: execData.length, hasMore: false }}
+              isLoading={loadingExec}
+              rowKey={(r) => r.purchaseDate}
+              onPageChange={() => {}}
+              onSortChange={() => {}}
             />
           )
         )}

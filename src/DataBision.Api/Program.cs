@@ -85,6 +85,9 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
     builder.Services.AddScoped<IProcessDashboardService, ProcessDashboardService>();
 }
 
+// Analytics company ID resolver (maps app slug → staging company_id for Native BI queries)
+builder.Services.AddScoped<IAnalyticsCompanyResolver, AnalyticsCompanyResolver>();
+
 // Application services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITenantService, TenantService>();
@@ -115,12 +118,26 @@ builder.Services.AddValidatorsFromAssemblyContaining<DataBision.Application.Vali
 // Disable JWT claim name mapping so "role" stays "role" (not remapped to ClaimTypes.Role URI)
 JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
+// Resolves a PEM key from direct content, escaped-newline content, or a file path.
+// Never logs resolved key material.
+static string ResolvePemKey(string pemOrPath, string configKey)
+{
+    var candidate = pemOrPath.Replace("\\n", "\n");
+    if (candidate.Contains("-----BEGIN", StringComparison.Ordinal))
+        return candidate;
+    if (File.Exists(candidate))
+        return File.ReadAllText(candidate);
+    throw new InvalidOperationException(
+        $"Configuration key '{configKey}' must contain PEM content (starting with '-----BEGIN...') " +
+        "or a valid file path to a PEM file.");
+}
+
 // JWT Authentication (RS256)
 var publicKeyPem = builder.Configuration["Jwt:PublicKey"];
 if (!string.IsNullOrEmpty(publicKeyPem))
 {
     var rsa = RSA.Create();
-    rsa.ImportFromPem(publicKeyPem);
+    rsa.ImportFromPem(ResolvePemKey(publicKeyPem, "Jwt:PublicKey"));
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(opts =>

@@ -56,6 +56,10 @@ export default function ClientSidebar() {
     ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U'
 
+  // Show Módulos section only while loading or when at least one module has reports.
+  // Hides it entirely when Power BI has no reports assigned (native BI demo scenario).
+  const hasVisibleModules = isLoading || Boolean(modules?.some((m) => m.reportCount > 0))
+
   async function handleLogout() {
     const currentTenant = useClientAuthStore.getState().tenant || localStorage.getItem('databision-tenant')
     try { await clientLogout() } catch { /* ignore */ }
@@ -79,36 +83,34 @@ export default function ClientSidebar() {
         </div>
       </div>
 
-      {/* Nav — Modules */}
-      <nav className="cp-sidebar-nav">
-        <p className="cp-nav-section-label">Módulos</p>
+      {/* Nav — Modules (hidden when Power BI has no reports assigned) */}
+      {hasVisibleModules && (
+        <nav className="cp-sidebar-nav">
+          <p className="cp-nav-section-label">Módulos</p>
 
-        {isLoading && (
-          <div className="cp-nav-loading">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="cp-nav-skeleton" />
-            ))}
-          </div>
-        )}
+          {isLoading && (
+            <div className="cp-nav-loading">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="cp-nav-skeleton" />
+              ))}
+            </div>
+          )}
 
-        {!isLoading && modules?.length === 0 && (
-          <p className="cp-nav-empty">Sin módulos asignados</p>
-        )}
-
-        {modules?.map((mod) => (
-          <NavLink
-            key={mod.slug}
-            to={`/client/modules/${mod.slug}`}
-            className={({ isActive }) =>
-              `cp-nav-item${isActive || moduleSlug === mod.slug ? ' cp-nav-item--active' : ''}`
-            }
-          >
-            <ModuleIcon name={mod.icon} />
-            <span className="cp-nav-label">{mod.name}</span>
-            <span className="cp-nav-count">{mod.reportCount}</span>
-          </NavLink>
-        ))}
-      </nav>
+          {modules?.map((mod) => (
+            <NavLink
+              key={mod.slug}
+              to={`/client/modules/${mod.slug}`}
+              className={({ isActive }) =>
+                `cp-nav-item${isActive || moduleSlug === mod.slug ? ' cp-nav-item--active' : ''}`
+              }
+            >
+              <ModuleIcon name={mod.icon} />
+              <span className="cp-nav-label">{mod.name}</span>
+              <span className="cp-nav-count">{mod.reportCount}</span>
+            </NavLink>
+          ))}
+        </nav>
+      )}
 
       {/* Native BI */}
       <nav className="cp-sidebar-nav" style={{ marginTop: 4 }}>

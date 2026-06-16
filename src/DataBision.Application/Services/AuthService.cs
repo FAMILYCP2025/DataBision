@@ -120,7 +120,7 @@ public class AuthService(IAuthRepository repository, IConfiguration config) : IA
             ?? throw new InvalidOperationException("Jwt:PrivateKey not configured");
 
         var rsa = RSA.Create();
-        rsa.ImportFromPem(privateKeyPem);
+        rsa.ImportFromPem(ResolvePemKey(privateKeyPem, "Jwt:PrivateKey"));
 
         var claims = new List<Claim>
         {
@@ -146,6 +146,27 @@ public class AuthService(IAuthRepository repository, IConfiguration config) : IA
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    /// <summary>
+    /// Resolves a PEM key from: direct PEM content, escaped-newline PEM, or a file path.
+    /// Never logs the resolved content.
+    /// </summary>
+    private static string ResolvePemKey(string pemOrPath, string configKey)
+    {
+        // Normalize escaped newlines (common when stored in JSON or env vars as \n literals)
+        var candidate = pemOrPath.Replace("\\n", "\n");
+
+        if (candidate.Contains("-----BEGIN", StringComparison.Ordinal))
+            return candidate;
+
+        if (File.Exists(candidate))
+            return File.ReadAllText(candidate);
+
+        throw new InvalidOperationException(
+            $"Configuration key '{configKey}' must contain PEM content (starting with '-----BEGIN...') " +
+            "or a valid file path to a PEM file. " +
+            "Check that appsettings, user-secrets, or environment variable is set correctly.");
     }
 
     private static string GenerateRawRefreshToken()

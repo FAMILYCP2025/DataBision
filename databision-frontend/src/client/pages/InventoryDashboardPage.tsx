@@ -36,7 +36,7 @@ const ROTATION_COLOR: Record<string, string> = {
   NO_MOVEMENT: '#94A3B8',
 }
 
-type Tab = 'rotation' | 'warehouses'
+type Tab = 'rotation' | 'warehouses' | 'no-movement'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -48,6 +48,7 @@ function initPag(sortBy: string): PaginationParams {
 const tabs: { id: Tab; label: string }[] = [
   { id: 'rotation', label: 'Rotación' },
   { id: 'warehouses', label: 'Almacenes' },
+  { id: 'no-movement', label: 'Sin movimiento' },
 ]
 
 export default function InventoryDashboardPage() {
@@ -57,11 +58,12 @@ export default function InventoryDashboardPage() {
   const { data: rotData, isLoading: loadingRot, error: rotErr, refetch: refetchRot } = useBiInventoryRotation(rotP)
   const { data: whData, isLoading: loadingWh, error: whErr, refetch: refetchWh } = useBiInventoryWarehouses()
 
-  const allRotation = rotData?.data ?? []
-  const fastCount   = allRotation.filter((r) => r.rotationStatus === 'FAST').length
-  const normalCount = allRotation.filter((r) => r.rotationStatus === 'NORMAL').length
-  const slowCount   = allRotation.filter((r) => r.rotationStatus === 'SLOW').length
-  const noMoveCount = allRotation.filter((r) => r.rotationStatus === 'NO_MOVEMENT').length
+  const allRotation    = rotData?.data ?? []
+  const fastCount      = allRotation.filter((r) => r.rotationStatus === 'FAST').length
+  const normalCount    = allRotation.filter((r) => r.rotationStatus === 'NORMAL').length
+  const slowCount      = allRotation.filter((r) => r.rotationStatus === 'SLOW').length
+  const noMoveCount    = allRotation.filter((r) => r.rotationStatus === 'NO_MOVEMENT').length
+  const noMoveItems    = allRotation.filter((r) => r.rotationStatus === 'NO_MOVEMENT')
 
   const rotCols: ColumnDef<InventoryRotation>[] = [
     {
@@ -266,6 +268,22 @@ export default function InventoryDashboardPage() {
               meta={{ limit: whData?.length ?? 0, offset: 0, count: whData?.length ?? 0, hasMore: false }}
               isLoading={false}
               rowKey={(r) => r.warehouseCode}
+              onPageChange={() => {}}
+              onSortChange={() => {}}
+            />
+          )
+        )}
+
+        {tab === 'no-movement' && (
+          noMoveItems.length === 0 && !loadingRot ? (
+            <NbEmptyState message="Sin artículos sin movimiento en el período analizado." icon="table" />
+          ) : (
+            <SortableTable
+              data={noMoveItems}
+              columns={rotCols}
+              meta={{ limit: noMoveItems.length, offset: 0, count: noMoveItems.length, hasMore: false }}
+              isLoading={rotLoading}
+              rowKey={(r) => r.itemCode}
               onPageChange={() => {}}
               onSortChange={() => {}}
             />

@@ -1,4 +1,5 @@
 using DataBision.Application.DTOs.Dashboard;
+using DataBision.Application.Interfaces;
 using DataBision.Application.Interfaces.Dashboard;
 using DataBision.Application.Services.Dashboard;
 using FluentAssertions;
@@ -10,7 +11,15 @@ namespace DataBision.Application.Tests.Services;
 public sealed class ProcessDashboardServiceTests
 {
     private readonly Mock<IProcessDashboardRepository> _repo = new();
-    private ProcessDashboardService NewService() => new(_repo.Object);
+    private readonly Mock<IAnalyticsCompanyResolver> _resolver = new();
+
+    private ProcessDashboardService NewService()
+    {
+        // Pass-through resolver: returns the companyId unchanged so test assertions
+        // on which company_id reaches the repo remain exact.
+        _resolver.Setup(r => r.Resolve(It.IsAny<string>())).Returns<string>(id => id);
+        return new(_repo.Object, _resolver.Object);
+    }
 
     // ── Pagination clamping ───────────────────────────────────────────────────
 

@@ -36,7 +36,7 @@ const STATUS_COLOR: Record<string, string> = {
   unknown: '#94A3B8',
 }
 
-type Tab = 'alerts' | 'dq'
+type Tab = 'alerts' | 'dq' | 'runs'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -48,6 +48,7 @@ function initPag(): PaginationParams {
 const tabs: { id: Tab; label: string }[] = [
   { id: 'alerts', label: 'Alertas' },
   { id: 'dq', label: 'Calidad de datos' },
+  { id: 'runs', label: 'Historial runs' },
 ]
 
 function StatusDot({ status }: { status: string }) {
@@ -326,6 +327,48 @@ export default function OperationsDashboardPage() {
               isLoading={loadingDq}
               rowKey={(r) => String(r.id)}
             />
+          )
+        )}
+
+        {tab === 'runs' && (
+          !health ? (
+            <NbEmptyState message="Sin datos de pipeline disponibles." icon="chart" />
+          ) : (
+            <div style={{ padding: '20px 24px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '220px 1fr',
+                  gap: '10px 16px',
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                  maxWidth: 560,
+                }}
+              >
+                <span style={{ color: 'var(--c-text-muted)', fontWeight: 500 }}>Último extractor run</span>
+                <span>{fmtUtc(health.lastExtractorRunUtc)}</span>
+                <span style={{ color: 'var(--c-text-muted)', fontWeight: 500 }}>Estado extractor</span>
+                <span style={{ fontWeight: 600, color: STATUS_COLOR[health.extractorStatus] ?? '#94A3B8' }}>
+                  {health.extractorStatus.toUpperCase()}
+                </span>
+                <span style={{ color: 'var(--c-text-muted)', fontWeight: 500 }}>Último transform run</span>
+                <span>{fmtUtc(health.lastTransformRunUtc)}</span>
+                <span style={{ color: 'var(--c-text-muted)', fontWeight: 500 }}>Estado transform</span>
+                <span style={{ fontWeight: 600, color: STATUS_COLOR[health.transformStatus] ?? '#94A3B8' }}>
+                  {health.transformStatus.toUpperCase()}
+                </span>
+                <span style={{ color: 'var(--c-text-muted)', fontWeight: 500 }}>Objetos extraídos</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {health.objectsExtracted.toLocaleString('es-CL')}
+                </span>
+                <span style={{ color: 'var(--c-text-muted)', fontWeight: 500 }}>Health score</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                  {health.healthScore} / 100
+                </span>
+                <span style={{ color: 'var(--c-text-muted)', fontWeight: 500 }}>Última actualización</span>
+                <span style={{ color: 'var(--c-text-faint)', fontSize: 12 }}>{fmtUtc(health.updatedAtUtc)}</span>
+              </div>
+            </div>
           )
         )}
       </div>
