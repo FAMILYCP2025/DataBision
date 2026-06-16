@@ -2,12 +2,14 @@ import { useState } from 'react'
 import DateRangePicker from '../components/nativebi/DateRangePicker'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
+import { NbEmptyState } from '../components/nativebi/NativeBiState'
 import {
   useSalesOverview,
   useSalesCustomers,
   useSalesItems,
   useSalesSalespersons,
 } from '../hooks/useNativeBiSales'
+import { useBiSalesFulfillment } from '../hooks/useProcessBi'
 import type {
   CustomerSales,
   ItemSales,
@@ -15,6 +17,7 @@ import type {
   NbPagedMeta,
   PaginationParams,
 } from '../types/nativeBi'
+import type { SalesFulfillment } from '../types/processBi'
 
 function defaultDates() {
   const to = new Date()
@@ -39,7 +42,7 @@ function fmtDate(iso: string | null) {
   })
 }
 
-type Tab = 'customers' | 'items' | 'salespersons'
+type Tab = 'customers' | 'items' | 'salespersons' | 'fulfillment'
 
 const LIMIT = 20
 
@@ -61,6 +64,7 @@ export default function NativeBiSalesPage() {
   const { data: custData, isLoading: loadingCust } = useSalesCustomers(custP)
   const { data: itemData, isLoading: loadingItems } = useSalesItems(itemP)
   const { data: spData, isLoading: loadingSp } = useSalesSalespersons(spP)
+  const { data: fulfillData, isLoading: loadingFulfill } = useBiSalesFulfillment(30)
 
   // ── Column definitions ───────────────────────────────────────────────────
 
@@ -198,10 +202,53 @@ export default function NativeBiSalesPage() {
 
   // ── Tab labels ───────────────────────────────────────────────────────────
 
+  const fulfillCols: ColumnDef<SalesFulfillment>[] = [
+    {
+      key: 'date',
+      label: 'Fecha',
+      render: (r) => fmtDate(r.periodDate),
+    },
+    {
+      key: 'ordersCount',
+      label: 'Pedidos',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.ordersCount}</span>,
+    },
+    {
+      key: 'ordersAmount',
+      label: 'Monto pedidos',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.ordersAmount)}</span>,
+    },
+    {
+      key: 'deliveredCount',
+      label: 'Entregas',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.deliveredCount}</span>,
+    },
+    {
+      key: 'fillRate',
+      label: 'Tasa cumplimiento',
+      align: 'right',
+      render: (r) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: (r.fillRatePct ?? 0) < 80 ? '#D97706' : '#16A34A' }}>
+          {r.fillRatePct !== null ? `${r.fillRatePct.toFixed(1)}%` : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'pendingOrders',
+      label: 'Pendientes',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.pendingOrders}</span>,
+    },
+  ]
+
   const tabs: { id: Tab; label: string }[] = [
     { id: 'customers', label: 'Clientes' },
     { id: 'items', label: 'Productos' },
     { id: 'salespersons', label: 'Vendedores' },
+    { id: 'fulfillment', label: 'Fulfillment' },
   ]
 
   return (
@@ -343,6 +390,28 @@ export default function NativeBiSalesPage() {
             isLoading={loadingSp}
             rowKey={(r) => r.salesPersonCode}
           />
+        )}
+
+        {tab === 'fulfillment' && (
+          loadingFulfill ? (
+            <div style={{ padding: 24 }}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="cp-skeleton" style={{ height: 44, marginBottom: 4 }} />
+              ))}
+            </div>
+          ) : !fulfillData || fulfillData.length === 0 ? (
+            <NbEmptyState message="Sin datos de fulfillment en el período." icon="chart" />
+          ) : (
+            <SortableTable
+              data={fulfillData}
+              columns={fulfillCols}
+              meta={{ limit: fulfillData.length, offset: 0, count: fulfillData.length, hasMore: false }}
+              isLoading={false}
+              rowKey={(r) => r.periodDate}
+              onPageChange={() => {}}
+              onSortChange={() => {}}
+            />
+          )
         )}
       </div>
     </div>

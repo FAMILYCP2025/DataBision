@@ -139,6 +139,58 @@ export default function ClientSidebar() {
           </span>
           <span className="cp-nav-label">Ventas</span>
         </NavLink>
+        <NavLink
+          to="/client/bi/purchasing"
+          className={({ isActive }) =>
+            `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`
+          }
+        >
+          <span className="cp-nav-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" />
+            </svg>
+          </span>
+          <span className="cp-nav-label">Compras</span>
+        </NavLink>
+        <NavLink
+          to="/client/bi/inventory"
+          className={({ isActive }) =>
+            `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`
+          }
+        >
+          <span className="cp-nav-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="16.5" y1="9.4" x2="7.5" y2="4.21" /><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" />
+            </svg>
+          </span>
+          <span className="cp-nav-label">Inventario</span>
+        </NavLink>
+        <NavLink
+          to="/client/bi/finance"
+          className={({ isActive }) =>
+            `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`
+          }
+        >
+          <span className="cp-nav-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+          </span>
+          <span className="cp-nav-label">Finanzas</span>
+        </NavLink>
+        <NavLink
+          to="/client/bi/operations"
+          className={({ isActive }) =>
+            `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`
+          }
+        >
+          <span className="cp-nav-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+          </span>
+          <span className="cp-nav-label">Operaciones</span>
+        </NavLink>
         {user?.role === 'CompanyAdmin' && (
           <NavLink
             to="/client/bi/diagnostics"
@@ -148,7 +200,7 @@ export default function ClientSidebar() {
           >
             <span className="cp-nav-icon">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 0-14.14 0" /><path d="M4.93 19.07a10 10 0 0 0 14.14 0" />
               </svg>
             </span>
             <span className="cp-nav-label">Diagnósticos</span>

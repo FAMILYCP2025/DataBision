@@ -14,6 +14,10 @@ import BrandingSettingsPage from './pages/settings/BrandingSettingsPage'
 import NativeBiDashboardPage from './pages/NativeBiDashboardPage'
 import NativeBiSalesPage from './pages/NativeBiSalesPage'
 import NativeBiDiagnosticsPage from './pages/NativeBiDiagnosticsPage'
+import PurchasingDashboardPage from './pages/PurchasingDashboardPage'
+import InventoryDashboardPage from './pages/InventoryDashboardPage'
+import FinanceDashboardPage from './pages/FinanceDashboardPage'
+import OperationsDashboardPage from './pages/OperationsDashboardPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +50,10 @@ export default function ClientApp() {
                 <Route path="/client/bi/dashboard" element={<NativeBiDashboardPage />} />
                 <Route path="/client/bi/sales" element={<NativeBiSalesPage />} />
                 <Route path="/client/bi/diagnostics" element={<NativeBiDiagnosticsPage />} />
+                <Route path="/client/bi/purchasing" element={<PurchasingDashboardPage />} />
+                <Route path="/client/bi/inventory" element={<InventoryDashboardPage />} />
+                <Route path="/client/bi/finance" element={<FinanceDashboardPage />} />
+                <Route path="/client/bi/operations" element={<OperationsDashboardPage />} />
               </Route>
             </Route>
 
