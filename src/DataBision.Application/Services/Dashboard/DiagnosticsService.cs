@@ -40,7 +40,7 @@ public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosti
 
         // 3. MART tables populated
         var tables = canConnect
-            ? await SafeCheck(() => repo.GetTableCountsAsync(companyId, ct))
+            ? await SafeCheck<IReadOnlyList<TableCountDto>?>(() => repo.GetTableCountsAsync(companyId, ct))
             : null;
 
         var martRows       = tables?.Where(t => t.Schema == "mart").ToList() ?? [];
@@ -97,7 +97,7 @@ public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosti
     public async Task<NativeBiTableCountsDto> GetTableCountsAsync(
         string companyId, CancellationToken ct = default)
     {
-        var tables = await SafeCheck(() => repo.GetTableCountsAsync(companyId, ct))
+        var tables = await SafeCheck<IReadOnlyList<TableCountDto>?>(() => repo.GetTableCountsAsync(companyId, ct))
                      ?? [];
 
         return new NativeBiTableCountsDto

@@ -258,7 +258,7 @@ export default function InventoryDashboardPage() {
               ))}
             </div>
           ) : whData?.length === 0 ? (
-            <NbEmptyState message="Sin datos de almacenes." icon="table" />
+            <NbEmptyState message="Stock por almacén pendiente de habilitar según endpoint disponible en Service Layer. Actualmente se muestran movimientos y rotación." icon="table" />
           ) : (
             <SortableTable
               data={whData ?? []}

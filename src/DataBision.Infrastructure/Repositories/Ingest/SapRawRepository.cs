@@ -12,9 +12,11 @@ namespace DataBision.Infrastructure.Repositories.Ingest;
 /// PostgreSQL xmax is used only for MVP insert/update counting.
 /// Revisit during hardening if stricter audit is required.
 /// </summary>
-public sealed class SapRawRepository(string connectionString, ILogger<SapRawRepository> _logger)
+public sealed class SapRawRepository(string connectionString, ILogger<SapRawRepository> logger)
     : ISapRawRepository
 {
+    private readonly ILogger<SapRawRepository> _log = logger;
+
     private NpgsqlConnection OpenConnection() => new(connectionString);
 
     private static (int inserted, int updated) CountResults(IEnumerable<int> results)

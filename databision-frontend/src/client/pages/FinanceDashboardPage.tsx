@@ -259,7 +259,7 @@ export default function FinanceDashboardPage() {
 
         {tab === 'ap' && (
           apData?.data.length === 0 && !loadingAp ? (
-            <NbEmptyState message="Sin datos de cuentas por pagar. AP aging en preparación." icon="table" />
+            <NbEmptyState message="Sin datos de cuentas por pagar en el ambiente de demo. Este indicador queda disponible al completar la carga histórica de facturas de proveedor." icon="table" />
           ) : (
             <SortableTable
               data={apData?.data ?? []}

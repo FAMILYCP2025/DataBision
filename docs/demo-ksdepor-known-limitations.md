@@ -1,6 +1,6 @@
 # Demo KSDEPOR — Limitaciones Conocidas
 
-Sprint 8L — Junio 2026
+Sprint 8M — Junio 2026 (actualizado desde Sprint 8L)
 
 Este documento lista las limitaciones conocidas del ambiente de demo. Ninguna es bloqueante para la demo comercial, pero el equipo debe conocerlas para responder preguntas del cliente con honestidad.
 
@@ -11,16 +11,17 @@ Este documento lista las limitaciones conocidas del ambiente de demo. Ninguna es
 ### OITW — Stock por almacén (no activo)
 
 - **Estado:** Preparado en catálogo pero no activo.
-- **Causa:** Service Layer de KSDEPOR responde "Unrecognized resource path" para el endpoint `/StockTransferLines` o similar usado para OITW.
-- **Impacto:** Los datos de stock por almacén en el dashboard de Inventario provienen de un cálculo alternativo, no del objeto OITW directo.
-- **Mitigación:** El dashboard de almacenes muestra datos del transform sobre OPDN/OWTR. En producción se revisará el endpoint correcto con el consultor SAP.
+- **Causa:** Service Layer de KSDEPOR responde "Unrecognized resource path" para el endpoint de OITW.
+- **Impacto:** El dashboard de Inventario (tab Almacenes) muestra datos derivados de transferencias de stock (OWTR), no del stock directo por almacén.
+- **Mensaje en UI:** "Stock por almacén pendiente de habilitar según endpoint disponible en Service Layer. Actualmente se muestran movimientos y rotación."
+- **Mitigación para producción:** Verificar el endpoint correcto de stock por almacén con el consultor SAP. El objeto `OITW` puede requerir una ruta diferente en esta versión de Service Layer.
 
-### OPDN — Recepciones de compra (error en última ejecución)
+### OPDN — Recepciones de compra (error en runs anteriores — CORREGIDO)
 
-- **Estado:** Objeto activo, pero la última ejecución registró ERROR.
-- **Causa probable:** Timeout transitorio del Service Layer o respuesta 4xx durante la última extracción nocturna.
-- **Impacto:** `purchase_receiving_dashboard` puede mostrar datos del penúltimo run exitoso, no de hoy.
-- **Mitigación:** El histórico de recepciones sigue disponible. Para demo: ejecutar un nuevo run antes de la sesión si es necesario.
+- **Estado:** ✅ CORREGIDO en Sprint 8M. Último run: SUCCESS (2026-06-16 03:22 UTC, 6 filas, 1 página).
+- **Causa del error anterior:** La API en `localhost:5103` no estaba activa durante runs programados. El extractor lee de SAP correctamente, pero envía los datos vía API REST. Si la API está apagada, el run registra ERROR aunque SAP respondió bien.
+- **Prevención:** Siempre levantar la API antes de correr extracciones con `--send`. Ver runbook en `demo-ksdepor-local-runbook.md`.
+- **Nota histórica:** Los 7 runs de OPDN en `extractor_run` incluyen 4 ERRORs históricos (API apagada) y 3 SUCCESS. El historial no se limpia — es parte de la trazabilidad del sistema.
 
 ---
 
@@ -33,10 +34,12 @@ Este documento lista las limitaciones conocidas del ambiente de demo. Ninguna es
 - Los volúmenes son menores a los que habría en una extracción completa de producción.
 - **Para demo:** Los datos son reales de KSDEPOR, pero el volumen no refleja la base completa de clientes/productos históricos.
 
-### AP Aging puede estar en cero
+### AP Aging puede estar vacío
 
-- El módulo de Cuentas por Pagar (AP aging) puede mostrar tabla vacía si los datos de `OPCH` (facturas de proveedor) no completaron el transform correctamente.
-- **Mitigación:** Ejecutar `--transform --include-mart` antes de demo. Si persiste vacío, mencionar que AP aging está en validación y mostrar AR aging que sí tiene datos.
+- El módulo de Cuentas por Pagar (AP aging) puede mostrar tabla vacía.
+- **Causa:** Los datos de `OPCH` (facturas de proveedor) pueden no estar completamente transformados.
+- **Mensaje en UI:** "Sin datos de cuentas por pagar en el ambiente de demo. Este indicador queda disponible al completar la carga histórica de facturas de proveedor."
+- **Mitigación:** Ejecutar `--transform --include-mart` antes de demo. Si persiste vacío, mencionar que AP aging requiere carga histórica completa.
 
 ### KPIs de inventario dependen del volumen extraído
 
@@ -47,15 +50,17 @@ Este documento lista las limitaciones conocidas del ambiente de demo. Ninguna es
 
 ## Alertas y Operaciones
 
-### Alertas OPS pueden repetirse
+### Alertas OPS — DEDUPLICACIÓN IMPLEMENTADA
 
-- Las alertas en `ops.alert_event` no tienen deduplicación activa aún.
-- Si una regla se evalúa en cada transform run, puede aparecer múltiples veces la misma alerta.
-- **Impacto en demo:** El contador de alertas puede ser alto. Explicar que en producción se implementará deduplicación con ventana temporal.
+- **Estado:** ✅ MITIGADO en Sprint 8M. Migración `20260616010000_DeduplicateOpsAlerts` aplicada.
+- **Qué cambió:** `ops.evaluate_alert_rules` ahora verifica `NOT EXISTS` antes de insertar. Si ya existe una alerta activa (no resuelta) para la misma company_id + rule_code, no se inserta otra igual.
+- **Evidencia:** `alert_event` permaneció en 44 eventos después de múltiples runs de prueba post-migración.
+- **Historial:** Los 44 eventos previos son históricos y no se eliminaron. Es trazabilidad válida del sistema.
 
 ### Health score calculado con datos parciales
 
 - `ops.pipeline_health.health_score` se calcula con los runs disponibles. En ambiente de desarrollo con pocas ejecuciones, puede mostrar un score conservador aunque el sistema esté funcionando bien.
+- Si `extractor_status` es ERROR (por OPDN fallida en el historial), el score puede reducirse hasta 60. Con OPDN SUCCESS, debería recuperarse en el próximo cálculo de pipeline health.
 
 ---
 
@@ -72,6 +77,16 @@ Este documento lista las limitaciones conocidas del ambiente de demo. Ninguna es
 - El tenant KSDEPOR en el ambiente de desarrollo usa los colores por defecto (`--brand-primary: #2563EB`).
 - En producción, cada empresa puede tener su propio logo, colores y nombre en el portal.
 - **Para demo:** Mencionar esta capacidad aunque no esté visible en el ambiente actual.
+
+---
+
+## Backend
+
+### Warnings menores eliminados
+
+- **Estado:** ✅ CORREGIDO en Sprint 8M. Backend build: 0 errores, **0 warnings**.
+- Corregido: `DiagnosticsService.cs` — tipo explícito en `SafeCheck<IReadOnlyList<TableCountDto>?>`.
+- Corregido: `SapRawRepository.cs` — `ILogger` almacenado en campo `_log` en lugar de parámetro primario sin usar.
 
 ---
 
@@ -96,15 +111,16 @@ Este documento lista las limitaciones conocidas del ambiente de demo. Ninguna es
 
 ---
 
-## Resumen para Presentador
+## Resumen para Presentador (actualizado Sprint 8M)
 
-| Limitación | Impacto demo | Qué decir si preguntan |
+| Limitación | Estado | Qué decir si preguntan |
 |---|---|---|
-| OITW no activo | Bajo | "Estamos validando el endpoint con SAP. Los almacenes se muestran desde datos derivados." |
-| OPDN error último run | Bajo | "La extracción es automática. Si hay un error puntual, el sistema lo registra y reintenta." |
-| Datos DEV/TST | Medio | "Estos son datos reales de su SAP en ambiente de prueba. Producción tendrá el historial completo." |
-| AP aging vacío | Medio | "AP aging está en validación. AR aging (cuentas por cobrar) está completo." |
-| Alertas repetidas | Bajo | "Las alertas se deduplicarán en la versión de producción." |
-| UX no final | Bajo | "El diseño visual puede ajustarse con los colores y logo de su empresa." |
+| OITW no activo | ⚠️ Pendiente | "Estamos validando el endpoint con SAP. Los almacenes se muestran desde datos derivados." |
+| OPDN error anterior | ✅ Corregido | "La extracción es automática. Si la API está apagada, el extractor lo registra y reintenta. Último run: SUCCESS." |
+| Datos DEV/TST | ⚠️ Esperado | "Estos son datos reales de su SAP en ambiente de prueba. Producción tendrá el historial completo." |
+| AP aging vacío | ⚠️ Pendiente datos | "AP aging está en validación. AR aging (cuentas por cobrar) está completo." |
+| Alertas repetidas | ✅ Mitigado | "Implementamos deduplicación. Las alertas no se repiten mientras estén activas." |
+| UX no final | ⚠️ Esperado | "El diseño visual puede ajustarse con los colores y logo de su empresa." |
 | JWT laxo en dev | Sin impacto | No es visible en demo. Solo aplica si alguien pregunta por seguridad. |
-| Power BI | Bajo | "Power BI está en el roadmap como capa adicional." |
+| Power BI | ⚠️ En roadmap | "Power BI está en el roadmap como capa adicional." |
+| Build warnings | ✅ Corregido | N/A — sin impacto en demo. |
