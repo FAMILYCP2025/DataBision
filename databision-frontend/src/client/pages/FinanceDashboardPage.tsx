@@ -241,7 +241,7 @@ export default function FinanceDashboardPage() {
 
         {tab === 'ar' && (
           arData?.data.length === 0 && !loadingAr ? (
-            <NbEmptyState message="Sin datos de cuentas por cobrar." icon="table" />
+            <NbEmptyState message="Sin datos de cuentas por cobrar en el período analizado." icon="table" />
           ) : (
             <SortableTable
               data={arData?.data ?? []}

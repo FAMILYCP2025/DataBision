@@ -234,7 +234,7 @@ export default function InventoryDashboardPage() {
 
         {tab === 'rotation' && (
           allRotation.length === 0 && !loadingRot ? (
-            <NbEmptyState message="Sin datos de rotación." icon="table" />
+            <NbEmptyState message="Sin datos de rotación de artículos en el período analizado." icon="table" />
           ) : (
             <SortableTable
               data={allRotation}

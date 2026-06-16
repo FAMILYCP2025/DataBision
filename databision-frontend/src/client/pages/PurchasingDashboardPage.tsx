@@ -188,7 +188,7 @@ export default function PurchasingDashboardPage() {
 
         {tab === 'suppliers' && (
           suppData?.data.length === 0 && !loadingSupp ? (
-            <NbEmptyState message="Sin datos de proveedores." icon="table" />
+            <NbEmptyState message="Sin datos de proveedores en el período analizado." icon="table" />
           ) : (
             <SortableTable
               data={suppData?.data ?? []}
@@ -206,7 +206,7 @@ export default function PurchasingDashboardPage() {
 
         {tab === 'receiving' && (
           recvData?.data.length === 0 && !loadingRecv ? (
-            <NbEmptyState message="Sin datos de recepciones." icon="table" />
+            <NbEmptyState message="Sin datos de recepciones en el período analizado." icon="table" />
           ) : (
             <SortableTable
               data={recvData?.data ?? []}

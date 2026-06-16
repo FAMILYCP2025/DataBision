@@ -177,7 +177,7 @@ export default function OperationsDashboardPage() {
     <div className="cp-page">
       <NativeBiPageHeader
         title="Operaciones"
-        description="Estado del pipeline de extracción y transformación"
+        description="Salud del pipeline de datos, alertas activas y calidad de datos"
       />
 
       {healthErr ? (
@@ -299,7 +299,7 @@ export default function OperationsDashboardPage() {
 
         {tab === 'alerts' && (
           alertData?.data.length === 0 && !loadingAlerts ? (
-            <NbEmptyState message="Sin alertas activas." icon="chart" />
+            <NbEmptyState message="Sin alertas activas. El pipeline no presenta alertas pendientes." icon="chart" />
           ) : (
             <SortableTable
               data={alertData?.data ?? []}
