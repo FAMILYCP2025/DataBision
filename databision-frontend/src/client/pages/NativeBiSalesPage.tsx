@@ -19,10 +19,13 @@ import type {
 } from '../types/nativeBi'
 import type { SalesFulfillment } from '../types/processBi'
 
+// Demo data spans several months back (SAP history load), so the default window
+// is wide (365 days) to ensure the overview KPIs reflect real data instead of an
+// empty last-30-days range. The user can still narrow it with the date picker.
 function defaultDates() {
   const to = new Date()
   const from = new Date()
-  from.setDate(from.getDate() - 30)
+  from.setDate(from.getDate() - 365)
   return {
     dateFrom: from.toISOString().slice(0, 10),
     dateTo: to.toISOString().slice(0, 10),

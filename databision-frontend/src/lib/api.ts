@@ -101,9 +101,23 @@ function redirectToLogin() {
 }
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // DEV-only safe diagnostics: endpoint, status, row count. Never logs token/body.
+    if (DEV) {
+      const payload = res.data?.data
+      const rows = Array.isArray(payload) ? payload.length : payload != null ? 1 : 0
+      console.debug(`[api] ${res.status} rows=${rows} ${res.config?.url ?? ''}`)
+    }
+    return res
+  },
   async (error) => {
     const original = error.config
+
+    // DEV-only safe diagnostics for failures: endpoint + status (no token/body).
+    if (DEV) {
+      const status = axios.isAxiosError(error) ? error.response?.status ?? 'NET' : 'ERR'
+      console.warn(`[api] FAIL ${status} ${original?.url ?? ''}`)
+    }
 
     const isAuthEndpoint = AUTH_BYPASS_URLS.some((u) =>
       original?.url?.includes(u)

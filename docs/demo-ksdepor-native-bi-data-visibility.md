@@ -14,6 +14,23 @@ Los datos en Supabase/MART están cargados con `company_id = 'company-dev-001'`.
 
 Resultado: `WHERE company_id = 'ksdepor'` → 0 filas en todas las tablas MART.
 
+### Causa raíz #2 (Sprint 8R — segunda iteración)
+
+El Sprint 8R aplicó el mapping solo en `ProcessDashboardService`. Pero las pantallas visibles de **Dashboard** y **Ventas** (tabs Clientes/Productos/Vendedores) consumen endpoints **antiguos** que pasan por servicios distintos, ninguno de los cuales aplicaba el resolver:
+
+| Pantalla | Endpoint | Controller | Servicio | ¿Resolvía? (antes) |
+|---|---|---|---|---|
+| Dashboard (resumen, gráfico, top clientes) | `/api/client/dashboard/*` | ClientDashboardController | `DashboardService` | ❌ NO |
+| Ventas — Clientes/Productos/Vendedores | `/api/client/sales/*` | ClientSalesController | `SalesService` | ❌ NO |
+| Widget de sync (Dashboard) | `/api/client/sync/*` | ClientSyncController | `SyncStatusService` | ❌ NO |
+| Diagnósticos (CompanyAdmin) | `/api/client/diagnostics/*` | ClientDiagnosticsController | `DiagnosticsService` | ❌ NO |
+| Catálogo de procesos | `/api/client/process/*` | ClientProcessController | `ProcessService` | ❌ NO |
+| Ventas — Fulfillment, Compras, Inventario, Finanzas, Operaciones | `/api/client/bi/*` | ClientBi*Controller | `ProcessDashboardService` | ✅ SÍ (8R) |
+
+Por eso las pantallas que solo usaban `ProcessDashboardService` (Compras, Inventario, Finanzas, Operaciones) podían funcionar, pero Dashboard y Ventas seguían vacíos o con error.
+
+**Fix:** se aplicó `IAnalyticsCompanyResolver` en TODOS los servicios que consultan MART/staging/cfg: `DashboardService`, `SalesService`, `SyncStatusService`, `DiagnosticsService`, `ProcessService` (además del ya corregido `ProcessDashboardService`).
+
 ---
 
 ## Mapping ksdepor → company-dev-001
@@ -156,6 +173,35 @@ La empresa KSDEPOR fue creada sin reportes de Power BI asignados (solo compañí
 3. **Tenant query param → solo subdomain en producción:** El `?companyId` en el frontend es para DEV. En producción, el subdomain es la fuente de verdad (`TenantMiddleware` lo detecta del Host header).
 
 4. **SuperAdmin cross-company:** El `CompanyContextResolver` tiene un TODO para permitir que SuperAdmin consulte cualquier compañía. Pendiente para Sprint futuro.
+
+---
+
+## Validación end-to-end de endpoints (2026-06-16)
+
+Login con `admin@demo.com` (slug `demo` → mapea a `company-dev-001`, igual que `ksdepor`). Todos los endpoints respondieron `200` con datos reales:
+
+| Endpoint | Path | Filas |
+|---|---|---|
+| Dashboard summary | `/api/client/dashboard/summary` (legacy) | 1 (objeto resumen) |
+| Sales customers | `/api/client/sales/customers` (legacy) | 21 |
+| Sales items | `/api/client/sales/items` (legacy) | 11 |
+| Sales salespersons | `/api/client/sales/salespersons` (legacy) | 4 |
+| BI sales customers | `/api/client/bi/sales/customers-dashboard` | 18 |
+| BI sales items | `/api/client/bi/sales/items-dashboard` | 11 |
+| BI sales fulfillment | `/api/client/bi/sales/fulfillment` | 7 |
+| BI purchasing suppliers | `/api/client/bi/purchasing/suppliers` | 18 |
+| BI purchasing receiving | `/api/client/bi/purchasing/receiving` | 10 |
+| BI inventory rotation | `/api/client/bi/inventory/rotation` | 41 |
+| BI inventory warehouses | `/api/client/bi/inventory/warehouses` | 12 |
+| BI finance AR aging | `/api/client/bi/finance/ar-aging` | 18 |
+| BI finance AP aging | `/api/client/bi/finance/ap-aging` | 0 (sin datos históricos — empty state) |
+| BI operations pipeline-health | `/api/client/bi/operations/pipeline-health` | 1 |
+| BI operations alerts | `/api/client/bi/operations/alerts` | 44 |
+| BI operations data-quality | `/api/client/bi/operations/data-quality` | 0 (sin issues — empty state) |
+
+Los conteos coinciden con lo validado directamente en Supabase (18 customers, 18 suppliers, 41 rotation, 18 AR). **0 errores 500, 0 errores 401.**
+
+> Nota: los endpoints `legacy` (`/api/client/dashboard/*` y `/api/client/sales/*`) son los que estaban devolviendo 0 filas antes de aplicarles el resolver en esta iteración.
 
 ---
 

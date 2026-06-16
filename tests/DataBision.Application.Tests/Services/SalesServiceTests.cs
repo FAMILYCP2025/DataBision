@@ -1,4 +1,5 @@
 using DataBision.Application.DTOs.Dashboard;
+using DataBision.Application.Interfaces;
 using DataBision.Application.Interfaces.Dashboard;
 using DataBision.Application.Services.Dashboard;
 using FluentAssertions;
@@ -10,7 +11,14 @@ namespace DataBision.Application.Tests.Services;
 public sealed class SalesServiceTests
 {
     private readonly Mock<IDashboardRepository> _repo = new();
-    private SalesService NewService() => new(_repo.Object);
+    private readonly Mock<IAnalyticsCompanyResolver> _resolver = new();
+
+    private SalesService NewService()
+    {
+        // Pass-through resolver: companyId unchanged so repo assertions stay exact.
+        _resolver.Setup(r => r.Resolve(It.IsAny<string>())).Returns<string>(id => id);
+        return new(_repo.Object, _resolver.Object);
+    }
 
     // ── GetOverview ────────────────────────────────────────────────────────────
 

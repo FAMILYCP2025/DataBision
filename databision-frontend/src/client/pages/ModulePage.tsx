@@ -1,8 +1,9 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useClientModules, useModuleReports } from '../hooks/useClientData'
 
 export default function ModulePage() {
   const { moduleSlug } = useParams<{ moduleSlug: string }>()
+  const navigate = useNavigate()
   const { data: modules } = useClientModules()
   const { data: reports, isLoading, isError } = useModuleReports(moduleSlug)
 
@@ -59,8 +60,18 @@ export default function ModulePage() {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
             </svg>
           </div>
-          <h3>Sin informes disponibles</h3>
-          <p>No tienes informes asignados para este módulo. Contacta al administrador de tu empresa.</p>
+          <h3>Sin informes Power BI asignados</h3>
+          <p>
+            Este módulo corresponde a reportes Power BI embebidos, que aún no están asignados.
+            El análisis de datos está disponible en la sección <strong>Análisis (Native BI)</strong>.
+          </p>
+          <button
+            className="db-btn db-btn--primary"
+            style={{ marginTop: 16 }}
+            onClick={() => navigate('/client/bi/dashboard')}
+          >
+            Ir a Análisis Native BI
+          </button>
         </div>
       </div>
     )

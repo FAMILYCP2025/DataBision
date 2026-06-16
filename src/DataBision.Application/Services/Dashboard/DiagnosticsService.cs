@@ -1,16 +1,23 @@
+using DataBision.Application.Interfaces;
 using DataBision.Application.DTOs.Dashboard;
 using DataBision.Application.Interfaces.Dashboard;
 
 namespace DataBision.Application.Services.Dashboard;
 
-public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosticsService
+public sealed class DiagnosticsService(
+    IDiagnosticsRepository repo,
+    IAnalyticsCompanyResolver analyticsResolver) : IDiagnosticsService
 {
     private static readonly TimeSpan OkThreshold      = TimeSpan.FromHours(24);
     private static readonly TimeSpan WarningThreshold = TimeSpan.FromHours(48);
 
+    // Maps app company identifier (slug from JWT) → analytics company_id in the MART DB.
+    private string Map(string companyId) => analyticsResolver.Resolve(companyId);
+
     public async Task<NativeBiDiagnosticsDto> GetDiagnosticsAsync(
         string companyId, CancellationToken ct = default)
     {
+        var aid    = Map(companyId);
         var checks = new List<DiagnosticCheckDto>();
         var now    = DateTime.UtcNow;
 
@@ -25,7 +32,7 @@ public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosti
 
         // 2. MART summary exists + freshness
         var transformedAt = canConnect
-            ? await SafeCheck(() => repo.GetMartLastTransformedAtAsync(companyId, ct))
+            ? await SafeCheck(() => repo.GetMartLastTransformedAtAsync(aid, ct))
             : null;
 
         var freshnessStatus = EvalFreshness(transformedAt, now);
@@ -41,7 +48,7 @@ public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosti
         // 3. MART tables populated
         IReadOnlyList<TableCountDto>? tables = null;
         if (canConnect)
-            tables = await SafeCheck<IReadOnlyList<TableCountDto>>(() => repo.GetTableCountsAsync(companyId, ct));
+            tables = await SafeCheck<IReadOnlyList<TableCountDto>>(() => repo.GetTableCountsAsync(aid, ct));
 
         var martRows       = tables?.Where(t => t.Schema == "mart").ToList() ?? [];
         var emptyMartTable = martRows.Any(t => t.RowCount == 0);
@@ -58,7 +65,7 @@ public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosti
 
         // 4. Checkpoints exist
         var hasCheckpoints = canConnect
-            && await SafeCheck(() => repo.HasCheckpointsAsync(companyId, ct), fallback: false);
+            && await SafeCheck(() => repo.HasCheckpointsAsync(aid, ct), fallback: false);
 
         checks.Add(new DiagnosticCheckDto
         {
@@ -71,7 +78,7 @@ public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosti
 
         // 5. Last extraction run
         var lastRun = canConnect
-            ? await SafeCheck(() => repo.GetLastExtractionRunAsync(companyId, ct))
+            ? await SafeCheck(() => repo.GetLastExtractionRunAsync(aid, ct))
             : null;
 
         checks.Add(new DiagnosticCheckDto
@@ -97,7 +104,7 @@ public sealed class DiagnosticsService(IDiagnosticsRepository repo) : IDiagnosti
     public async Task<NativeBiTableCountsDto> GetTableCountsAsync(
         string companyId, CancellationToken ct = default)
     {
-        IReadOnlyList<TableCountDto>? tables = await SafeCheck<IReadOnlyList<TableCountDto>>(() => repo.GetTableCountsAsync(companyId, ct));
+        IReadOnlyList<TableCountDto>? tables = await SafeCheck<IReadOnlyList<TableCountDto>>(() => repo.GetTableCountsAsync(Map(companyId), ct));
         tables ??= [];
 
         return new NativeBiTableCountsDto

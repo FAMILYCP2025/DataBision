@@ -1,19 +1,26 @@
+using DataBision.Application.Interfaces;
 using DataBision.Application.DTOs.Dashboard;
 using DataBision.Application.Interfaces.Dashboard;
 
 namespace DataBision.Application.Services.Dashboard;
 
-public sealed class SyncStatusService(ISyncStatusRepository repo) : ISyncStatusService
+public sealed class SyncStatusService(
+    ISyncStatusRepository repo,
+    IAnalyticsCompanyResolver analyticsResolver) : ISyncStatusService
 {
     private static readonly TimeSpan OkThreshold      = TimeSpan.FromHours(24);
     private static readonly TimeSpan WarningThreshold = TimeSpan.FromHours(48);
 
+    // Maps app company identifier (slug from JWT) → analytics company_id in the MART DB.
+    private string Map(string companyId) => analyticsResolver.Resolve(companyId);
+
     public async Task<SyncStatusDto> GetStatusAsync(string companyId, CancellationToken ct = default)
     {
-        var checkpoints      = await repo.GetCheckpointsAsync(companyId, ct);
-        var lastExtraction   = await repo.GetLastExtractionRunAtUtcAsync(companyId, ct);
-        var martTransformed  = await repo.GetMartTransformedAtUtcAsync(companyId, ct);
-        var stgTransformed   = await repo.GetStgTransformedAtUtcAsync(companyId, ct);
+        var aid              = Map(companyId);
+        var checkpoints      = await repo.GetCheckpointsAsync(aid, ct);
+        var lastExtraction   = await repo.GetLastExtractionRunAtUtcAsync(aid, ct);
+        var martTransformed  = await repo.GetMartTransformedAtUtcAsync(aid, ct);
+        var stgTransformed   = await repo.GetStgTransformedAtUtcAsync(aid, ct);
 
         var overallStatus = DetermineStatus(martTransformed);
 
@@ -35,14 +42,15 @@ public sealed class SyncStatusService(ISyncStatusRepository repo) : ISyncStatusS
 
     public Task<IReadOnlyList<SyncObjectStatusDto>> GetObjectsAsync(
         string companyId, CancellationToken ct = default)
-        => repo.GetCheckpointsAsync(companyId, ct);
+        => repo.GetCheckpointsAsync(Map(companyId), ct);
 
     public async Task<TransformStatusDto> GetTransformStatusAsync(
         string companyId, CancellationToken ct = default)
     {
-        var martTransformed = await repo.GetMartTransformedAtUtcAsync(companyId, ct);
-        var stgTransformed  = await repo.GetStgTransformedAtUtcAsync(companyId, ct);
-        var tables          = await repo.GetMartTableStatusAsync(companyId, ct);
+        var aid             = Map(companyId);
+        var martTransformed = await repo.GetMartTransformedAtUtcAsync(aid, ct);
+        var stgTransformed  = await repo.GetStgTransformedAtUtcAsync(aid, ct);
+        var tables          = await repo.GetMartTableStatusAsync(aid, ct);
 
         return new TransformStatusDto
         {
