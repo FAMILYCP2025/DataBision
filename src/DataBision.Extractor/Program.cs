@@ -1,6 +1,7 @@
 using DataBision.Extractor.DataBision;
 using DataBision.Extractor.Extraction;
 using DataBision.Extractor.Extraction.Jobs;
+using DataBision.Extractor.Operations;
 using DataBision.Extractor.Options;
 using DataBision.Extractor.Scheduling;
 using DataBision.Extractor.Service;
@@ -28,12 +29,23 @@ if (args.Contains("--service"))
             var apiOptions = ctx.Configuration.GetSection(DataBisionApiOptions.Section)
                                  .Get<DataBisionApiOptions>() ?? new DataBisionApiOptions();
 
+            var svcStagingOpts = ctx.Configuration.GetSection(StagingOptions.Section).Get<StagingOptions>() ?? new StagingOptions();
+            IOperationsLogger? svcOpsLogger = null;
+            if (!string.IsNullOrWhiteSpace(svcStagingOpts.ConnectionString))
+            {
+                var svcOpsLog = ctx.Configuration.GetSection("Logging").GetValue<string>("LogLevel:Default");
+                svcOpsLogger = new OperationsLogger(svcStagingOpts.ConnectionString,
+                    Microsoft.Extensions.Logging.LoggerFactory.Create(b => b.AddSerilog())
+                        .CreateLogger<OperationsLogger>());
+            }
+
             services.AddSingleton(extOptions);
             services.AddSingleton(slOptions);
             services.AddSingleton(apiOptions);
             services.AddSingleton<IServiceLayerClient, ServiceLayerClient>();
             services.AddSingleton<IDataBisionIngestClient, DataBisionIngestClient>();
             services.AddSingleton<ServiceLayerPaginator>();
+            if (svcOpsLogger is not null) services.AddSingleton<IOperationsLogger>(svcOpsLogger);
             services.AddSingleton<OslpExtractorJob>();
             services.AddSingleton<OcrdExtractorJob>();
             services.AddSingleton<OitmExtractorJob>();
@@ -41,6 +53,12 @@ if (args.Contains("--service"))
             services.AddSingleton<Inv1ExtractorJob>();
             services.AddSingleton<OrinExtractorJob>();
             services.AddSingleton<Rin1ExtractorJob>();
+            services.AddSingleton<OporExtractorJob>();
+            services.AddSingleton<OpdnExtractorJob>();
+            services.AddSingleton<OpchExtractorJob>();
+            services.AddSingleton<OrdrExtractorJob>();
+            services.AddSingleton<OdlnExtractorJob>();
+            services.AddSingleton<OwtrExtractorJob>();
             services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
                 new IExtractorJob[]
                 {
@@ -51,9 +69,17 @@ if (args.Contains("--service"))
                     sp.GetRequiredService<Inv1ExtractorJob>(),
                     sp.GetRequiredService<OrinExtractorJob>(),
                     sp.GetRequiredService<Rin1ExtractorJob>(),
+                    sp.GetRequiredService<OporExtractorJob>(),
+                    sp.GetRequiredService<OpdnExtractorJob>(),
+                    sp.GetRequiredService<OpchExtractorJob>(),
+                    sp.GetRequiredService<OrdrExtractorJob>(),
+                    sp.GetRequiredService<OdlnExtractorJob>(),
+                    sp.GetRequiredService<OwtrExtractorJob>(),
                 },
                 sp.GetRequiredService<ExtractorOptions>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ExtractorRunner>>()));
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ExtractorRunner>>(),
+                svcOpsLogger,
+                sp.GetRequiredService<ServiceLayerPaginator>()));
             services.AddSingleton<ExtractorScheduler>();
             services.AddHostedService<ExtractorWorkerService>();
         })
@@ -107,12 +133,22 @@ var extOptions = config.GetSection(ExtractorOptions.Section).Get<ExtractorOption
     }
 }
 
+// Resolve OPS logger before DI build so it can be injected into ExtractorRunner
+var stagingOptsEarly = config.GetSection(StagingOptions.Section).Get<StagingOptions>() ?? new StagingOptions();
+IOperationsLogger? opsLogger = null;
+if (!string.IsNullOrWhiteSpace(stagingOptsEarly.ConnectionString))
+{
+    opsLogger = new OperationsLogger(stagingOptsEarly.ConnectionString,
+        LoggerFactory.Create(b => b.AddSerilog()).CreateLogger<OperationsLogger>());
+}
+
 services.AddSingleton(slOptions);
 services.AddSingleton(apiOptions);
 services.AddSingleton(extOptions);
 services.AddSingleton<IServiceLayerClient, ServiceLayerClient>();
 services.AddSingleton<IDataBisionIngestClient, DataBisionIngestClient>();
 services.AddSingleton<ServiceLayerPaginator>();
+if (opsLogger is not null) services.AddSingleton<IOperationsLogger>(opsLogger);
 services.AddSingleton<OslpExtractorJob>();
 services.AddSingleton<OcrdExtractorJob>();
 services.AddSingleton<OitmExtractorJob>();
@@ -120,6 +156,12 @@ services.AddSingleton<OinvExtractorJob>();
 services.AddSingleton<Inv1ExtractorJob>();
 services.AddSingleton<OrinExtractorJob>();
 services.AddSingleton<Rin1ExtractorJob>();
+services.AddSingleton<OporExtractorJob>();
+services.AddSingleton<OpdnExtractorJob>();
+services.AddSingleton<OpchExtractorJob>();
+services.AddSingleton<OrdrExtractorJob>();
+services.AddSingleton<OdlnExtractorJob>();
+services.AddSingleton<OwtrExtractorJob>();
 services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
     new IExtractorJob[]
     {
@@ -130,9 +172,17 @@ services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
         sp.GetRequiredService<Inv1ExtractorJob>(),
         sp.GetRequiredService<OrinExtractorJob>(),
         sp.GetRequiredService<Rin1ExtractorJob>(),
+        sp.GetRequiredService<OporExtractorJob>(),
+        sp.GetRequiredService<OpdnExtractorJob>(),
+        sp.GetRequiredService<OpchExtractorJob>(),
+        sp.GetRequiredService<OrdrExtractorJob>(),
+        sp.GetRequiredService<OdlnExtractorJob>(),
+        sp.GetRequiredService<OwtrExtractorJob>(),
     },
     sp.GetRequiredService<ExtractorOptions>(),
-    sp.GetRequiredService<ILogger<ExtractorRunner>>()));
+    sp.GetRequiredService<ILogger<ExtractorRunner>>(),
+    opsLogger,
+    sp.GetRequiredService<ServiceLayerPaginator>()));
 services.AddSingleton<ExtractorScheduler>();
 
 var sp  = services.BuildServiceProvider();
@@ -152,7 +202,7 @@ if (args.Contains("--help") || args.Contains("-h"))
           --validate                     Test Service Layer login + GET OSLP top 5 + logout
           --validate-staging             Validate Supabase schemas and table counts (no SAP required)
           --dry-run                      Show resolved configuration (no connections)
-          --object <name>                Extract single object: OSLP|OCRD|OITM|OINV|INV1|ORIN|RIN1|ALL
+          --object <name>                Extract single object: OSLP|OCRD|OITM|OINV|INV1|ORIN|RIN1|OPOR|OPDN|OPCH|ORDR|ODLN|OWTR|ALL
           --object <name> --send         Extract and send to DataBision Ingest API
           --page-size N                  Override Extractor.PageSize for this run (default from config)
           --max-pages N                  Override Extractor.MaxPages for this run (default from config)
@@ -163,6 +213,7 @@ if (args.Contains("--help") || args.Contains("-h"))
           --transform [--company C]      Refresh STG tables from RAW (requires Staging:ConnectionString)
           --transform --include-mart     Refresh STG then MART
           --transform-mart [--company C] Refresh MART only (STG must already be populated)
+          --validate-ops [--company C]   Query ops.extractor_run and ops.transform_run summary
           --service                      Run as Windows Service (uses Extractor.SendEnabled from config)
 
         Examples:
@@ -176,6 +227,7 @@ if (args.Contains("--help") || args.Contains("-h"))
           dotnet run -- --transform --company company-dev-001
           dotnet run -- --transform --include-mart --company company-dev-001
           dotnet run -- --transform-mart --company company-dev-001
+          dotnet run -- --validate-ops --company company-dev-001
           dotnet DataBision.Extractor.exe --service
         """);
     return 0;
@@ -413,7 +465,7 @@ if (objectArg is not null)
 {
     if (!ExtractorRunner.IsSupported(objectArg))
     {
-        log.LogError("Unknown object '{Obj}'. Supported: OSLP, OCRD, OITM, OINV, INV1, ORIN, RIN1, ALL", objectArg);
+        log.LogError("Unknown object '{Obj}'. Supported: OSLP, OCRD, OITM, OINV, INV1, ORIN, RIN1, OPOR, OPDN, OPCH, ORDR, ODLN, OWTR, ALL", objectArg);
         return 1;
     }
 
@@ -436,6 +488,84 @@ if (objectArg is not null)
         return results.Any(r => !r.Success) ? 4 : 0;
     }
     finally { await slClient.LogoutAsync(); }
+}
+
+// ── --validate-ops ────────────────────────────────────────────────────────────
+if (args.Contains("--validate-ops"))
+{
+    var voStagingOpts = config.GetSection(StagingOptions.Section).Get<StagingOptions>() ?? new StagingOptions();
+    try { voStagingOpts.Validate(); }
+    catch (InvalidOperationException ex)
+    {
+        log.LogError("Staging config error: {Message}", ex.Message);
+        return 2;
+    }
+
+    string? voCompanyArg = null;
+    var voCompIdx = Array.IndexOf(args, "--company");
+    if (voCompIdx >= 0 && voCompIdx + 1 < args.Length) voCompanyArg = args[voCompIdx + 1];
+    var voCompanyId = !string.IsNullOrWhiteSpace(voCompanyArg) ? voCompanyArg : extOptions.CompanyId;
+
+    using var voCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    try
+    {
+        await using var conn = new Npgsql.NpgsqlConnection(voStagingOpts.ConnectionString);
+        await conn.OpenAsync(voCts.Token);
+        log.LogInformation("[OPS-01] Connection open");
+
+        async Task<long> Scalar(string sql, string? p = null)
+        {
+            await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+            if (p is not null) cmd.Parameters.AddWithValue("p", p);
+            var r = await cmd.ExecuteScalarAsync(voCts.Token);
+            return r is long l ? l : r is int i ? i : 0L;
+        }
+
+        var totalRuns   = await Scalar(string.IsNullOrWhiteSpace(voCompanyId)
+            ? "SELECT COUNT(*) FROM ops.extractor_run"
+            : "SELECT COUNT(*) FROM ops.extractor_run WHERE company_id=@p", voCompanyId ?? null);
+        var failedRuns  = await Scalar(string.IsNullOrWhiteSpace(voCompanyId)
+            ? "SELECT COUNT(*) FROM ops.extractor_run WHERE status='ERROR'"
+            : "SELECT COUNT(*) FROM ops.extractor_run WHERE company_id=@p AND status='ERROR'", voCompanyId ?? null);
+        var totalPages  = await Scalar(string.IsNullOrWhiteSpace(voCompanyId)
+            ? "SELECT COUNT(*) FROM ops.extractor_page_log"
+            : "SELECT COUNT(*) FROM ops.extractor_page_log WHERE run_id IN (SELECT run_id FROM ops.extractor_run WHERE company_id=@p)", voCompanyId ?? null);
+        var totalTrans  = await Scalar(string.IsNullOrWhiteSpace(voCompanyId)
+            ? "SELECT COUNT(*) FROM ops.transform_run"
+            : "SELECT COUNT(*) FROM ops.transform_run WHERE company_id=@p", voCompanyId ?? null);
+        var alertEvents = await Scalar(string.IsNullOrWhiteSpace(voCompanyId)
+            ? "SELECT COUNT(*) FROM ops.alert_event"
+            : "SELECT COUNT(*) FROM ops.alert_event WHERE company_id=@p", voCompanyId ?? null);
+
+        log.LogInformation("[OPS-02] extractor_run: total={Total}, errors={Err}", totalRuns, failedRuns);
+        log.LogInformation("[OPS-03] extractor_page_log: {Pages} pages logged", totalPages);
+        log.LogInformation("[OPS-04] transform_run: {Trans} runs", totalTrans);
+        log.LogInformation("[OPS-05] alert_event: {Alerts} events fired", alertEvents);
+
+        // Show last 5 extractor runs
+        var recentSql = string.IsNullOrWhiteSpace(voCompanyId)
+            ? "SELECT sap_object, status, pages_fetched, rows_extracted, started_at_utc FROM ops.extractor_run ORDER BY started_at_utc DESC LIMIT 5"
+            : "SELECT sap_object, status, pages_fetched, rows_extracted, started_at_utc FROM ops.extractor_run WHERE company_id=@p ORDER BY started_at_utc DESC LIMIT 5";
+        await using var recCmd = new Npgsql.NpgsqlCommand(recentSql, conn);
+        if (!string.IsNullOrWhiteSpace(voCompanyId)) recCmd.Parameters.AddWithValue("p", voCompanyId);
+        await using var recRdr = await recCmd.ExecuteReaderAsync(voCts.Token);
+        while (await recRdr.ReadAsync(voCts.Token))
+        {
+            log.LogInformation("  run: obj={Obj} status={Status} pages={Pages} rows={Rows} at={At}",
+                recRdr.GetString(0), recRdr.GetString(1),
+                recRdr.IsDBNull(2) ? 0 : recRdr.GetInt32(2),
+                recRdr.IsDBNull(3) ? 0 : recRdr.GetInt32(3),
+                recRdr.GetDateTime(4).ToString("yyyy-MM-dd HH:mm:ss"));
+        }
+
+        log.LogInformation("=== --validate-ops: DONE ===");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        log.LogError(ex, "=== --validate-ops: FAIL — {Message}", ex.Message);
+        return 3;
+    }
 }
 
 // ── --transform / --transform-mart ───────────────────────────────────────────
@@ -470,7 +600,7 @@ if (isTransform || isTransformMart)
     }
 
     var transformRunner = new TransformationRunner(stagingOptions.ConnectionString,
-        sp.GetRequiredService<ILogger<TransformationRunner>>());
+        sp.GetRequiredService<ILogger<TransformationRunner>>(), opsLogger);
     using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
     try
     {

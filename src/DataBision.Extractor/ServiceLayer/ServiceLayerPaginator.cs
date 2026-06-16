@@ -14,6 +14,12 @@ public sealed class ServiceLayerPaginator
     private readonly ILogger<ServiceLayerPaginator> _log;
     private readonly Func<int, CancellationToken, Task> _delay;
 
+    /// <summary>
+    /// Ambient per-page callback set by the caller before invoking PaginateAsync.
+    /// Merged with the per-call onPage argument (per-call wins). Cleared after each run.
+    /// </summary>
+    public Func<PaginationPageLog, CancellationToken, Task>? OnPage { get; set; }
+
     public ServiceLayerPaginator(
         IServiceLayerClient sl,
         ILogger<ServiceLayerPaginator> log,
@@ -35,8 +41,10 @@ public sealed class ServiceLayerPaginator
     /// <param name="ct">Cancellation token.</param>
     public async Task<PaginationResult> PaginateAsync(
         string sapObject, string entity, string baseQuery,
-        int pageSize, int maxPages, CancellationToken ct)
+        int pageSize, int maxPages, CancellationToken ct,
+        Func<PaginationPageLog, CancellationToken, Task>? onPage = null)
     {
+        var effectiveOnPage = onPage ?? OnPage;
         var allRows = new JsonArray();
         var logs    = new List<PaginationPageLog>();
         var skip    = 0;
@@ -73,11 +81,14 @@ public sealed class ServiceLayerPaginator
                 foreach (var row in page.Rows)
                     allRows.Add(row?.DeepClone());
 
-                logs.Add(new PaginationPageLog(
+                var pageLog = new PaginationPageLog(
                     SapObject: sapObject, PageNumber: pageNumber, Skip: skip,
                     Top: pageSize, RowsReceived: rowsReceived,
                     ElapsedMs: sw.ElapsedMilliseconds, Status: "OK",
-                    ErrorCode: null, ErrorMessage: null));
+                    ErrorCode: null, ErrorMessage: null);
+                logs.Add(pageLog);
+                if (effectiveOnPage is not null)
+                    await effectiveOnPage(pageLog, ct).ConfigureAwait(false);
 
                 _log.LogInformation("{Obj}: page {P} — {R} rows in {Ms}ms (skip={Skip}{NextLinkMarker})",
                     sapObject, pageNumber, rowsReceived, sw.ElapsedMilliseconds, skip,
@@ -89,11 +100,14 @@ public sealed class ServiceLayerPaginator
             {
                 sw.Stop();
                 lastError = ex.Message;
-                logs.Add(new PaginationPageLog(
+                var errLog = new PaginationPageLog(
                     SapObject: sapObject, PageNumber: pageNumber, Skip: skip,
                     Top: pageSize, RowsReceived: 0,
                     ElapsedMs: sw.ElapsedMilliseconds, Status: "ERROR",
-                    ErrorCode: "FETCH_FAILED", ErrorMessage: ex.Message));
+                    ErrorCode: "FETCH_FAILED", ErrorMessage: ex.Message);
+                logs.Add(errLog);
+                if (effectiveOnPage is not null)
+                    try { await effectiveOnPage(errLog, ct).ConfigureAwait(false); } catch { /* best-effort */ }
                 _log.LogError("{Obj}: page {P} failed permanently — {Msg}", sapObject, pageNumber, ex.Message);
                 return new PaginationResult(allRows, logs, HitMaxPages: false, LastError: lastError);
             }

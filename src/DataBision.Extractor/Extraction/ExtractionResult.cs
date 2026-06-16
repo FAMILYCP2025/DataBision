@@ -13,6 +13,8 @@ public sealed class ExtractionResult
     public string? WatermarkTs { get; init; }
     public string? Error { get; init; }
     public bool IsDryRun { get; init; }
+    public int PagesFetched { get; init; }
+    public bool HitMaxPages { get; init; }
 
     public static ExtractionResult NotImplemented(string sapObject) => new()
     {

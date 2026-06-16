@@ -127,6 +127,95 @@ public sealed class IngestService(
         return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
     }
 
+    // ── Purchase Orders (OPOR) ─────────────────────────────────────────────────
+
+    public async Task<IngestBatchResponse> IngestPurchaseOrdersAsync(
+        IngestBatchRequest<SapOporRow> request, CancellationToken ct = default)
+    {
+        foreach (var r in request.Rows) { r.CreateTSNorm = TsNormalizer.Normalize(r.CreateTS); r.UpdateTSNorm = TsNormalizer.Normalize(r.UpdateTS); }
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertPurchaseOrdersAsync(request.CompanyId, request.Rows, ct);
+        var (wmDate, wmTs) = GetWatermark(request.Rows, r => r.UpdateDate, r => r.UpdateTSNorm);
+        await UpdateCheckpointAsync(request, ins + upd, wmDate, wmTs, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
+    }
+
+    // ── Purchase Receipts / Goods Receipts (OPDN) ─────────────────────────────
+
+    public async Task<IngestBatchResponse> IngestPurchaseReceiptsAsync(
+        IngestBatchRequest<SapOpdnRow> request, CancellationToken ct = default)
+    {
+        foreach (var r in request.Rows) { r.CreateTSNorm = TsNormalizer.Normalize(r.CreateTS); r.UpdateTSNorm = TsNormalizer.Normalize(r.UpdateTS); }
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertPurchaseReceiptsAsync(request.CompanyId, request.Rows, ct);
+        var (wmDate, wmTs) = GetWatermark(request.Rows, r => r.UpdateDate, r => r.UpdateTSNorm);
+        await UpdateCheckpointAsync(request, ins + upd, wmDate, wmTs, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
+    }
+
+    // ── Purchase Invoices (OPCH) ───────────────────────────────────────────────
+
+    public async Task<IngestBatchResponse> IngestPurchaseInvoicesAsync(
+        IngestBatchRequest<SapOpchRow> request, CancellationToken ct = default)
+    {
+        foreach (var r in request.Rows) { r.CreateTSNorm = TsNormalizer.Normalize(r.CreateTS); r.UpdateTSNorm = TsNormalizer.Normalize(r.UpdateTS); }
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertPurchaseInvoicesAsync(request.CompanyId, request.Rows, ct);
+        var (wmDate, wmTs) = GetWatermark(request.Rows, r => r.UpdateDate, r => r.UpdateTSNorm);
+        await UpdateCheckpointAsync(request, ins + upd, wmDate, wmTs, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
+    }
+
+    // ── Item Warehouse Levels (OITW) ───────────────────────────────────────────
+
+    public async Task<IngestBatchResponse> IngestItemWarehousesAsync(
+        IngestBatchRequest<SapOitwRow> request, CancellationToken ct = default)
+    {
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertItemWarehousesAsync(request.CompanyId, request.Rows, ct);
+        await UpdateCheckpointAsync(request, ins + upd, null, null, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, null, null);
+    }
+
+    // ── Sales Orders (ORDR) ────────────────────────────────────────────────────
+
+    public async Task<IngestBatchResponse> IngestSalesOrdersAsync(
+        IngestBatchRequest<SapOrdrRow> request, CancellationToken ct = default)
+    {
+        foreach (var r in request.Rows) { r.CreateTSNorm = TsNormalizer.Normalize(r.CreateTS); r.UpdateTSNorm = TsNormalizer.Normalize(r.UpdateTS); }
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertSalesOrdersAsync(request.CompanyId, request.Rows, ct);
+        var (wmDate, wmTs) = GetWatermark(request.Rows, r => r.UpdateDate, r => r.UpdateTSNorm);
+        await UpdateCheckpointAsync(request, ins + upd, wmDate, wmTs, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
+    }
+
+    // ── Delivery Notes (ODLN) ─────────────────────────────────────────────────
+
+    public async Task<IngestBatchResponse> IngestDeliveriesAsync(
+        IngestBatchRequest<SapOdlnRow> request, CancellationToken ct = default)
+    {
+        foreach (var r in request.Rows) { r.CreateTSNorm = TsNormalizer.Normalize(r.CreateTS); r.UpdateTSNorm = TsNormalizer.Normalize(r.UpdateTS); }
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertDeliveriesAsync(request.CompanyId, request.Rows, ct);
+        var (wmDate, wmTs) = GetWatermark(request.Rows, r => r.UpdateDate, r => r.UpdateTSNorm);
+        await UpdateCheckpointAsync(request, ins + upd, wmDate, wmTs, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
+    }
+
+    // ── Stock Transfers (OWTR) ─────────────────────────────────────────────────
+
+    public async Task<IngestBatchResponse> IngestStockTransfersAsync(
+        IngestBatchRequest<SapOwtrRow> request, CancellationToken ct = default)
+    {
+        foreach (var r in request.Rows) { r.CreateTSNorm = TsNormalizer.Normalize(r.CreateTS); r.UpdateTSNorm = TsNormalizer.Normalize(r.UpdateTS); }
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertStockTransfersAsync(request.CompanyId, request.Rows, ct);
+        var (wmDate, wmTs) = GetWatermark(request.Rows, r => r.UpdateDate, r => r.UpdateTSNorm);
+        await UpdateCheckpointAsync(request, ins + upd, wmDate, wmTs, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     private static void ComputeHashes<T>(IEnumerable<T> rows) where T : IIngestRow

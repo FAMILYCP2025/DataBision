@@ -99,4 +99,73 @@ public sealed class SapB1IngestController(IIngestService ingestService) : Contro
         var result = await ingestService.IngestSalespersonsAsync(request, ct);
         return Ok(new { data = result });
     }
+
+    // ── Purchasing ─────────────────────────────────────────────────────────────
+
+    [HttpPost("sap-b1/purchase-orders")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestPurchaseOrders(
+        [FromBody] IngestBatchRequest<SapOporRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestPurchaseOrdersAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    [HttpPost("sap-b1/purchase-receipts")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestPurchaseReceipts(
+        [FromBody] IngestBatchRequest<SapOpdnRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestPurchaseReceiptsAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    [HttpPost("sap-b1/purchase-invoices")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestPurchaseInvoices(
+        [FromBody] IngestBatchRequest<SapOpchRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestPurchaseInvoicesAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    // ── Inventory ─────────────────────────────────────────────────────────────
+
+    [HttpPost("sap-b1/item-warehouses")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestItemWarehouses(
+        [FromBody] IngestBatchRequest<SapOitwRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestItemWarehousesAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    [HttpPost("sap-b1/stock-transfers")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestStockTransfers(
+        [FromBody] IngestBatchRequest<SapOwtrRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestStockTransfersAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    // ── Sales Fulfillment ─────────────────────────────────────────────────────
+
+    [HttpPost("sap-b1/sales-orders")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestSalesOrders(
+        [FromBody] IngestBatchRequest<SapOrdrRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestSalesOrdersAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    [HttpPost("sap-b1/deliveries")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestDeliveries(
+        [FromBody] IngestBatchRequest<SapOdlnRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestDeliveriesAsync(request, ct);
+        return Ok(new { data = result });
+    }
 }

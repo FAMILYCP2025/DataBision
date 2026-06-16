@@ -1,3 +1,4 @@
+using DataBision.Extractor.Operations;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -7,15 +8,37 @@ namespace DataBision.Extractor.Transformations;
 /// Executes stg.refresh_all and mart.refresh_all against the staging PostgreSQL database.
 /// Uses a direct Npgsql connection — no EF, no SAP, no Ingest API required.
 /// </summary>
-public sealed class TransformationRunner(string connectionString, ILogger<TransformationRunner> logger)
-    : ITransformationRunner
+public sealed class TransformationRunner(
+    string connectionString,
+    ILogger<TransformationRunner> logger,
+    IOperationsLogger? opsLogger = null) : ITransformationRunner
 {
     public async Task<IReadOnlyList<(string Object, int RowsAffected)>> RefreshStgAsync(
         string companyId, CancellationToken ct = default)
     {
         logger.LogInformation("STG refresh starting — company_id={CompanyId}", companyId);
-        var results = await ExecuteFunctionAsync("stg.refresh_all", companyId, ct);
-        logger.LogInformation("STG refresh complete — {Count} object(s) processed", results.Count);
+        var runId = opsLogger is not null
+            ? await opsLogger.StartTransformRunAsync(companyId, "STG", ct)
+            : 0L;
+        string? lastErr = null;
+        IReadOnlyList<(string, int)> results;
+        try
+        {
+            results = await ExecuteFunctionAsync("stg.refresh_all", companyId, ct);
+            logger.LogInformation("STG refresh complete — {Count} object(s) processed", results.Count);
+        }
+        catch (Exception ex)
+        {
+            lastErr = ex.Message;
+            if (opsLogger is not null)
+                await opsLogger.CompleteTransformRunAsync(runId, "ERROR", 0, lastErr, ct);
+            throw;
+        }
+        if (opsLogger is not null)
+        {
+            await opsLogger.CompleteTransformRunAsync(runId, "SUCCESS", results.Count, null, ct);
+            await opsLogger.RefreshPipelineHealthAsync(companyId, ct);
+        }
         return results;
     }
 
@@ -23,8 +46,27 @@ public sealed class TransformationRunner(string connectionString, ILogger<Transf
         string companyId, CancellationToken ct = default)
     {
         logger.LogInformation("MART refresh starting — company_id={CompanyId}", companyId);
-        var results = await ExecuteFunctionAsync("mart.refresh_all", companyId, ct);
-        logger.LogInformation("MART refresh complete — {Count} object(s) processed", results.Count);
+        var runId = opsLogger is not null
+            ? await opsLogger.StartTransformRunAsync(companyId, "MART", ct)
+            : 0L;
+        IReadOnlyList<(string, int)> results;
+        try
+        {
+            results = await ExecuteFunctionAsync("mart.refresh_all", companyId, ct);
+            logger.LogInformation("MART refresh complete — {Count} object(s) processed", results.Count);
+        }
+        catch (Exception ex)
+        {
+            if (opsLogger is not null)
+                await opsLogger.CompleteTransformRunAsync(runId, "ERROR", 0, ex.Message, ct);
+            throw;
+        }
+        if (opsLogger is not null)
+        {
+            await opsLogger.CompleteTransformRunAsync(runId, "SUCCESS", results.Count, null, ct);
+            await opsLogger.RefreshPipelineHealthAsync(companyId, ct);
+            await opsLogger.EvaluateAlertRulesAsync(companyId, ct);
+        }
         return results;
     }
 

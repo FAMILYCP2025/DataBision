@@ -493,6 +493,426 @@ public sealed class SapRawRepository(string connectionString, ILogger<SapRawRepo
         return CountResults(allResults);
     }
 
+    // ── Purchase Orders (OPOR) ────────────────────────────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertPurchaseOrdersAsync(
+        string companyId, IEnumerable<SapOporRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_opor" (
+                company_id, "DocEntry", "DocNum", "DocDate", "DocDueDate",
+                "CardCode", "CardName", "DocTotal", "DocTotalSy", "VatSum", "DocCur",
+                "DocStatus", "Cancelled", "SlpCode", "ObjType", "DocType", "Comments",
+                "CreateDate", "CreateTS", "CreateTSNorm",
+                "UpdateDate", "UpdateTS", "UpdateTSNorm",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @DocEntry, @DocNum, @DocDate, @DocDueDate,
+                @CardCode, @CardName, @DocTotal, @DocTotalSy, @VatSum, @DocCur,
+                @DocStatus, @Cancelled, @SlpCode, @ObjType, @DocType, @Comments,
+                @CreateDate, @CreateTS, @CreateTSNorm,
+                @UpdateDate, @UpdateTS, @UpdateTSNorm,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "DocEntry") DO UPDATE SET
+                "DocNum" = EXCLUDED."DocNum", "DocDate" = EXCLUDED."DocDate",
+                "DocDueDate" = EXCLUDED."DocDueDate", "CardCode" = EXCLUDED."CardCode",
+                "CardName" = EXCLUDED."CardName", "DocTotal" = EXCLUDED."DocTotal",
+                "DocTotalSy" = EXCLUDED."DocTotalSy", "VatSum" = EXCLUDED."VatSum",
+                "DocCur" = EXCLUDED."DocCur", "DocStatus" = EXCLUDED."DocStatus",
+                "Cancelled" = EXCLUDED."Cancelled", "SlpCode" = EXCLUDED."SlpCode",
+                "ObjType" = EXCLUDED."ObjType", "DocType" = EXCLUDED."DocType",
+                "Comments" = EXCLUDED."Comments",
+                "CreateDate" = EXCLUDED."CreateDate", "CreateTS" = EXCLUDED."CreateTS",
+                "CreateTSNorm" = EXCLUDED."CreateTSNorm",
+                "UpdateDate" = EXCLUDED."UpdateDate", "UpdateTS" = EXCLUDED."UpdateTS",
+                "UpdateTSNorm" = EXCLUDED."UpdateTSNorm",
+                source_hash_hex = EXCLUDED.source_hash_hex,
+                extraction_run_id = EXCLUDED.extraction_run_id,
+                batch_id = EXCLUDED.batch_id, extracted_at_utc = EXCLUDED.extracted_at_utc,
+                ingestion_mode = EXCLUDED.ingestion_mode, raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_opor".source_hash_hex != EXCLUDED.source_hash_hex
+                AND (EXCLUDED."UpdateDate" > "raw"."sap_opor"."UpdateDate"
+                    OR (EXCLUDED."UpdateDate" = "raw"."sap_opor"."UpdateDate"
+                        AND COALESCE(EXCLUDED."UpdateTSNorm",'000000') >= COALESCE("raw"."sap_opor"."UpdateTSNorm",'000000')))
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var result = await conn.QueryAsync<int>(sql, MapDocHeader(companyId, r.DocEntry, r.DocNum, r.DocDate, r.DocDueDate, r.CardCode, r.CardName, r.DocTotal, r.DocTotalSy, r.VatSum, r.DocCur, r.DocStatus, r.Cancelled, r.SlpCode, r.ObjType, r.DocType, r.Comments, r.CreateDate, r.CreateTS, r.CreateTSNorm, r.UpdateDate, r.UpdateTS, r.UpdateTSNorm, r.SourceHashHex, r.ExtractionRunId, r.BatchId, r.ExtractedAtUtc, r.IngestionMode));
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Purchase Receipts / Goods Receipts (OPDN) ─────────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertPurchaseReceiptsAsync(
+        string companyId, IEnumerable<SapOpdnRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_opdn" (
+                company_id, "DocEntry", "DocNum", "DocDate", "DocDueDate",
+                "CardCode", "CardName", "DocTotal", "DocTotalSy", "VatSum", "DocCur",
+                "DocStatus", "Cancelled", "SlpCode", "ObjType", "DocType", "Comments",
+                "CreateDate", "CreateTS", "CreateTSNorm",
+                "UpdateDate", "UpdateTS", "UpdateTSNorm",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @DocEntry, @DocNum, @DocDate, @DocDueDate,
+                @CardCode, @CardName, @DocTotal, @DocTotalSy, @VatSum, @DocCur,
+                @DocStatus, @Cancelled, @SlpCode, @ObjType, @DocType, @Comments,
+                @CreateDate, @CreateTS, @CreateTSNorm,
+                @UpdateDate, @UpdateTS, @UpdateTSNorm,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "DocEntry") DO UPDATE SET
+                "DocNum" = EXCLUDED."DocNum", "DocDate" = EXCLUDED."DocDate",
+                "DocDueDate" = EXCLUDED."DocDueDate", "CardCode" = EXCLUDED."CardCode",
+                "CardName" = EXCLUDED."CardName", "DocTotal" = EXCLUDED."DocTotal",
+                "DocTotalSy" = EXCLUDED."DocTotalSy", "VatSum" = EXCLUDED."VatSum",
+                "DocCur" = EXCLUDED."DocCur", "DocStatus" = EXCLUDED."DocStatus",
+                "Cancelled" = EXCLUDED."Cancelled", "SlpCode" = EXCLUDED."SlpCode",
+                "ObjType" = EXCLUDED."ObjType", "DocType" = EXCLUDED."DocType",
+                "Comments" = EXCLUDED."Comments",
+                "CreateDate" = EXCLUDED."CreateDate", "CreateTS" = EXCLUDED."CreateTS",
+                "CreateTSNorm" = EXCLUDED."CreateTSNorm",
+                "UpdateDate" = EXCLUDED."UpdateDate", "UpdateTS" = EXCLUDED."UpdateTS",
+                "UpdateTSNorm" = EXCLUDED."UpdateTSNorm",
+                source_hash_hex = EXCLUDED.source_hash_hex,
+                extraction_run_id = EXCLUDED.extraction_run_id,
+                batch_id = EXCLUDED.batch_id, extracted_at_utc = EXCLUDED.extracted_at_utc,
+                ingestion_mode = EXCLUDED.ingestion_mode, raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_opdn".source_hash_hex != EXCLUDED.source_hash_hex
+                AND (EXCLUDED."UpdateDate" > "raw"."sap_opdn"."UpdateDate"
+                    OR (EXCLUDED."UpdateDate" = "raw"."sap_opdn"."UpdateDate"
+                        AND COALESCE(EXCLUDED."UpdateTSNorm",'000000') >= COALESCE("raw"."sap_opdn"."UpdateTSNorm",'000000')))
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var result = await conn.QueryAsync<int>(sql, MapDocHeader(companyId, r.DocEntry, r.DocNum, r.DocDate, r.DocDueDate, r.CardCode, r.CardName, r.DocTotal, r.DocTotalSy, r.VatSum, r.DocCur, r.DocStatus, r.Cancelled, r.SlpCode, r.ObjType, r.DocType, r.Comments, r.CreateDate, r.CreateTS, r.CreateTSNorm, r.UpdateDate, r.UpdateTS, r.UpdateTSNorm, r.SourceHashHex, r.ExtractionRunId, r.BatchId, r.ExtractedAtUtc, r.IngestionMode));
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Purchase Invoices (OPCH) ───────────────────────────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertPurchaseInvoicesAsync(
+        string companyId, IEnumerable<SapOpchRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_opch" (
+                company_id, "DocEntry", "DocNum", "DocDate", "DocDueDate",
+                "CardCode", "CardName", "DocTotal", "DocTotalSy", "VatSum", "DocCur",
+                "DocStatus", "Cancelled", "SlpCode", "ObjType", "DocType", "Comments",
+                "CreateDate", "CreateTS", "CreateTSNorm",
+                "UpdateDate", "UpdateTS", "UpdateTSNorm",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @DocEntry, @DocNum, @DocDate, @DocDueDate,
+                @CardCode, @CardName, @DocTotal, @DocTotalSy, @VatSum, @DocCur,
+                @DocStatus, @Cancelled, @SlpCode, @ObjType, @DocType, @Comments,
+                @CreateDate, @CreateTS, @CreateTSNorm,
+                @UpdateDate, @UpdateTS, @UpdateTSNorm,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "DocEntry") DO UPDATE SET
+                "DocNum" = EXCLUDED."DocNum", "DocDate" = EXCLUDED."DocDate",
+                "DocDueDate" = EXCLUDED."DocDueDate", "CardCode" = EXCLUDED."CardCode",
+                "CardName" = EXCLUDED."CardName", "DocTotal" = EXCLUDED."DocTotal",
+                "DocTotalSy" = EXCLUDED."DocTotalSy", "VatSum" = EXCLUDED."VatSum",
+                "DocCur" = EXCLUDED."DocCur", "DocStatus" = EXCLUDED."DocStatus",
+                "Cancelled" = EXCLUDED."Cancelled", "SlpCode" = EXCLUDED."SlpCode",
+                "ObjType" = EXCLUDED."ObjType", "DocType" = EXCLUDED."DocType",
+                "Comments" = EXCLUDED."Comments",
+                "CreateDate" = EXCLUDED."CreateDate", "CreateTS" = EXCLUDED."CreateTS",
+                "CreateTSNorm" = EXCLUDED."CreateTSNorm",
+                "UpdateDate" = EXCLUDED."UpdateDate", "UpdateTS" = EXCLUDED."UpdateTS",
+                "UpdateTSNorm" = EXCLUDED."UpdateTSNorm",
+                source_hash_hex = EXCLUDED.source_hash_hex,
+                extraction_run_id = EXCLUDED.extraction_run_id,
+                batch_id = EXCLUDED.batch_id, extracted_at_utc = EXCLUDED.extracted_at_utc,
+                ingestion_mode = EXCLUDED.ingestion_mode, raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_opch".source_hash_hex != EXCLUDED.source_hash_hex
+                AND (EXCLUDED."UpdateDate" > "raw"."sap_opch"."UpdateDate"
+                    OR (EXCLUDED."UpdateDate" = "raw"."sap_opch"."UpdateDate"
+                        AND COALESCE(EXCLUDED."UpdateTSNorm",'000000') >= COALESCE("raw"."sap_opch"."UpdateTSNorm",'000000')))
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var result = await conn.QueryAsync<int>(sql, MapDocHeader(companyId, r.DocEntry, r.DocNum, r.DocDate, r.DocDueDate, r.CardCode, r.CardName, r.DocTotal, r.DocTotalSy, r.VatSum, r.DocCur, r.DocStatus, r.Cancelled, r.SlpCode, r.ObjType, r.DocType, r.Comments, r.CreateDate, r.CreateTS, r.CreateTSNorm, r.UpdateDate, r.UpdateTS, r.UpdateTSNorm, r.SourceHashHex, r.ExtractionRunId, r.BatchId, r.ExtractedAtUtc, r.IngestionMode));
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Item Warehouse Levels (OITW) ───────────────────────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertItemWarehousesAsync(
+        string companyId, IEnumerable<SapOitwRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_oitw" (
+                company_id, "ItemCode", "WhsCode", "OnHand", "IsCommited", "OnOrder",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @ItemCode, @WhsCode, @OnHand, @IsCommited, @OnOrder,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "ItemCode", "WhsCode") DO UPDATE SET
+                "OnHand" = EXCLUDED."OnHand", "IsCommited" = EXCLUDED."IsCommited",
+                "OnOrder" = EXCLUDED."OnOrder",
+                source_hash_hex = EXCLUDED.source_hash_hex,
+                extraction_run_id = EXCLUDED.extraction_run_id,
+                batch_id = EXCLUDED.batch_id, extracted_at_utc = EXCLUDED.extracted_at_utc,
+                ingestion_mode = EXCLUDED.ingestion_mode, raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_oitw".source_hash_hex != EXCLUDED.source_hash_hex
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var p = new DynamicParameters();
+            p.Add("company_id",        companyId);
+            p.Add("ItemCode",          r.ItemCode);
+            p.Add("WhsCode",           r.WhsCode);
+            p.Add("OnHand",            r.OnHand);
+            p.Add("IsCommited",        r.IsCommited);
+            p.Add("OnOrder",           r.OnOrder);
+            p.Add("source_hash_hex",   r.SourceHashHex);
+            p.Add("extraction_run_id", r.ExtractionRunId);
+            p.Add("batch_id",          r.BatchId);
+            p.Add("extracted_at_utc",  r.ExtractedAtUtc);
+            p.Add("ingestion_mode",    r.IngestionMode);
+            var result = await conn.QueryAsync<int>(sql, p);
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Sales Orders (ORDR) ────────────────────────────────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertSalesOrdersAsync(
+        string companyId, IEnumerable<SapOrdrRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_ordr" (
+                company_id, "DocEntry", "DocNum", "DocDate", "DocDueDate",
+                "CardCode", "CardName", "DocTotal", "DocTotalSy", "VatSum", "DocCur",
+                "DocStatus", "Cancelled", "SlpCode", "ObjType", "DocType", "Comments",
+                "CreateDate", "CreateTS", "CreateTSNorm",
+                "UpdateDate", "UpdateTS", "UpdateTSNorm",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @DocEntry, @DocNum, @DocDate, @DocDueDate,
+                @CardCode, @CardName, @DocTotal, @DocTotalSy, @VatSum, @DocCur,
+                @DocStatus, @Cancelled, @SlpCode, @ObjType, @DocType, @Comments,
+                @CreateDate, @CreateTS, @CreateTSNorm,
+                @UpdateDate, @UpdateTS, @UpdateTSNorm,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "DocEntry") DO UPDATE SET
+                "DocNum" = EXCLUDED."DocNum", "DocDate" = EXCLUDED."DocDate",
+                "DocDueDate" = EXCLUDED."DocDueDate", "CardCode" = EXCLUDED."CardCode",
+                "CardName" = EXCLUDED."CardName", "DocTotal" = EXCLUDED."DocTotal",
+                "DocTotalSy" = EXCLUDED."DocTotalSy", "VatSum" = EXCLUDED."VatSum",
+                "DocCur" = EXCLUDED."DocCur", "DocStatus" = EXCLUDED."DocStatus",
+                "Cancelled" = EXCLUDED."Cancelled", "SlpCode" = EXCLUDED."SlpCode",
+                "ObjType" = EXCLUDED."ObjType", "DocType" = EXCLUDED."DocType",
+                "Comments" = EXCLUDED."Comments",
+                "CreateDate" = EXCLUDED."CreateDate", "CreateTS" = EXCLUDED."CreateTS",
+                "CreateTSNorm" = EXCLUDED."CreateTSNorm",
+                "UpdateDate" = EXCLUDED."UpdateDate", "UpdateTS" = EXCLUDED."UpdateTS",
+                "UpdateTSNorm" = EXCLUDED."UpdateTSNorm",
+                source_hash_hex = EXCLUDED.source_hash_hex,
+                extraction_run_id = EXCLUDED.extraction_run_id,
+                batch_id = EXCLUDED.batch_id, extracted_at_utc = EXCLUDED.extracted_at_utc,
+                ingestion_mode = EXCLUDED.ingestion_mode, raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_ordr".source_hash_hex != EXCLUDED.source_hash_hex
+                AND (EXCLUDED."UpdateDate" > "raw"."sap_ordr"."UpdateDate"
+                    OR (EXCLUDED."UpdateDate" = "raw"."sap_ordr"."UpdateDate"
+                        AND COALESCE(EXCLUDED."UpdateTSNorm",'000000') >= COALESCE("raw"."sap_ordr"."UpdateTSNorm",'000000')))
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var result = await conn.QueryAsync<int>(sql, MapDocHeader(companyId, r.DocEntry, r.DocNum, r.DocDate, r.DocDueDate, r.CardCode, r.CardName, r.DocTotal, r.DocTotalSy, r.VatSum, r.DocCur, r.DocStatus, r.Cancelled, r.SlpCode, r.ObjType, r.DocType, r.Comments, r.CreateDate, r.CreateTS, r.CreateTSNorm, r.UpdateDate, r.UpdateTS, r.UpdateTSNorm, r.SourceHashHex, r.ExtractionRunId, r.BatchId, r.ExtractedAtUtc, r.IngestionMode));
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Delivery Notes (ODLN) ─────────────────────────────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertDeliveriesAsync(
+        string companyId, IEnumerable<SapOdlnRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_odln" (
+                company_id, "DocEntry", "DocNum", "DocDate", "DocDueDate",
+                "CardCode", "CardName", "DocTotal", "DocTotalSy", "VatSum", "DocCur",
+                "DocStatus", "Cancelled", "SlpCode", "ObjType", "DocType", "Comments",
+                "CreateDate", "CreateTS", "CreateTSNorm",
+                "UpdateDate", "UpdateTS", "UpdateTSNorm",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @DocEntry, @DocNum, @DocDate, @DocDueDate,
+                @CardCode, @CardName, @DocTotal, @DocTotalSy, @VatSum, @DocCur,
+                @DocStatus, @Cancelled, @SlpCode, @ObjType, @DocType, @Comments,
+                @CreateDate, @CreateTS, @CreateTSNorm,
+                @UpdateDate, @UpdateTS, @UpdateTSNorm,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "DocEntry") DO UPDATE SET
+                "DocNum" = EXCLUDED."DocNum", "DocDate" = EXCLUDED."DocDate",
+                "DocDueDate" = EXCLUDED."DocDueDate", "CardCode" = EXCLUDED."CardCode",
+                "CardName" = EXCLUDED."CardName", "DocTotal" = EXCLUDED."DocTotal",
+                "DocTotalSy" = EXCLUDED."DocTotalSy", "VatSum" = EXCLUDED."VatSum",
+                "DocCur" = EXCLUDED."DocCur", "DocStatus" = EXCLUDED."DocStatus",
+                "Cancelled" = EXCLUDED."Cancelled", "SlpCode" = EXCLUDED."SlpCode",
+                "ObjType" = EXCLUDED."ObjType", "DocType" = EXCLUDED."DocType",
+                "Comments" = EXCLUDED."Comments",
+                "CreateDate" = EXCLUDED."CreateDate", "CreateTS" = EXCLUDED."CreateTS",
+                "CreateTSNorm" = EXCLUDED."CreateTSNorm",
+                "UpdateDate" = EXCLUDED."UpdateDate", "UpdateTS" = EXCLUDED."UpdateTS",
+                "UpdateTSNorm" = EXCLUDED."UpdateTSNorm",
+                source_hash_hex = EXCLUDED.source_hash_hex,
+                extraction_run_id = EXCLUDED.extraction_run_id,
+                batch_id = EXCLUDED.batch_id, extracted_at_utc = EXCLUDED.extracted_at_utc,
+                ingestion_mode = EXCLUDED.ingestion_mode, raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_odln".source_hash_hex != EXCLUDED.source_hash_hex
+                AND (EXCLUDED."UpdateDate" > "raw"."sap_odln"."UpdateDate"
+                    OR (EXCLUDED."UpdateDate" = "raw"."sap_odln"."UpdateDate"
+                        AND COALESCE(EXCLUDED."UpdateTSNorm",'000000') >= COALESCE("raw"."sap_odln"."UpdateTSNorm",'000000')))
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var result = await conn.QueryAsync<int>(sql, MapDocHeader(companyId, r.DocEntry, r.DocNum, r.DocDate, r.DocDueDate, r.CardCode, r.CardName, r.DocTotal, r.DocTotalSy, r.VatSum, r.DocCur, r.DocStatus, r.Cancelled, r.SlpCode, r.ObjType, r.DocType, r.Comments, r.CreateDate, r.CreateTS, r.CreateTSNorm, r.UpdateDate, r.UpdateTS, r.UpdateTSNorm, r.SourceHashHex, r.ExtractionRunId, r.BatchId, r.ExtractedAtUtc, r.IngestionMode));
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Stock Transfers (OWTR) ─────────────────────────────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertStockTransfersAsync(
+        string companyId, IEnumerable<SapOwtrRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_owtr" (
+                company_id, "DocEntry", "DocNum", "DocDate",
+                "FromWarehouse", "ToWarehouse", "DocTotal", "DocStatus", "Cancelled", "Comments",
+                "CreateDate", "CreateTS", "CreateTSNorm",
+                "UpdateDate", "UpdateTS", "UpdateTSNorm",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @DocEntry, @DocNum, @DocDate,
+                @FromWarehouse, @ToWarehouse, @DocTotal, @DocStatus, @Cancelled, @Comments,
+                @CreateDate, @CreateTS, @CreateTSNorm,
+                @UpdateDate, @UpdateTS, @UpdateTSNorm,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "DocEntry") DO UPDATE SET
+                "DocNum" = EXCLUDED."DocNum", "DocDate" = EXCLUDED."DocDate",
+                "FromWarehouse" = EXCLUDED."FromWarehouse", "ToWarehouse" = EXCLUDED."ToWarehouse",
+                "DocTotal" = EXCLUDED."DocTotal", "DocStatus" = EXCLUDED."DocStatus",
+                "Cancelled" = EXCLUDED."Cancelled", "Comments" = EXCLUDED."Comments",
+                "CreateDate" = EXCLUDED."CreateDate", "CreateTS" = EXCLUDED."CreateTS",
+                "CreateTSNorm" = EXCLUDED."CreateTSNorm",
+                "UpdateDate" = EXCLUDED."UpdateDate", "UpdateTS" = EXCLUDED."UpdateTS",
+                "UpdateTSNorm" = EXCLUDED."UpdateTSNorm",
+                source_hash_hex = EXCLUDED.source_hash_hex,
+                extraction_run_id = EXCLUDED.extraction_run_id,
+                batch_id = EXCLUDED.batch_id, extracted_at_utc = EXCLUDED.extracted_at_utc,
+                ingestion_mode = EXCLUDED.ingestion_mode, raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_owtr".source_hash_hex != EXCLUDED.source_hash_hex
+                AND (EXCLUDED."UpdateDate" > "raw"."sap_owtr"."UpdateDate"
+                    OR (EXCLUDED."UpdateDate" = "raw"."sap_owtr"."UpdateDate"
+                        AND COALESCE(EXCLUDED."UpdateTSNorm",'000000') >= COALESCE("raw"."sap_owtr"."UpdateTSNorm",'000000')))
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var p = new DynamicParameters();
+            p.Add("company_id",        companyId);
+            p.Add("DocEntry",          r.DocEntry);
+            p.Add("DocNum",            r.DocNum);
+            p.Add("DocDate",           r.DocDate);
+            p.Add("FromWarehouse",     r.FromWarehouse);
+            p.Add("ToWarehouse",       r.ToWarehouse);
+            p.Add("DocTotal",          r.DocTotal);
+            p.Add("DocStatus",         r.DocStatus);
+            p.Add("Cancelled",         r.Cancelled);
+            p.Add("Comments",          r.Comments);
+            p.Add("CreateDate",        r.CreateDate);
+            p.Add("CreateTS",          r.CreateTS);
+            p.Add("CreateTSNorm",      r.CreateTSNorm);
+            p.Add("UpdateDate",        r.UpdateDate);
+            p.Add("UpdateTS",          r.UpdateTS);
+            p.Add("UpdateTSNorm",      r.UpdateTSNorm);
+            p.Add("source_hash_hex",   r.SourceHashHex);
+            p.Add("extraction_run_id", r.ExtractionRunId);
+            p.Add("batch_id",          r.BatchId);
+            p.Add("extracted_at_utc",  r.ExtractedAtUtc);
+            p.Add("ingestion_mode",    r.IngestionMode);
+            var result = await conn.QueryAsync<int>(sql, p);
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
     // ── Cross-table helpers ───────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<int>> GetExistingCreditMemoDocEntriesAsync(
@@ -720,6 +1140,51 @@ public sealed class SapRawRepository(string connectionString, ILogger<SapRawRepo
         p.Add("batch_id",          r.BatchId);
         p.Add("extracted_at_utc",  r.ExtractedAtUtc);
         p.Add("ingestion_mode",    r.IngestionMode);
+        return p;
+    }
+
+    // Shared mapper for document-header objects (OPOR, OPDN, OPCH, ORDR, ODLN)
+    private static DynamicParameters MapDocHeader(
+        string companyId, int docEntry, int docNum,
+        DateTime? docDate, DateTime? docDueDate,
+        string? cardCode, string? cardName,
+        decimal? docTotal, decimal? docTotalSy, decimal? vatSum, string? docCur,
+        string? docStatus, string? cancelled, string? slpCode,
+        string? objType, string? docType, string? comments,
+        DateTime? createDate, string? createTS, string? createTSNorm,
+        DateTime? updateDate, string? updateTS, string? updateTSNorm,
+        string? sourceHashHex, string extractionRunId, string batchId,
+        DateTime extractedAtUtc, string ingestionMode)
+    {
+        var p = new DynamicParameters();
+        p.Add("company_id",        companyId);
+        p.Add("DocEntry",          docEntry);
+        p.Add("DocNum",            docNum);
+        p.Add("DocDate",           docDate);
+        p.Add("DocDueDate",        docDueDate);
+        p.Add("CardCode",          cardCode);
+        p.Add("CardName",          cardName);
+        p.Add("DocTotal",          docTotal);
+        p.Add("DocTotalSy",        docTotalSy);
+        p.Add("VatSum",            vatSum);
+        p.Add("DocCur",            docCur);
+        p.Add("DocStatus",         docStatus);
+        p.Add("Cancelled",         cancelled);
+        p.Add("SlpCode",           slpCode);
+        p.Add("ObjType",           objType);
+        p.Add("DocType",           docType);
+        p.Add("Comments",          comments);
+        p.Add("CreateDate",        createDate);
+        p.Add("CreateTS",          createTS);
+        p.Add("CreateTSNorm",      createTSNorm);
+        p.Add("UpdateDate",        updateDate);
+        p.Add("UpdateTS",          updateTS);
+        p.Add("UpdateTSNorm",      updateTSNorm);
+        p.Add("source_hash_hex",   sourceHashHex);
+        p.Add("extraction_run_id", extractionRunId);
+        p.Add("batch_id",          batchId);
+        p.Add("extracted_at_utc",  extractedAtUtc);
+        p.Add("ingestion_mode",    ingestionMode);
         return p;
     }
 }

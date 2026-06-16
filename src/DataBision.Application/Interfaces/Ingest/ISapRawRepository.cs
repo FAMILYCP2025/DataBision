@@ -12,6 +12,14 @@ public interface ISapRawRepository
     Task<(int inserted, int updated)> UpsertItemsAsync(string companyId, IEnumerable<SapOitmRow> rows, CancellationToken ct = default);
     Task<(int inserted, int updated)> UpsertSalespersonsAsync(string companyId, IEnumerable<SapOslpRow> rows, CancellationToken ct = default);
 
+    Task<(int inserted, int updated)> UpsertPurchaseOrdersAsync(string companyId, IEnumerable<SapOporRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertPurchaseReceiptsAsync(string companyId, IEnumerable<SapOpdnRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertPurchaseInvoicesAsync(string companyId, IEnumerable<SapOpchRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertItemWarehousesAsync(string companyId, IEnumerable<SapOitwRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertSalesOrdersAsync(string companyId, IEnumerable<SapOrdrRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertDeliveriesAsync(string companyId, IEnumerable<SapOdlnRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertStockTransfersAsync(string companyId, IEnumerable<SapOwtrRow> rows, CancellationToken ct = default);
+
     /// <summary>Returns the subset of <paramref name="docEntries"/> that exist in raw.sap_orin for the company.</summary>
     Task<IReadOnlyList<int>> GetExistingCreditMemoDocEntriesAsync(string companyId, IEnumerable<int> docEntries, CancellationToken ct = default);
 }

@@ -12,4 +12,11 @@ public interface IIngestService
     Task<IngestBatchResponse> IngestCustomersAsync(IngestBatchRequest<SapOcrdRow> request, CancellationToken ct = default);
     Task<IngestBatchResponse> IngestItemsAsync(IngestBatchRequest<SapOitmRow> request, CancellationToken ct = default);
     Task<IngestBatchResponse> IngestSalespersonsAsync(IngestBatchRequest<SapOslpRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestPurchaseOrdersAsync(IngestBatchRequest<SapOporRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestPurchaseReceiptsAsync(IngestBatchRequest<SapOpdnRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestPurchaseInvoicesAsync(IngestBatchRequest<SapOpchRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestItemWarehousesAsync(IngestBatchRequest<SapOitwRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestSalesOrdersAsync(IngestBatchRequest<SapOrdrRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestDeliveriesAsync(IngestBatchRequest<SapOdlnRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestStockTransfersAsync(IngestBatchRequest<SapOwtrRow> request, CancellationToken ct = default);
 }

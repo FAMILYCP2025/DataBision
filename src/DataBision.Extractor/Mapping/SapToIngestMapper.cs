@@ -286,6 +286,188 @@ public static class SapToIngestMapper
         null                => null,
         _                   => v.Length == 1 ? v : v[..1]
     };
+
+    // ── OPOR — Purchase Orders ─────────────────────────────────────────────────
+    public static SapOporRow MapOporRow(JsonNode row, MappingContext ctx) => new()
+    {
+        DocEntry        = GetInt(row, "DocEntry"),
+        DocNum          = GetInt(row, "DocNum"),
+        DocDate         = GetDate(row, "DocDate"),
+        DocDueDate      = GetDate(row, "DocDueDate"),
+        CardCode        = GetStr(row, "CardCode"),
+        CardName        = GetStr(row, "CardName"),
+        DocTotal        = GetDec(row, "DocTotal"),
+        DocTotalSy      = GetDec(row, "DocTotalSy"),
+        VatSum          = GetDec(row, "VatSum"),
+        DocCur          = GetStr(row, "DocCur"),
+        DocStatus       = MapDocStatus(GetStr(row, "DocStatus")),
+        Cancelled       = MapYesNo(GetStr(row, "Cancelled")),
+        SlpCode         = GetStr(row, "SalesPersonCode"),
+        ObjType         = GetStr(row, "ObjType"),
+        DocType         = MapDocType(GetStr(row, "DocType")),
+        Comments        = GetStr(row, "Comments"),
+        CreateDate      = GetDate(row, "CreateDate"),
+        CreateTS        = GetStr(row, "CreateTS"),
+        UpdateDate      = GetDate(row, "UpdateDate"),
+        UpdateTS        = GetStr(row, "UpdateTS"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── OPDN — Purchase Delivery Notes (Goods Receipts) ───────────────────────
+    public static SapOpdnRow MapOpdnRow(JsonNode row, MappingContext ctx) => new()
+    {
+        DocEntry        = GetInt(row, "DocEntry"),
+        DocNum          = GetInt(row, "DocNum"),
+        DocDate         = GetDate(row, "DocDate"),
+        DocDueDate      = GetDate(row, "DocDueDate"),
+        CardCode        = GetStr(row, "CardCode"),
+        CardName        = GetStr(row, "CardName"),
+        DocTotal        = GetDec(row, "DocTotal"),
+        DocTotalSy      = GetDec(row, "DocTotalSy"),
+        VatSum          = GetDec(row, "VatSum"),
+        DocCur          = GetStr(row, "DocCur"),
+        DocStatus       = MapDocStatus(GetStr(row, "DocStatus")),
+        Cancelled       = MapYesNo(GetStr(row, "Cancelled")),
+        SlpCode         = GetStr(row, "SalesPersonCode"),
+        ObjType         = GetStr(row, "ObjType"),
+        DocType         = MapDocType(GetStr(row, "DocType")),
+        Comments        = GetStr(row, "Comments"),
+        CreateDate      = GetDate(row, "CreateDate"),
+        CreateTS        = GetStr(row, "CreateTS"),
+        UpdateDate      = GetDate(row, "UpdateDate"),
+        UpdateTS        = GetStr(row, "UpdateTS"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── OPCH — Purchase Invoices ───────────────────────────────────────────────
+    public static SapOpchRow MapOpchRow(JsonNode row, MappingContext ctx) => new()
+    {
+        DocEntry        = GetInt(row, "DocEntry"),
+        DocNum          = GetInt(row, "DocNum"),
+        DocDate         = GetDate(row, "DocDate"),
+        DocDueDate      = GetDate(row, "DocDueDate"),
+        CardCode        = GetStr(row, "CardCode"),
+        CardName        = GetStr(row, "CardName"),
+        DocTotal        = GetDec(row, "DocTotal"),
+        DocTotalSy      = GetDec(row, "DocTotalSy"),
+        VatSum          = GetDec(row, "VatSum"),
+        DocCur          = GetStr(row, "DocCur"),
+        DocStatus       = MapDocStatus(GetStr(row, "DocStatus")),
+        Cancelled       = MapYesNo(GetStr(row, "Cancelled")),
+        SlpCode         = GetStr(row, "SalesPersonCode"),
+        ObjType         = GetStr(row, "ObjType"),
+        DocType         = MapDocType(GetStr(row, "DocType")),
+        Comments        = GetStr(row, "Comments"),
+        CreateDate      = GetDate(row, "CreateDate"),
+        CreateTS        = GetStr(row, "CreateTS"),
+        UpdateDate      = GetDate(row, "UpdateDate"),
+        UpdateTS        = GetStr(row, "UpdateTS"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── OITW — Item Warehouse Levels ──────────────────────────────────────────
+    // SL field: WarehouseCode (not WhsCode); InStock (not OnHand); Committed (not IsCommited)
+    public static SapOitwRow MapOitwRow(JsonNode row, MappingContext ctx) => new()
+    {
+        ItemCode        = GetStr(row, "ItemCode"),
+        WhsCode         = GetStrAny(row, "WarehouseCode", "WhsCode"),
+        OnHand          = GetDecAny(row, "InStock", "OnHand"),
+        IsCommited      = GetDecAny(row, "Committed", "IsCommited"),
+        OnOrder         = GetDec(row, "OnOrder"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── ORDR — Sales Orders ───────────────────────────────────────────────────
+    public static SapOrdrRow MapOrdrRow(JsonNode row, MappingContext ctx) => new()
+    {
+        DocEntry        = GetInt(row, "DocEntry"),
+        DocNum          = GetInt(row, "DocNum"),
+        DocDate         = GetDate(row, "DocDate"),
+        DocDueDate      = GetDate(row, "DocDueDate"),
+        CardCode        = GetStr(row, "CardCode"),
+        CardName        = GetStr(row, "CardName"),
+        DocTotal        = GetDec(row, "DocTotal"),
+        DocTotalSy      = GetDec(row, "DocTotalSy"),
+        VatSum          = GetDec(row, "VatSum"),
+        DocCur          = GetStr(row, "DocCur"),
+        DocStatus       = MapDocStatus(GetStr(row, "DocStatus")),
+        Cancelled       = MapYesNo(GetStr(row, "Cancelled")),
+        SlpCode         = GetStr(row, "SalesPersonCode"),
+        ObjType         = GetStr(row, "ObjType"),
+        DocType         = MapDocType(GetStr(row, "DocType")),
+        Comments        = GetStr(row, "Comments"),
+        CreateDate      = GetDate(row, "CreateDate"),
+        CreateTS        = GetStr(row, "CreateTS"),
+        UpdateDate      = GetDate(row, "UpdateDate"),
+        UpdateTS        = GetStr(row, "UpdateTS"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── ODLN — Delivery Notes ─────────────────────────────────────────────────
+    public static SapOdlnRow MapOdlnRow(JsonNode row, MappingContext ctx) => new()
+    {
+        DocEntry        = GetInt(row, "DocEntry"),
+        DocNum          = GetInt(row, "DocNum"),
+        DocDate         = GetDate(row, "DocDate"),
+        DocDueDate      = GetDate(row, "DocDueDate"),
+        CardCode        = GetStr(row, "CardCode"),
+        CardName        = GetStr(row, "CardName"),
+        DocTotal        = GetDec(row, "DocTotal"),
+        DocTotalSy      = GetDec(row, "DocTotalSy"),
+        VatSum          = GetDec(row, "VatSum"),
+        DocCur          = GetStr(row, "DocCur"),
+        DocStatus       = MapDocStatus(GetStr(row, "DocStatus")),
+        Cancelled       = MapYesNo(GetStr(row, "Cancelled")),
+        SlpCode         = GetStr(row, "SalesPersonCode"),
+        ObjType         = GetStr(row, "ObjType"),
+        DocType         = MapDocType(GetStr(row, "DocType")),
+        Comments        = GetStr(row, "Comments"),
+        CreateDate      = GetDate(row, "CreateDate"),
+        CreateTS        = GetStr(row, "CreateTS"),
+        UpdateDate      = GetDate(row, "UpdateDate"),
+        UpdateTS        = GetStr(row, "UpdateTS"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── OWTR — Stock Transfers ────────────────────────────────────────────────
+    public static SapOwtrRow MapOwtrRow(JsonNode row, MappingContext ctx) => new()
+    {
+        DocEntry        = GetInt(row, "DocEntry"),
+        DocNum          = GetInt(row, "DocNum"),
+        DocDate         = GetDate(row, "DocDate"),
+        FromWarehouse   = GetStrAny(row, "FromWarehouse", "FromWarehouseCode"),
+        ToWarehouse     = GetStrAny(row, "ToWarehouse", "ToWarehouseCode"),
+        DocTotal        = GetDec(row, "DocTotal"),
+        DocStatus       = MapDocStatus(GetStr(row, "DocStatus")),
+        Cancelled       = MapYesNo(GetStr(row, "Cancelled")),
+        Comments        = GetStr(row, "Comments"),
+        CreateDate      = GetDate(row, "CreateDate"),
+        CreateTS        = GetStr(row, "CreateTS"),
+        UpdateDate      = GetDate(row, "UpdateDate"),
+        UpdateTS        = GetStr(row, "UpdateTS"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
 }
 
 /// <summary>

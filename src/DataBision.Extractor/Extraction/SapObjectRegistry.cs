@@ -23,36 +23,41 @@ public static class SapObjectRegistry
         public const string OITM = "OITM";   // Items
         public const string OSLP = "OSLP";   // Sales Persons
 
-        public static readonly IReadOnlyList<string> All = [OINV, ORIN, INV1, RIN1, OCRD, OITM, OSLP];
+        // PURCHASING (Sprint 8J)
+        public const string OPOR = "OPOR";   // Purchase Orders       → mart.purchase_executive_daily
+        public const string OPDN = "OPDN";   // Goods Receipts PO     → mart.purchase_receiving_dashboard
+        public const string OPCH = "OPCH";   // AP Invoices           → mart.finance_ap_aging_dashboard
+
+        // INVENTORY (Sprint 8J)
+        // OITW: moved to Prepared — ItemWarehouseInfoCollection not exposed as top-level entity in SL v1000290
+        public const string OWTR = "OWTR";   // Stock Transfers       → mart.inventory_warehouse_dashboard
+
+        // SALES FULFILLMENT (Sprint 8J)
+        public const string ORDR = "ORDR";   // Sales Orders          → mart.sales_fulfillment_dashboard
+        public const string ODLN = "ODLN";   // Deliveries            → mart.sales_fulfillment_dashboard
+
+        public static readonly IReadOnlyList<string> All =
+            [OINV, ORIN, INV1, RIN1, OCRD, OITM, OSLP, OPOR, OPDN, OPCH, OWTR, ORDR, ODLN];
     }
 
-    // ── Prepared (inactive — code ready, not yet activated) ──────────────────
-    // Activate by adding the job and wiring in ExtractorRunner + Program.cs
+    // ── Prepared (inactive — line objects and warehouses, not yet wired) ────────
 
     public static class Prepared
     {
-        // SALES — fulfillment
-        public const string ORDR = "ORDR";   // Sales Orders          → mart.sales_fulfillment_dashboard
+        // Lines — activate when volume is known
         public const string RDR1 = "RDR1";   // Sales Order Lines
-        public const string ODLN = "ODLN";   // Deliveries            → mart.sales_fulfillment_dashboard
         public const string DLN1 = "DLN1";   // Delivery Lines
-
-        // PURCHASING
-        public const string OPOR = "OPOR";   // Purchase Orders       → mart.purchase_executive_daily
         public const string POR1 = "POR1";   // Purchase Order Lines
-        public const string OPDN = "OPDN";   // Goods Receipts PO     → mart.purchase_receiving_dashboard
         public const string PDN1 = "PDN1";   // Goods Receipt Lines
-        public const string OPCH = "OPCH";   // AP Invoices           → mart.finance_ap_aging_dashboard
         public const string PCH1 = "PCH1";   // AP Invoice Lines
-
-        // INVENTORY
-        public const string OITW = "OITW";   // Item Warehouse Info   → mart.inventory_stock_dashboard
-        public const string OWHS = "OWHS";   // Warehouses            → mart.inventory_warehouse_dashboard
-        public const string OWTR = "OWTR";   // Stock Transfers       → mart.inventory_warehouse_dashboard
         public const string WTR1 = "WTR1";   // Stock Transfer Lines
 
+        // Master data + inventory per warehouse
+        public const string OITW = "OITW";   // Item Warehouse Info — no top-level SL entity in v1000290
+        public const string OWHS = "OWHS";   // Warehouses            → mart.inventory_warehouse_dashboard
+
         public static readonly IReadOnlyList<string> All =
-            [ORDR, RDR1, ODLN, DLN1, OPOR, POR1, OPDN, PDN1, OPCH, PCH1, OITW, OWHS, OWTR, WTR1];
+            [RDR1, DLN1, POR1, PDN1, PCH1, WTR1, OWHS];
     }
 
     // ── Endpoint mapping ──────────────────────────────────────────────────────
@@ -61,20 +66,18 @@ public static class SapObjectRegistry
     public static readonly IReadOnlyDictionary<string, string> Endpoints =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            // Active
             [Active.OINV] = "Invoices",
             [Active.ORIN] = "CreditNotes",
             [Active.OCRD] = "BusinessPartners",
             [Active.OITM] = "Items",
             [Active.OSLP] = "SalesPersons",
-            // Prepared
-            [Prepared.ORDR] = "Orders",
-            [Prepared.ODLN] = "DeliveryNotes",
-            [Prepared.OPOR] = "PurchaseOrders",
-            [Prepared.OPDN] = "PurchaseDeliveryNotes",
-            [Prepared.OPCH] = "PurchaseInvoices",
+            [Active.OPOR] = "PurchaseOrders",
+            [Active.OPDN] = "PurchaseDeliveryNotes",
+            [Active.OPCH] = "PurchaseInvoices",
             [Prepared.OITW] = "ItemWarehouseInfoCollection",
+            [Active.OWTR] = "StockTransfers",
+            [Active.ORDR] = "Orders",
+            [Active.ODLN] = "DeliveryNotes",
             [Prepared.OWHS] = "Warehouses",
-            [Prepared.OWTR] = "StockTransfers",
         };
 }
