@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import DateRangePicker from '../components/nativebi/DateRangePicker'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
 import NativeBiMiniBarList from '../components/nativebi/NativeBiMiniBarList'
+import NativeBiFilterBar from '../components/nativebi/NativeBiFilterBar'
 import {
   useSalesOverview,
   useSalesCustomers,
@@ -11,6 +11,8 @@ import {
   useSalesSalespersons,
 } from '../hooks/useNativeBiSales'
 import { useBiSalesFulfillment } from '../hooks/useProcessBi'
+import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
+import { useItemGroupOptions, useCustomerGroupOptions, useSalespersonOptions } from '../hooks/useFilterOptions'
 import type {
   CustomerSales,
   ItemSales,
@@ -19,6 +21,7 @@ import type {
   PaginationParams,
 } from '../types/nativeBi'
 import type { SalesFulfillment } from '../types/processBi'
+import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 
 function defaultDates() {
   const to = new Date()
@@ -29,6 +32,16 @@ function defaultDates() {
     dateTo: to.toISOString().slice(0, 10),
   }
 }
+
+const SALES_FILTER_DEFS: NativeBiFilterDefinition[] = [
+  { key: 'dateFrom', label: 'Período', type: 'date-range', source: 'static', modules: ['sales'] },
+  { key: 'year',     label: 'Año',     type: 'year',       source: 'static', modules: ['sales'] },
+  { key: 'salesType', label: 'Tipo',   type: 'toggle',     source: 'static', modules: ['sales'] },
+  { key: 'month',           label: 'Mes',            type: 'month',  source: 'static',   modules: ['sales'], isAdvanced: true, placeholder: 'Todos' },
+  { key: 'salespersonCodes',  label: 'Vendedor',     type: 'select', source: 'endpoint', modules: ['sales'], isAdvanced: true, placeholder: 'Todos' },
+  { key: 'itemGroupCodes',    label: 'Grupo artículo', type: 'select', source: 'endpoint', modules: ['sales'], isAdvanced: true, placeholder: 'Todos' },
+  { key: 'customerGroupCodes', label: 'Grupo cliente', type: 'select', source: 'endpoint', modules: ['sales'], isAdvanced: true, placeholder: 'Todos' },
+]
 
 function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
@@ -104,13 +117,28 @@ function StatCard({ label, value, sub, loading }: { label: string; value: React.
 }
 
 export default function NativeBiSalesPage() {
-  const [dates, setDates] = useState(defaultDates)
+  const { filters, setFilter, resetFilter, resetAll, hasActiveFilters } = useNativeBiFilters('sales', defaultDates())
   const [tab, setTab] = useState<Tab>('resumen')
   const [custP, setCustP] = useState<PaginationParams>(initPag('netSalesAmount'))
   const [itemP, setItemP] = useState<PaginationParams>(initPag('grossSalesAmount'))
   const [spP, setSpP]     = useState<PaginationParams>(initPag('netSalesAmount'))
 
-  const { data: overview, isLoading: loadingOv }       = useSalesOverview(dates)
+  const { data: spOpts, isLoading: spOptsLoading } = useSalespersonOptions()
+  const { data: igOpts, isLoading: igOptsLoading } = useItemGroupOptions()
+  const { data: cgOpts, isLoading: cgOptsLoading } = useCustomerGroupOptions()
+
+  const optionsByKey: Record<string, { value: string; label: string }[]> = {
+    salespersonCodes:  spOpts ?? [],
+    itemGroupCodes:    igOpts ?? [],
+    customerGroupCodes: cgOpts ?? [],
+  }
+  const loadingKeys = new Set<string>([
+    ...(spOptsLoading ? ['salespersonCodes'] : []),
+    ...(igOptsLoading ? ['itemGroupCodes'] : []),
+    ...(cgOptsLoading ? ['customerGroupCodes'] : []),
+  ])
+
+  const { data: overview, isLoading: loadingOv } = useSalesOverview({ dateFrom: filters.dateFrom, dateTo: filters.dateTo })
   const { data: custData, isLoading: loadingCust }     = useSalesCustomers(custP)
   const { data: itemData, isLoading: loadingItems }    = useSalesItems(itemP)
   const { data: spData, isLoading: loadingSp }         = useSalesSalespersons(spP)
@@ -401,13 +429,17 @@ export default function NativeBiSalesPage() {
       <NativeBiPageHeader
         title="Ventas"
         description="Análisis de ventas por rango de fechas"
-        actions={
-          <DateRangePicker
-            dateFrom={dates.dateFrom}
-            dateTo={dates.dateTo}
-            onChange={(dateFrom, dateTo) => setDates({ dateFrom, dateTo })}
-          />
-        }
+      />
+
+      <NativeBiFilterBar
+        filters={filters}
+        definitions={SALES_FILTER_DEFS}
+        optionsByKey={optionsByKey}
+        loadingKeys={loadingKeys}
+        onFilterChange={setFilter}
+        onFilterReset={resetFilter}
+        onResetAll={resetAll}
+        hasActiveFilters={hasActiveFilters}
       />
 
       <div className="db-card">
@@ -514,7 +546,7 @@ export default function NativeBiSalesPage() {
             )}
 
             <p style={{ fontSize: 12, color: 'var(--c-text-faint)', marginTop: 20 }}>
-              Período: {dates.dateFrom} — {dates.dateTo}.
+              Período: {filters.dateFrom} — {filters.dateTo}.
               {topItem && ` Producto líder: ${topItem.itemName}.`}
             </p>
           </div>

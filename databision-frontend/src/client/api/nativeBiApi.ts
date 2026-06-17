@@ -18,6 +18,7 @@ import type {
   PaginationParams,
   DateRangeParams,
 } from '../types/nativeBi'
+import type { FilterOption } from '../types/nativeBiFilters'
 
 async function getTenant(): Promise<string | null> {
   const { useClientAuthStore } = await import('../store/useClientAuthStore')
@@ -179,3 +180,28 @@ export async function getNativeBiTableCounts(): Promise<NativeBiTableCounts> {
   )
   return data.data
 }
+
+// ── Filter Options ────────────────────────────────────────────────────────────
+
+type FilterOptionDto = { code: string; name: string }
+
+type FilterOptionsEndpoint =
+  | 'item-groups'
+  | 'customer-groups'
+  | 'supplier-groups'
+  | 'warehouses'
+  | 'salespersons'
+
+async function getFilterOptions(type: FilterOptionsEndpoint): Promise<FilterOption[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<FilterOptionDto[]>>(
+    `/client/bi/filters/${type}${nbQs({ companyId: tenant })}`
+  )
+  return data.data.map(d => ({ value: d.code, label: d.name }))
+}
+
+export const getItemGroupOptions     = () => getFilterOptions('item-groups')
+export const getCustomerGroupOptions = () => getFilterOptions('customer-groups')
+export const getSupplierGroupOptions = () => getFilterOptions('supplier-groups')
+export const getWarehouseOptions     = () => getFilterOptions('warehouses')
+export const getSalespersonOptions   = () => getFilterOptions('salespersons')

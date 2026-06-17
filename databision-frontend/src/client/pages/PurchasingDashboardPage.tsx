@@ -4,13 +4,17 @@ import KpiCard from '../components/nativebi/KpiCard'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
 import NativeBiMiniBarList from '../components/nativebi/NativeBiMiniBarList'
+import NativeBiFilterBar from '../components/nativebi/NativeBiFilterBar'
 import {
   useBiPurchasingExecutive,
   useBiPurchasingSuppliers,
   useBiPurchasingReceiving,
 } from '../hooks/useProcessBi'
+import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
+import { useSupplierGroupOptions, useWarehouseOptions } from '../hooks/useFilterOptions'
 import type { PurchasingSupplier, PurchasingReceiving, PurchasingExecutive } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
+import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 
 function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
@@ -48,6 +52,12 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'evolution', label: 'Evolución OC' },
 ]
 
+const PURCHASING_FILTER_DEFS: NativeBiFilterDefinition[] = [
+  { key: 'dateFrom',          label: 'Período',         type: 'date-range', source: 'static',   modules: ['purchasing'] },
+  { key: 'supplierGroupCodes', label: 'Grupo proveedor', type: 'select',     source: 'endpoint', modules: ['purchasing'], isAdvanced: true, placeholder: 'Todos' },
+  { key: 'warehouseCodes',    label: 'Almacén',          type: 'select',     source: 'endpoint', modules: ['purchasing'], isAdvanced: true, placeholder: 'Todos' },
+]
+
 function TabButton({ label, active, onClick }: { id?: string; label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -69,9 +79,15 @@ function TabButton({ label, active, onClick }: { id?: string; label: string; act
 }
 
 export default function PurchasingDashboardPage() {
+  const { filters, setFilter, resetFilter, resetAll, hasActiveFilters } = useNativeBiFilters('purchasing')
   const [tab, setTab] = useState<Tab>('resumen')
   const [suppP, setSuppP] = useState<PaginationParams>(initPag('poAmount'))
   const [recvP, setRecvP] = useState<PaginationParams>(initPag('grAmount'))
+
+  const { data: sgOpts, isLoading: sgLoading } = useSupplierGroupOptions()
+  const { data: whOpts, isLoading: whLoading }  = useWarehouseOptions()
+  const optionsByKey = { supplierGroupCodes: sgOpts ?? [], warehouseCodes: whOpts ?? [] }
+  const loadingKeys  = new Set<string>([...(sgLoading ? ['supplierGroupCodes'] : []), ...(whLoading ? ['warehouseCodes'] : [])])
 
   const { data: execData, isLoading: loadingExec, error: execErr, refetch: refetchExec } = useBiPurchasingExecutive(30)
   const { data: suppData, isLoading: loadingSupp } = useBiPurchasingSuppliers(suppP)
@@ -274,6 +290,17 @@ export default function PurchasingDashboardPage() {
       <NativeBiPageHeader
         title="Compras"
         description="Órdenes de compra, proveedores y recepciones — últimos 30 días"
+      />
+
+      <NativeBiFilterBar
+        filters={filters}
+        definitions={PURCHASING_FILTER_DEFS}
+        optionsByKey={optionsByKey}
+        loadingKeys={loadingKeys}
+        onFilterChange={setFilter}
+        onFilterReset={resetFilter}
+        onResetAll={resetAll}
+        hasActiveFilters={hasActiveFilters}
       />
 
       {/* KPI row */}

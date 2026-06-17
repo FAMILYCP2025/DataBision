@@ -3,13 +3,16 @@ import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import KpiCard from '../components/nativebi/KpiCard'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
+import NativeBiFilterBar from '../components/nativebi/NativeBiFilterBar'
 import {
   useBiFinanceExecutive,
   useBiFinanceArAging,
   useBiFinanceApAging,
 } from '../hooks/useProcessBi'
+import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
 import type { FinanceArAging, FinanceApAging } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
+import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 
 function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
@@ -52,6 +55,11 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'ar',      label: 'Cuentas por cobrar' },
   { id: 'ap',      label: 'Cuentas por pagar' },
   { id: 'risk',    label: 'Riesgo +90d' },
+]
+
+const FINANCE_FILTER_DEFS: NativeBiFilterDefinition[] = [
+  { key: 'year',  label: 'Año', type: 'year',  source: 'static', modules: ['finance'] },
+  { key: 'month', label: 'Mes', type: 'month', source: 'static', modules: ['finance'], isAdvanced: true, placeholder: 'Todos' },
 ]
 
 function TabButton({ label, active, onClick }: { id?: string; label: string; active: boolean; onClick: () => void }) {
@@ -104,6 +112,7 @@ function AgingBar({ label, amount, total, color }: { label: string; amount: numb
 }
 
 export default function FinanceDashboardPage() {
+  const { filters, setFilter, resetFilter, resetAll, hasActiveFilters } = useNativeBiFilters('finance')
   const [tab, setTab] = useState<Tab>('resumen')
   const [arP, setArP] = useState<PaginationParams>(initPag('overdueAmount'))
   const [apP, setApP] = useState<PaginationParams>(initPag('overdueAmount'))
@@ -333,6 +342,15 @@ export default function FinanceDashboardPage() {
       <NativeBiPageHeader
         title="Finanzas"
         description="Cuentas por cobrar y por pagar — vencimientos y aging"
+      />
+
+      <NativeBiFilterBar
+        filters={filters}
+        definitions={FINANCE_FILTER_DEFS}
+        onFilterChange={setFilter}
+        onFilterReset={resetFilter}
+        onResetAll={resetAll}
+        hasActiveFilters={hasActiveFilters}
       />
 
       {execErr ? (

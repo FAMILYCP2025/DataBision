@@ -4,12 +4,16 @@ import KpiCard from '../components/nativebi/KpiCard'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
 import NativeBiMiniBarList from '../components/nativebi/NativeBiMiniBarList'
+import NativeBiFilterBar from '../components/nativebi/NativeBiFilterBar'
 import {
   useBiInventoryRotation,
   useBiInventoryWarehouses,
 } from '../hooks/useProcessBi'
+import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
+import { useWarehouseOptions, useItemGroupOptions } from '../hooks/useFilterOptions'
 import type { InventoryRotation, InventoryWarehouse } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
+import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 
 function fmtQty(n: number | null) {
   if (n === null || n === undefined) return '—'
@@ -59,6 +63,11 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'no-movement', label: 'Sin movimiento' },
 ]
 
+const INVENTORY_FILTER_DEFS: NativeBiFilterDefinition[] = [
+  { key: 'warehouseCodes', label: 'Almacén',         type: 'select', source: 'endpoint', modules: ['inventory'], placeholder: 'Todos' },
+  { key: 'itemGroupCodes', label: 'Grupo artículo',  type: 'select', source: 'endpoint', modules: ['inventory'], isAdvanced: true, placeholder: 'Todos' },
+]
+
 function TabButton({ label, active, onClick }: { id?: string; label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -96,8 +105,14 @@ function RotationBadge({ status }: { status: string }) {
 }
 
 export default function InventoryDashboardPage() {
+  const { filters, setFilter, resetFilter, resetAll, hasActiveFilters } = useNativeBiFilters('inventory')
   const [tab, setTab] = useState<Tab>('resumen')
   const [rotP, setRotP] = useState<PaginationParams>(initPag('qtySold90d'))
+
+  const { data: whOpts, isLoading: whOptsLoading } = useWarehouseOptions()
+  const { data: igOpts, isLoading: igOptsLoading } = useItemGroupOptions()
+  const optionsByKey = { warehouseCodes: whOpts ?? [], itemGroupCodes: igOpts ?? [] }
+  const loadingKeys  = new Set<string>([...(whOptsLoading ? ['warehouseCodes'] : []), ...(igOptsLoading ? ['itemGroupCodes'] : [])])
 
   const { data: rotData, isLoading: loadingRot, error: rotErr, refetch: refetchRot } = useBiInventoryRotation(rotP)
   const { data: whData, isLoading: loadingWh } = useBiInventoryWarehouses()
@@ -290,6 +305,17 @@ export default function InventoryDashboardPage() {
       <NativeBiPageHeader
         title="Inventario"
         description="Rotación de artículos y movimientos por almacén"
+      />
+
+      <NativeBiFilterBar
+        filters={filters}
+        definitions={INVENTORY_FILTER_DEFS}
+        optionsByKey={optionsByKey}
+        loadingKeys={loadingKeys}
+        onFilterChange={setFilter}
+        onFilterReset={resetFilter}
+        onResetAll={resetAll}
+        hasActiveFilters={hasActiveFilters}
       />
 
       {rotErr ? (

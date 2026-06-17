@@ -83,6 +83,11 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
         new ProcessDashboardRepository(stagingConnectionString));
     builder.Services.AddScoped<IProcessService, ProcessService>();
     builder.Services.AddScoped<IProcessDashboardService, ProcessDashboardService>();
+
+    // Filter options (distinct values from MART for filter dropdowns)
+    builder.Services.AddScoped<IFilterOptionsRepository>(_ =>
+        new FilterOptionsRepository(stagingConnectionString));
+    builder.Services.AddScoped<IFilterOptionsService, FilterOptionsService>();
 }
 
 // Analytics company ID resolver (maps app slug → staging company_id for Native BI queries)
