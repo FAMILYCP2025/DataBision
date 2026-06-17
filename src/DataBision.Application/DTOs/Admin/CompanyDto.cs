@@ -8,8 +8,19 @@ public record CompanyDto(
     string PlanName,
     int UserLimit,
     int CurrentUsers,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? AnalyticsCompanyId);
 
-public record CreateCompanyDto(string Name, string Slug, string PlanName = "Basic", int UserLimit = 10);
+public record CreateCompanyDto(
+    string Name,
+    string Slug,
+    string PlanName = "Basic",
+    int UserLimit = 10,
+    string? AnalyticsCompanyId = null);
 
-public record UpdateCompanyDto(string Name, string Status, string PlanName, int UserLimit);
+public record UpdateCompanyDto(
+    string Name,
+    string Status,
+    string PlanName,
+    int UserLimit,
+    string? AnalyticsCompanyId = null);

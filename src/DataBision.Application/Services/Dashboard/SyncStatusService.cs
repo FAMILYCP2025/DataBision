@@ -11,12 +11,12 @@ public sealed class SyncStatusService(
     private static readonly TimeSpan OkThreshold      = TimeSpan.FromHours(24);
     private static readonly TimeSpan WarningThreshold = TimeSpan.FromHours(48);
 
-    // Maps app company identifier (slug from JWT) → analytics company_id in the MART DB.
-    private string Map(string companyId) => analyticsResolver.Resolve(companyId);
+    private Task<string> MapAsync(string companyId, CancellationToken ct = default)
+        => analyticsResolver.ResolveAsync(companyId, ct);
 
     public async Task<SyncStatusDto> GetStatusAsync(string companyId, CancellationToken ct = default)
     {
-        var aid              = Map(companyId);
+        var aid              = await MapAsync(companyId, ct);
         var checkpoints      = await repo.GetCheckpointsAsync(aid, ct);
         var lastExtraction   = await repo.GetLastExtractionRunAtUtcAsync(aid, ct);
         var martTransformed  = await repo.GetMartTransformedAtUtcAsync(aid, ct);
@@ -33,28 +33,28 @@ public sealed class SyncStatusService(
             Objects            = checkpoints,
             DataFreshness      = new DataFreshnessDto
             {
-                RawLastUpdatedAtUtc    = lastExtraction,
-                StgLastTransformedAtUtc = stgTransformed,
+                RawLastUpdatedAtUtc      = lastExtraction,
+                StgLastTransformedAtUtc  = stgTransformed,
                 MartLastTransformedAtUtc = martTransformed,
             }
         };
     }
 
-    public Task<IReadOnlyList<SyncObjectStatusDto>> GetObjectsAsync(
+    public async Task<IReadOnlyList<SyncObjectStatusDto>> GetObjectsAsync(
         string companyId, CancellationToken ct = default)
-        => repo.GetCheckpointsAsync(Map(companyId), ct);
+        => await repo.GetCheckpointsAsync(await MapAsync(companyId, ct), ct);
 
     public async Task<TransformStatusDto> GetTransformStatusAsync(
         string companyId, CancellationToken ct = default)
     {
-        var aid             = Map(companyId);
+        var aid             = await MapAsync(companyId, ct);
         var martTransformed = await repo.GetMartTransformedAtUtcAsync(aid, ct);
         var stgTransformed  = await repo.GetStgTransformedAtUtcAsync(aid, ct);
         var tables          = await repo.GetMartTableStatusAsync(aid, ct);
 
         return new TransformStatusDto
         {
-            CompanyId          = companyId,
+            CompanyId            = companyId,
             MartTransformedAtUtc = martTransformed,
             StgTransformedAtUtc  = stgTransformed,
             MartTables           = tables,

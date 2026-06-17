@@ -11,13 +11,13 @@ public sealed class DiagnosticsService(
     private static readonly TimeSpan OkThreshold      = TimeSpan.FromHours(24);
     private static readonly TimeSpan WarningThreshold = TimeSpan.FromHours(48);
 
-    // Maps app company identifier (slug from JWT) → analytics company_id in the MART DB.
-    private string Map(string companyId) => analyticsResolver.Resolve(companyId);
+    private Task<string> MapAsync(string companyId, CancellationToken ct = default)
+        => analyticsResolver.ResolveAsync(companyId, ct);
 
     public async Task<NativeBiDiagnosticsDto> GetDiagnosticsAsync(
         string companyId, CancellationToken ct = default)
     {
-        var aid    = Map(companyId);
+        var aid    = await MapAsync(companyId, ct);
         var checks = new List<DiagnosticCheckDto>();
         var now    = DateTime.UtcNow;
 
@@ -104,7 +104,8 @@ public sealed class DiagnosticsService(
     public async Task<NativeBiTableCountsDto> GetTableCountsAsync(
         string companyId, CancellationToken ct = default)
     {
-        IReadOnlyList<TableCountDto>? tables = await SafeCheck<IReadOnlyList<TableCountDto>>(() => repo.GetTableCountsAsync(Map(companyId), ct));
+        var aid = await MapAsync(companyId, ct);
+        IReadOnlyList<TableCountDto>? tables = await SafeCheck<IReadOnlyList<TableCountDto>>(() => repo.GetTableCountsAsync(aid, ct));
         tables ??= [];
 
         return new NativeBiTableCountsDto

@@ -17,7 +17,8 @@ public sealed class ProcessDashboardServiceTests
     {
         // Pass-through resolver: returns the companyId unchanged so test assertions
         // on which company_id reaches the repo remain exact.
-        _resolver.Setup(r => r.Resolve(It.IsAny<string>())).Returns<string>(id => id);
+        _resolver.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                 .Returns<string, CancellationToken>((id, _) => Task.FromResult(id));
         return new(_repo.Object, _resolver.Object);
     }
 

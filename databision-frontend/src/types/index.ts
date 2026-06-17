@@ -7,6 +7,7 @@ export interface Company {
   userLimit: number
   currentUsers: number
   createdAt: string
+  analyticsCompanyId: string | null
 }
 
 export interface User {

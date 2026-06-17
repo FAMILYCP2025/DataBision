@@ -53,6 +53,7 @@ export interface UpdateCompanyPayload {
   status?: string
   planName?: string
   userLimit?: number
+  analyticsCompanyId?: string | null
 }
 
 export async function updateCompany(id: number, payload: UpdateCompanyPayload): Promise<Company> {

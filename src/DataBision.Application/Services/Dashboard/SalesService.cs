@@ -11,26 +11,26 @@ public sealed class SalesService(
     private const int MaxLimit = 100;
     private static readonly TimeSpan DefaultLookback = TimeSpan.FromDays(30);
 
-    // Maps app company identifier (slug from JWT) → analytics company_id in the MART DB.
-    private string Map(string companyId) => analyticsResolver.Resolve(companyId);
+    private Task<string> MapAsync(string companyId, CancellationToken ct = default)
+        => analyticsResolver.ResolveAsync(companyId, ct);
 
-    public Task<SalesOverviewDto> GetOverviewAsync(
+    public async Task<SalesOverviewDto> GetOverviewAsync(
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default)
-        => repo.GetSalesOverviewByRangeAsync(Map(companyId), dateFrom, dateTo, ct);
+        => await repo.GetSalesOverviewByRangeAsync(await MapAsync(companyId, ct), dateFrom, dateTo, ct);
 
-    public Task<IReadOnlyList<SalesDailyDto>> GetDailyAsync(
+    public async Task<IReadOnlyList<SalesDailyDto>> GetDailyAsync(
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default)
-        => repo.GetSalesDailyByRangeAsync(Map(companyId), dateFrom, dateTo, ct);
+        => await repo.GetSalesDailyByRangeAsync(await MapAsync(companyId, ct), dateFrom, dateTo, ct);
 
-    public Task<IReadOnlyList<SalesMonthlyDto>> GetMonthlyAsync(
+    public async Task<IReadOnlyList<SalesMonthlyDto>> GetMonthlyAsync(
         string companyId, DateTime dateFrom, DateTime dateTo, CancellationToken ct = default)
-        => repo.GetSalesMonthlyByRangeAsync(Map(companyId), dateFrom, dateTo, ct);
+        => await repo.GetSalesMonthlyByRangeAsync(await MapAsync(companyId, ct), dateFrom, dateTo, ct);
 
     public async Task<PagedResultDto<CustomerSalesDto>> GetCustomersAsync(
         string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
         var limit = Math.Clamp(pagination.Limit, 1, MaxLimit);
-        var items = await repo.GetCustomersAsync(Map(companyId), pagination with { Limit = limit + 1 }, ct);
+        var items = await repo.GetCustomersAsync(await MapAsync(companyId, ct), pagination with { Limit = limit + 1 }, ct);
         return BuildPaged(items, limit, pagination.Offset);
     }
 
@@ -38,7 +38,7 @@ public sealed class SalesService(
         string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
         var limit = Math.Clamp(pagination.Limit, 1, MaxLimit);
-        var items = await repo.GetItemsAsync(Map(companyId), pagination with { Limit = limit + 1 }, ct);
+        var items = await repo.GetItemsAsync(await MapAsync(companyId, ct), pagination with { Limit = limit + 1 }, ct);
         return BuildPaged(items, limit, pagination.Offset);
     }
 
@@ -46,7 +46,7 @@ public sealed class SalesService(
         string companyId, PaginationOptions pagination, CancellationToken ct = default)
     {
         var limit = Math.Clamp(pagination.Limit, 1, MaxLimit);
-        var items = await repo.GetSalespersonsAsync(Map(companyId), pagination with { Limit = limit + 1 }, ct);
+        var items = await repo.GetSalespersonsAsync(await MapAsync(companyId, ct), pagination with { Limit = limit + 1 }, ct);
         return BuildPaged(items, limit, pagination.Offset);
     }
 

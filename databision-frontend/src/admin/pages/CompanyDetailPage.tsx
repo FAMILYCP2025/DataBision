@@ -24,6 +24,7 @@ export default function CompanyDetailPage() {
   const [status, setStatus] = React.useState('')
   const [planName, setPlanName] = React.useState('')
   const [userLimit, setUserLimit] = React.useState(10)
+  const [analyticsCompanyId, setAnalyticsCompanyId] = React.useState<string>('')
   const [error, setError] = React.useState<string | null>(null)
   
   const [activeTab, setActiveTab] = React.useState<'info' | 'reports'>('info')
@@ -35,11 +36,15 @@ export default function CompanyDetailPage() {
       setStatus(company.status)
       setPlanName(company.planName)
       setUserLimit(company.userLimit)
+      setAnalyticsCompanyId(company.analyticsCompanyId ?? '')
     }
   }, [company])
 
   const mutation = useMutation({
-    mutationFn: () => updateCompany(companyId, { name, status, planName, userLimit }),
+    mutationFn: () => updateCompany(companyId, {
+      name, status, planName, userLimit,
+      analyticsCompanyId: analyticsCompanyId.trim() || null,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'companies'] })
       setEditing(false)
@@ -189,6 +194,20 @@ export default function CompanyDetailPage() {
                   required
                 />
               </div>
+              <div className="db-field" style={{ gridColumn: '1 / -1' }}>
+                <label htmlFor="edit-analytics-id" className="db-label">Analytics Company ID</label>
+                <input
+                  id="edit-analytics-id"
+                  type="text"
+                  className="db-input"
+                  value={analyticsCompanyId}
+                  onChange={(e) => setAnalyticsCompanyId(e.target.value)}
+                  placeholder="ej. ksdepor-analytics (Supabase MART company_id)"
+                />
+                <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                  Identificador en la base de datos MART de Supabase. Requerido para Native BI.
+                </p>
+              </div>
             </div>
             {error && (
               <div className="db-alert db-alert--error" role="alert">
@@ -244,6 +263,14 @@ export default function CompanyDetailPage() {
                     }} />
                   </div>
                 </div>
+              </dd>
+            </div>
+            <div className="db-dl-row">
+              <dt>Analytics Company ID</dt>
+              <dd>
+                {company.analyticsCompanyId
+                  ? <code className="db-code">{company.analyticsCompanyId}</code>
+                  : <span style={{ color: 'var(--color-text-muted)' }}>No configurado</span>}
               </dd>
             </div>
             <div className="db-dl-row">

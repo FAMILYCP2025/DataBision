@@ -16,7 +16,8 @@ public sealed class SalesServiceTests
     private SalesService NewService()
     {
         // Pass-through resolver: companyId unchanged so repo assertions stay exact.
-        _resolver.Setup(r => r.Resolve(It.IsAny<string>())).Returns<string>(id => id);
+        _resolver.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                 .Returns<string, CancellationToken>((id, _) => Task.FromResult(id));
         return new(_repo.Object, _resolver.Object);
     }
 

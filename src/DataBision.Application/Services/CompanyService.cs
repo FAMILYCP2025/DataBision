@@ -11,7 +11,7 @@ public class CompanyService(ICompanyRepository companies, IUserRepository users)
     {
         var list = await companies.GetAllAsync();
         var userCounts = await users.GetActiveUserCountsAsync();
-        return list.Select(c => new CompanyDto(c.Id, c.Name, c.Slug, c.Status.ToString(), c.PlanName, c.UserLimit, userCounts.GetValueOrDefault(c.Id, 0), c.CreatedAt));
+        return list.Select(c => new CompanyDto(c.Id, c.Name, c.Slug, c.Status.ToString(), c.PlanName, c.UserLimit, userCounts.GetValueOrDefault(c.Id, 0), c.CreatedAt, c.AnalyticsCompanyId));
     }
 
     public async Task<(CompanyDto? result, string? error)> CreateAsync(CreateCompanyDto dto)
@@ -25,6 +25,7 @@ public class CompanyService(ICompanyRepository companies, IUserRepository users)
             Slug = dto.Slug,
             PlanName = dto.PlanName,
             UserLimit = dto.UserLimit,
+            AnalyticsCompanyId = dto.AnalyticsCompanyId,
             Branding = new CompanyBranding
             {
                 PrimaryColor    = "#2563EB",
@@ -37,7 +38,7 @@ public class CompanyService(ICompanyRepository companies, IUserRepository users)
         };
         var created = await companies.AddAsync(company);
 
-        return (new CompanyDto(created.Id, created.Name, created.Slug, created.Status.ToString(), created.PlanName, created.UserLimit, 0, created.CreatedAt), null);
+        return (new CompanyDto(created.Id, created.Name, created.Slug, created.Status.ToString(), created.PlanName, created.UserLimit, 0, created.CreatedAt, created.AnalyticsCompanyId), null);
     }
 
     public async Task<(CompanyDto? result, string? error)> UpdateAsync(int id, UpdateCompanyDto dto)
@@ -49,12 +50,13 @@ public class CompanyService(ICompanyRepository companies, IUserRepository users)
         company.Status = Enum.Parse<CompanyStatus>(dto.Status, ignoreCase: true);
         company.PlanName = dto.PlanName;
         company.UserLimit = dto.UserLimit;
+        company.AnalyticsCompanyId = dto.AnalyticsCompanyId;
         company.UpdatedAt = DateTime.UtcNow;
         await companies.SaveAsync();
 
         var activeUsers = await users.GetActiveUserCountAsync(company.Id);
 
-        return (new CompanyDto(company.Id, company.Name, company.Slug, company.Status.ToString(), company.PlanName, company.UserLimit, activeUsers, company.CreatedAt), null);
+        return (new CompanyDto(company.Id, company.Name, company.Slug, company.Status.ToString(), company.PlanName, company.UserLimit, activeUsers, company.CreatedAt, company.AnalyticsCompanyId), null);
     }
 
     public async Task<IEnumerable<UserWithCompanyDto>> GetUsersAsync(int companyId)

@@ -8,12 +8,12 @@ public sealed class ProcessService(
     IProcessRepository repo,
     IAnalyticsCompanyResolver analyticsResolver) : IProcessService
 {
-    // Maps app company identifier (slug from JWT) → analytics company_id in cfg.* tables.
-    private string Map(string companyId) => analyticsResolver.Resolve(companyId);
+    private Task<string> MapAsync(string companyId, CancellationToken ct = default)
+        => analyticsResolver.ResolveAsync(companyId, ct);
 
-    public Task<IReadOnlyList<ProcessDto>> GetEnabledProcessesAsync(string companyId, CancellationToken ct = default)
-        => repo.GetEnabledProcessesAsync(Map(companyId), ct);
+    public async Task<IReadOnlyList<ProcessDto>> GetEnabledProcessesAsync(string companyId, CancellationToken ct = default)
+        => await repo.GetEnabledProcessesAsync(await MapAsync(companyId, ct), ct);
 
-    public Task<IReadOnlyList<DashboardItemDto>> GetDashboardsByProcessAsync(string companyId, string processCode, CancellationToken ct = default)
-        => repo.GetDashboardsByProcessAsync(Map(companyId), processCode, ct);
+    public async Task<IReadOnlyList<DashboardItemDto>> GetDashboardsByProcessAsync(string companyId, string processCode, CancellationToken ct = default)
+        => await repo.GetDashboardsByProcessAsync(await MapAsync(companyId, ct), processCode, ct);
 }

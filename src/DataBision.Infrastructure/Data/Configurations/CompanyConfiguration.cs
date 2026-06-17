@@ -13,6 +13,7 @@ public class CompanyConfiguration : IEntityTypeConfiguration<Company>
         b.Property(x => x.Name).HasMaxLength(200).IsRequired();
         b.Property(x => x.Slug).HasMaxLength(100).IsRequired();
         b.HasIndex(x => x.Slug).IsUnique();
+        b.Property(x => x.AnalyticsCompanyId).HasMaxLength(200);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.CreatedAt).IsRequired();
         b.Property(x => x.UpdatedAt).IsRequired();

@@ -13,6 +13,8 @@ public class Company
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    public string? AnalyticsCompanyId { get; set; }
+
     public CompanyBranding? Branding { get; set; }
     public ICollection<UserCompany> UserCompanies { get; set; } = [];
     public ICollection<Report> Reports { get; set; } = [];

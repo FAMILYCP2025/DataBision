@@ -16,6 +16,9 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
     public Task<bool> SlugExistsAsync(string slug)
         => db.Companies.AnyAsync(c => c.Slug == slug);
 
+    public Task<Company?> GetBySlugAsync(string slug, CancellationToken ct = default)
+        => db.Companies.FirstOrDefaultAsync(c => c.Slug == slug, ct);
+
     public async Task<Company> AddAsync(Company company)
     {
         db.Companies.Add(company);

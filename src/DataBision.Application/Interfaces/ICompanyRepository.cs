@@ -7,6 +7,7 @@ public interface ICompanyRepository
     Task<IEnumerable<Company>> GetAllAsync();
     Task<Company?> GetByIdAsync(int id);
     Task<bool> SlugExistsAsync(string slug);
+    Task<Company?> GetBySlugAsync(string slug, CancellationToken ct = default);
     Task<Company> AddAsync(Company company);
     Task SaveAsync();
 }
