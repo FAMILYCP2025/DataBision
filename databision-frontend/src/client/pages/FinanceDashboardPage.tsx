@@ -26,7 +26,7 @@ function fmtDate(iso: string | null) {
   })
 }
 
-type Tab = 'ar' | 'ap' | 'risk'
+type Tab = 'resumen' | 'ar' | 'ap' | 'risk'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -36,13 +36,14 @@ function initPag(sortBy: string): PaginationParams {
 }
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'ar', label: 'Cuentas por cobrar (AR)' },
-  { id: 'ap', label: 'Cuentas por pagar (AP)' },
-  { id: 'risk', label: 'Riesgo +90d' },
+  { id: 'resumen', label: 'Resumen' },
+  { id: 'ar',      label: 'Cuentas por cobrar' },
+  { id: 'ap',      label: 'Cuentas por pagar' },
+  { id: 'risk',    label: 'Riesgo +90d' },
 ]
 
 export default function FinanceDashboardPage() {
-  const [tab, setTab] = useState<Tab>('ar')
+  const [tab, setTab] = useState<Tab>('resumen')
   const [arP, setArP] = useState<PaginationParams>(initPag('overdueAmount'))
   const [apP, setApP] = useState<PaginationParams>(initPag('overdueAmount'))
 
@@ -241,6 +242,55 @@ export default function FinanceDashboardPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'resumen' && (
+          loadingExec ? (
+            <div style={{ padding: 24 }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="cp-skeleton" style={{ height: 44, borderRadius: 6, marginBottom: 8 }} />
+              ))}
+            </div>
+          ) : !execData || execData.length === 0 ? (
+            <NbEmptyState
+              message="Sin datos financieros disponibles. Disponible al completar carga histórica."
+              icon="table"
+            />
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Evolución financiera — últimos 5 períodos
+              </div>
+              <div className="nb-table-scroll">
+                <table className="db-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th style={{ textAlign: 'right' }}>AR vencido</th>
+                      <th style={{ textAlign: 'right' }}>% vencido</th>
+                      <th style={{ textAlign: 'right' }}>Facturas emitidas</th>
+                      <th style={{ textAlign: 'right' }}>Monto facturado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {execData.slice(-5).reverse().map((d, i) => (
+                      <tr key={i}>
+                        <td style={{ fontSize: 13 }}>{fmtDate(d.periodDate)}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: d.arOverdue > 0 ? '#DC2626' : 'inherit' }}>
+                          {fmtAmt(d.arOverdue)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {fmtPct(d.arOverduePct)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{d.newInvoicesCount}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.newInvoicesAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        )}
 
         {tab === 'ar' && (
           arData?.data.length === 0 && !loadingAr ? (

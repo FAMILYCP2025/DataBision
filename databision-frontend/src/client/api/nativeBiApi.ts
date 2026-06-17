@@ -29,7 +29,7 @@ async function getTenant(): Promise<string | null> {
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<DashboardSummary>>(
-    `/api/client/dashboard/summary${nbQs({ companyId: tenant })}`
+    `/client/dashboard/summary${nbQs({ companyId: tenant })}`
   )
   return data.data
 }
@@ -37,7 +37,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 export async function getDashboardSalesDaily(days = 30): Promise<SalesDaily[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SalesDaily[]>>(
-    `/api/client/dashboard/sales-daily${nbQs({ companyId: tenant, days })}`
+    `/client/dashboard/sales-daily${nbQs({ companyId: tenant, days })}`
   )
   return data.data
 }
@@ -45,7 +45,7 @@ export async function getDashboardSalesDaily(days = 30): Promise<SalesDaily[]> {
 export async function getDashboardSalesMonthly(months = 12): Promise<SalesMonthly[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SalesMonthly[]>>(
-    `/api/client/dashboard/sales-monthly${nbQs({ companyId: tenant, months })}`
+    `/client/dashboard/sales-monthly${nbQs({ companyId: tenant, months })}`
   )
   return data.data
 }
@@ -55,7 +55,7 @@ export async function getDashboardTopCustomers(
 ): Promise<NbPagedApiResponse<CustomerSales>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<CustomerSales>>(
-    `/api/client/dashboard/top-customers${nbQs({ companyId: tenant, ...params })}`
+    `/client/dashboard/top-customers${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -65,7 +65,7 @@ export async function getDashboardTopItems(
 ): Promise<NbPagedApiResponse<ItemSales>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<ItemSales>>(
-    `/api/client/dashboard/top-items${nbQs({ companyId: tenant, ...params })}`
+    `/client/dashboard/top-items${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -75,7 +75,7 @@ export async function getDashboardSalespersons(
 ): Promise<NbPagedApiResponse<SalespersonSales>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<SalespersonSales>>(
-    `/api/client/dashboard/salespersons${nbQs({ companyId: tenant, ...params })}`
+    `/client/dashboard/salespersons${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -85,7 +85,7 @@ export async function getDashboardSalespersons(
 export async function getSalesOverview(params: DateRangeParams = {}): Promise<SalesOverview> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SalesOverview>>(
-    `/api/client/sales/overview${nbQs({ companyId: tenant, ...params })}`
+    `/client/sales/overview${nbQs({ companyId: tenant, ...params })}`
   )
   return data.data
 }
@@ -93,7 +93,7 @@ export async function getSalesOverview(params: DateRangeParams = {}): Promise<Sa
 export async function getSalesDaily(params: DateRangeParams = {}): Promise<SalesDaily[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SalesDaily[]>>(
-    `/api/client/sales/daily${nbQs({ companyId: tenant, ...params })}`
+    `/client/sales/daily${nbQs({ companyId: tenant, ...params })}`
   )
   return data.data
 }
@@ -101,7 +101,7 @@ export async function getSalesDaily(params: DateRangeParams = {}): Promise<Sales
 export async function getSalesMonthly(params: DateRangeParams = {}): Promise<SalesMonthly[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SalesMonthly[]>>(
-    `/api/client/sales/monthly${nbQs({ companyId: tenant, ...params })}`
+    `/client/sales/monthly${nbQs({ companyId: tenant, ...params })}`
   )
   return data.data
 }
@@ -111,7 +111,7 @@ export async function getSalesCustomers(
 ): Promise<NbPagedApiResponse<CustomerSales>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<CustomerSales>>(
-    `/api/client/sales/customers${nbQs({ companyId: tenant, ...params })}`
+    `/client/sales/customers${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -121,7 +121,7 @@ export async function getSalesItems(
 ): Promise<NbPagedApiResponse<ItemSales>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<ItemSales>>(
-    `/api/client/sales/items${nbQs({ companyId: tenant, ...params })}`
+    `/client/sales/items${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -131,7 +131,7 @@ export async function getSalesSalespersons(
 ): Promise<NbPagedApiResponse<SalespersonSales>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<SalespersonSales>>(
-    `/api/client/sales/salespersons${nbQs({ companyId: tenant, ...params })}`
+    `/client/sales/salespersons${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -141,7 +141,7 @@ export async function getSalesSalespersons(
 export async function getSyncStatus(): Promise<SyncStatus> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SyncStatus>>(
-    `/api/client/sync/status${nbQs({ companyId: tenant })}`
+    `/client/sync/status${nbQs({ companyId: tenant })}`
   )
   return data.data
 }
@@ -149,7 +149,7 @@ export async function getSyncStatus(): Promise<SyncStatus> {
 export async function getSyncObjects(): Promise<SyncObjectStatus[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SyncObjectStatus[]>>(
-    `/api/client/sync/objects${nbQs({ companyId: tenant })}`
+    `/client/sync/objects${nbQs({ companyId: tenant })}`
   )
   return data.data
 }
@@ -157,7 +157,7 @@ export async function getSyncObjects(): Promise<SyncObjectStatus[]> {
 export async function getSyncTransformStatus(): Promise<SyncTransformStatus> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SyncTransformStatus>>(
-    `/api/client/sync/transform-status${nbQs({ companyId: tenant })}`
+    `/client/sync/transform-status${nbQs({ companyId: tenant })}`
   )
   return data.data
 }
@@ -167,7 +167,7 @@ export async function getSyncTransformStatus(): Promise<SyncTransformStatus> {
 export async function getNativeBiDiagnostics(): Promise<NativeBiDiagnostics> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<NativeBiDiagnostics>>(
-    `/api/client/diagnostics/native-bi${nbQs({ companyId: tenant })}`
+    `/client/diagnostics/native-bi${nbQs({ companyId: tenant })}`
   )
   return data.data
 }
@@ -175,7 +175,7 @@ export async function getNativeBiDiagnostics(): Promise<NativeBiDiagnostics> {
 export async function getNativeBiTableCounts(): Promise<NativeBiTableCounts> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<NativeBiTableCounts>>(
-    `/api/client/diagnostics/native-bi/tables${nbQs({ companyId: tenant })}`
+    `/client/diagnostics/native-bi/tables${nbQs({ companyId: tenant })}`
   )
   return data.data
 }

@@ -4,7 +4,66 @@ Sprint 8R — Diagnóstico profundo — Junio 2026
 
 ---
 
-## 1. Causa raíz real
+## 0. Causa final corregida: doble /api + URLs del frontend
+
+**Evidencia del navegador (DevTools Console):**
+```
+GET http://localhost:5173/api/api/client/sales/overview?companyId=ksdepor... → 404
+GET http://localhost:5173/api/api/client/dashboard/summary?companyId=ksdepor → 404
+```
+
+**Causa raíz definitiva:** el cliente Axios en `src/lib/api.ts` tiene `baseURL = '/api'`. Pero `nativeBiApi.ts` y `processBiApi.ts` construían las rutas **ya con el prefijo `/api/`** (ej. `/api/client/dashboard/summary`). Resultado: `/api` (baseURL) + `/api/client/...` (ruta) = **`/api/api/client/...`** → 404.
+
+Por eso el **login funcionaba** (`clientApi.ts` usa rutas sin prefijo: `/auth/login`, `/modules`) pero **todas las llamadas Native BI fallaban** (31 llamadas con doble `/api`).
+
+> En las validaciones anteriores probé la API **directamente** (`http://localhost:5103/api/client/...`), no a través del Axios del frontend — por eso devolvían 200 y el doble `/api` no se detectó hasta tener la evidencia del navegador.
+
+### Regla de baseURL (definitiva)
+
+- `baseURL = '/api'` (en `lib/api.ts`, vía `VITE_API_URL ?? '/api'`).
+- **Todas** las rutas en los api clients deben empezar con `/client/...`, `/auth/...`, `/modules`, etc. — **NUNCA con `/api/`**.
+- El proxy de Vite reenvía `/api/*` → `http://localhost:5103/api/*`.
+- URL final correcta: `http://localhost:5173/api/client/...` → proxy → `http://localhost:5103/api/client/...`.
+- URL incorrecta (corregida): `http://localhost:5173/api/api/client/...` → 404.
+
+### Endpoints corregidos (doble /api → simple)
+
+`nativeBiApi.ts` (16) y `processBiApi.ts` (15): se reemplazó `` `/api/client/... `` por `` `/client/... ``. Ninguno era obsoleto — `sales/overview`, `dashboard/sales-daily`, `dashboard/top-customers` **existen** en el backend; solo estaban mal prefijados.
+
+### Evidencia del fix (API en vivo, 2026-06-16)
+
+```
+=== Path viejo (doble /api) ===
+404  /api/api/client/dashboard/summary
+404  /api/api/client/sales/overview
+
+=== Path nuevo (corregido) ===
+200  rows=1   /api/client/dashboard/summary
+200  rows=39  /api/client/dashboard/sales-daily   (gráfico con datos)
+200  rows=10  /api/client/dashboard/top-customers
+200  rows=1   /api/client/sales/overview          (rango 365d)
+200  rows=21  /api/client/sales/customers
+200  rows=18  /api/client/bi/sales/customers-dashboard
+200  rows=18  /api/client/bi/purchasing/suppliers
+200  rows=41  /api/client/bi/inventory/rotation
+200  rows=18  /api/client/bi/finance/ar-aging
+200  rows=1   /api/client/bi/operations/pipeline-health
+200  rows=1   /api/client/diagnostics/native-bi
+```
+
+### Cómo detectar `/api/api` en consola
+
+En DevTools → Network/Console, buscar requests con `/api/api/`. Si aparecen, hay una ruta en un api client con prefijo `/api/` duplicado. También el logger DEV de `lib/api.ts` imprime `[api] FAIL <status> <endpoint>`.
+
+### Cómo validar después del fix
+
+1. Reiniciar API en 5103 y frontend (`npm run dev`).
+2. Login `?tenant=ksdepor` → abrir DevTools Network.
+3. Confirmar: **no** hay `/api/api/`, los endpoints devuelven 200, la UI muestra filas.
+
+---
+
+## 1. Causa raíz real (iteraciones previas)
 
 El problema NO era un único bug, sino tres causas distintas que se confundían bajo el mismo síntoma ("la web no muestra datos"):
 

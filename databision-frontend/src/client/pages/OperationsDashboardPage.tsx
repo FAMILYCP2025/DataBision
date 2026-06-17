@@ -36,7 +36,7 @@ const STATUS_COLOR: Record<string, string> = {
   unknown: '#94A3B8',
 }
 
-type Tab = 'alerts' | 'dq' | 'runs'
+type Tab = 'pipeline' | 'alerts' | 'dq' | 'runs'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -46,9 +46,10 @@ function initPag(): PaginationParams {
 }
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'alerts', label: 'Alertas' },
-  { id: 'dq', label: 'Calidad de datos' },
-  { id: 'runs', label: 'Historial runs' },
+  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'alerts',   label: 'Alertas' },
+  { id: 'dq',       label: 'Calidad de datos' },
+  { id: 'runs',     label: 'Historial runs' },
 ]
 
 function StatusDot({ status }: { status: string }) {
@@ -68,7 +69,7 @@ function StatusDot({ status }: { status: string }) {
 }
 
 export default function OperationsDashboardPage() {
-  const [tab, setTab] = useState<Tab>('alerts')
+  const [tab, setTab] = useState<Tab>('pipeline')
   const [alertP, setAlertP] = useState<PaginationParams>(initPag())
   const [dqP, setDqP] = useState<PaginationParams>(initPag())
 
@@ -181,68 +182,6 @@ export default function OperationsDashboardPage() {
         description="Salud del pipeline de datos, alertas activas y calidad de datos"
       />
 
-      {healthErr ? (
-        <NbErrorState
-          message="Error al cargar estado del pipeline."
-          onRetry={() => refetchHealth()}
-        />
-      ) : (
-        <>
-          {/* Health summary */}
-          <div className="nb-card-grid">
-            <KpiCard
-              label="Health score"
-              value={loadingHealth ? '—' : `${health?.healthScore ?? 0} / 100`}
-              loading={loadingHealth}
-            />
-            <KpiCard
-              label="Alertas activas"
-              value={health?.activeAlerts ?? 0}
-              loading={loadingHealth}
-            />
-            <KpiCard
-              label="Objetos extraídos"
-              value={health?.objectsExtracted ?? 0}
-              loading={loadingHealth}
-            />
-            <KpiCard
-              label="Errores DQ sin resolver"
-              value={health?.dqErrorsUnresolved ?? 0}
-              loading={loadingHealth}
-            />
-          </div>
-
-          {/* Status row */}
-          {!loadingHealth && health && (
-            <div
-              className="db-card"
-              style={{ padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 0 }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: 11.5, color: 'var(--c-text-muted)', fontWeight: 500 }}>Extractor</span>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>
-                  <StatusDot status={health.extractorStatus} />
-                  {health.extractorStatus.toUpperCase()}
-                </span>
-                <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>
-                  {fmtUtc(health.lastExtractorRunUtc)}
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: 11.5, color: 'var(--c-text-muted)', fontWeight: 500 }}>Transform</span>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>
-                  <StatusDot status={health.transformStatus} />
-                  {health.transformStatus.toUpperCase()}
-                </span>
-                <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>
-                  {fmtUtc(health.lastTransformRunUtc)}
-                </span>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
       {/* Tabbed tables */}
       <div className="db-card">
         <div
@@ -297,6 +236,80 @@ export default function OperationsDashboardPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'pipeline' && (
+          healthErr ? (
+            <div style={{ padding: '16px 20px' }}>
+              <NbErrorState
+                message="Error al cargar estado del pipeline."
+                onRetry={() => refetchHealth()}
+              />
+            </div>
+          ) : loadingHealth ? (
+            <div style={{ padding: 24 }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="cp-skeleton" style={{ height: 44, borderRadius: 6, marginBottom: 8 }} />
+              ))}
+            </div>
+          ) : !health ? (
+            <NbEmptyState message="Sin datos del pipeline disponibles." icon="chart" />
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              <div className="nb-card-grid" style={{ marginBottom: 24 }}>
+                <KpiCard
+                  label="Health score"
+                  value={`${health.healthScore} / 100`}
+                  loading={false}
+                />
+                <KpiCard
+                  label="Alertas activas"
+                  value={health.activeAlerts}
+                  loading={false}
+                />
+                <KpiCard
+                  label="Objetos extraídos"
+                  value={health.objectsExtracted}
+                  loading={false}
+                />
+                <KpiCard
+                  label="Errores DQ sin resolver"
+                  value={health.dqErrorsUnresolved}
+                  loading={false}
+                />
+              </div>
+
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Estado de procesos
+              </div>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Extractor', status: health.extractorStatus, lastRun: health.lastExtractorRunUtc },
+                  { label: 'Transform', status: health.transformStatus, lastRun: health.lastTransformRunUtc },
+                ].map((proc) => (
+                  <div
+                    key={proc.label}
+                    style={{
+                      border: '1px solid var(--c-border)',
+                      borderRadius: 8,
+                      padding: '12px 20px',
+                      minWidth: 200,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: 'var(--c-text-muted)', fontWeight: 500 }}>{proc.label}</span>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>
+                      <StatusDot status={proc.status} />
+                      {proc.status.toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--c-text-faint)' }}>Último run: {fmtUtc(proc.lastRun)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        )}
 
         {tab === 'alerts' && (
           alertData?.data.length === 0 && !loadingAlerts ? (

@@ -45,7 +45,7 @@ function fmtDate(iso: string | null) {
   })
 }
 
-type Tab = 'customers' | 'items' | 'salespersons' | 'fulfillment'
+type Tab = 'resumen' | 'customers' | 'items' | 'salespersons' | 'fulfillment'
 
 const LIMIT = 20
 
@@ -57,7 +57,7 @@ function initPag(sortBy: string): PaginationParams {
 
 export default function NativeBiSalesPage() {
   const [dates, setDates] = useState(defaultDates)
-  const [tab, setTab] = useState<Tab>('customers')
+  const [tab, setTab] = useState<Tab>('resumen')
 
   const [custP, setCustP] = useState<PaginationParams>(initPag('netSalesAmount'))
   const [itemP, setItemP] = useState<PaginationParams>(initPag('grossSalesAmount'))
@@ -248,10 +248,11 @@ export default function NativeBiSalesPage() {
   ]
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'customers', label: 'Clientes' },
-    { id: 'items', label: 'Productos' },
+    { id: 'resumen',      label: 'Resumen' },
+    { id: 'customers',    label: 'Clientes' },
+    { id: 'items',        label: 'Productos' },
     { id: 'salespersons', label: 'Vendedores' },
-    { id: 'fulfillment', label: 'Fulfillment' },
+    { id: 'fulfillment',  label: 'Fulfillment' },
   ]
 
   return (
@@ -267,45 +268,6 @@ export default function NativeBiSalesPage() {
           />
         }
       />
-
-      {/* Overview cards */}
-      <div className="nb-card-grid">
-        {loadingOv ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="db-stat-card">
-              <div className="cp-skeleton" style={{ height: 13, width: '55%' }} />
-              <div className="cp-skeleton" style={{ height: 26, width: '75%', marginTop: 10 }} />
-            </div>
-          ))
-        ) : (
-          <>
-            <div className="db-stat-card">
-              <span className="db-stat-label">Ventas netas</span>
-              <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
-                {overview ? fmtAmt(overview.netSalesAmount) : '—'}
-              </span>
-            </div>
-            <div className="db-stat-card">
-              <span className="db-stat-label">Ventas brutas</span>
-              <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
-                {overview ? fmtAmt(overview.grossSalesAmount) : '—'}
-              </span>
-            </div>
-            <div className="db-stat-card">
-              <span className="db-stat-label">Facturas</span>
-              <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
-                {overview?.invoiceCount ?? '—'}
-              </span>
-            </div>
-            <div className="db-stat-card">
-              <span className="db-stat-label">Ticket promedio</span>
-              <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
-                {overview ? fmtAmt(overview.avgTicketAmount) : '—'}
-              </span>
-            </div>
-          </>
-        )}
-      </div>
 
       {/* Tabbed table */}
       <div className="db-card">
@@ -346,6 +308,51 @@ export default function NativeBiSalesPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'resumen' && (
+          <div style={{ padding: '20px 20px 12px' }}>
+            <div className="nb-card-grid" style={{ marginBottom: 8 }}>
+              {loadingOv ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="db-stat-card">
+                    <div className="cp-skeleton" style={{ height: 13, width: '55%' }} />
+                    <div className="cp-skeleton" style={{ height: 26, width: '75%', marginTop: 10 }} />
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="db-stat-card">
+                    <span className="db-stat-label">Ventas netas</span>
+                    <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
+                      {overview ? fmtAmt(overview.netSalesAmount) : '—'}
+                    </span>
+                  </div>
+                  <div className="db-stat-card">
+                    <span className="db-stat-label">Ventas brutas</span>
+                    <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
+                      {overview ? fmtAmt(overview.grossSalesAmount) : '—'}
+                    </span>
+                  </div>
+                  <div className="db-stat-card">
+                    <span className="db-stat-label">Facturas</span>
+                    <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
+                      {overview?.invoiceCount ?? '—'}
+                    </span>
+                  </div>
+                  <div className="db-stat-card">
+                    <span className="db-stat-label">Ticket promedio</span>
+                    <span className="db-stat-value" style={{ fontSize: 24, fontVariantNumeric: 'tabular-nums' }}>
+                      {overview ? fmtAmt(overview.avgTicketAmount) : '—'}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+            <p style={{ fontSize: 12.5, color: 'var(--c-text-faint)', marginTop: 16 }}>
+              Período: {dates.dateFrom} — {dates.dateTo}. Usa el selector de fechas para ajustar el rango.
+            </p>
+          </div>
+        )}
 
         {tab === 'customers' && (
           <SortableTable

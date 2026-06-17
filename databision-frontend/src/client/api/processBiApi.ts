@@ -31,7 +31,7 @@ export async function getBiSalesCustomers(
 ): Promise<NbPagedApiResponse<SalesCustomerDashboard>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<SalesCustomerDashboard>>(
-    `/api/client/bi/sales/customers-dashboard${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/sales/customers-dashboard${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -41,7 +41,7 @@ export async function getBiSalesItems(
 ): Promise<NbPagedApiResponse<SalesItemDashboard>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<SalesItemDashboard>>(
-    `/api/client/bi/sales/items-dashboard${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/sales/items-dashboard${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -51,7 +51,7 @@ export async function getBiSalesFulfillment(
 ): Promise<SalesFulfillment[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SalesFulfillment[]>>(
-    `/api/client/bi/sales/fulfillment${nbQs({ companyId: tenant, days })}`
+    `/client/bi/sales/fulfillment${nbQs({ companyId: tenant, days })}`
   )
   return data.data
 }
@@ -63,7 +63,7 @@ export async function getBiPurchasingExecutive(
 ): Promise<PurchasingExecutive[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<PurchasingExecutive[]>>(
-    `/api/client/bi/purchasing/executive${nbQs({ companyId: tenant, days })}`
+    `/client/bi/purchasing/executive${nbQs({ companyId: tenant, days })}`
   )
   return data.data
 }
@@ -73,7 +73,7 @@ export async function getBiPurchasingSuppliers(
 ): Promise<NbPagedApiResponse<PurchasingSupplier>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<PurchasingSupplier>>(
-    `/api/client/bi/purchasing/suppliers${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/purchasing/suppliers${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -83,7 +83,7 @@ export async function getBiPurchasingReceiving(
 ): Promise<NbPagedApiResponse<PurchasingReceiving>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<PurchasingReceiving>>(
-    `/api/client/bi/purchasing/receiving${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/purchasing/receiving${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -95,7 +95,7 @@ export async function getBiInventoryRotation(
 ): Promise<NbPagedApiResponse<InventoryRotation>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<InventoryRotation>>(
-    `/api/client/bi/inventory/rotation${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/inventory/rotation${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -105,7 +105,7 @@ export async function getBiInventoryStock(
 ): Promise<NbPagedApiResponse<InventoryStock>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<InventoryStock>>(
-    `/api/client/bi/inventory/stock${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/inventory/stock${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -113,7 +113,7 @@ export async function getBiInventoryStock(
 export async function getBiInventoryWarehouses(): Promise<InventoryWarehouse[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<InventoryWarehouse[]>>(
-    `/api/client/bi/inventory/warehouses${nbQs({ companyId: tenant })}`
+    `/client/bi/inventory/warehouses${nbQs({ companyId: tenant })}`
   )
   return data.data
 }
@@ -125,7 +125,7 @@ export async function getBiFinanceExecutive(
 ): Promise<FinanceExecutive[]> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<FinanceExecutive[]>>(
-    `/api/client/bi/finance/executive${nbQs({ companyId: tenant, days })}`
+    `/client/bi/finance/executive${nbQs({ companyId: tenant, days })}`
   )
   return data.data
 }
@@ -135,7 +135,7 @@ export async function getBiFinanceArAging(
 ): Promise<NbPagedApiResponse<FinanceArAging>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<FinanceArAging>>(
-    `/api/client/bi/finance/ar-aging${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/finance/ar-aging${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -145,7 +145,7 @@ export async function getBiFinanceApAging(
 ): Promise<NbPagedApiResponse<FinanceApAging>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<FinanceApAging>>(
-    `/api/client/bi/finance/ap-aging${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/finance/ap-aging${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -155,7 +155,7 @@ export async function getBiFinanceApAging(
 export async function getBiOperationsPipelineHealth(): Promise<OperationHealth | null> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<OperationHealth | null>>(
-    `/api/client/bi/operations/pipeline-health${nbQs({ companyId: tenant })}`
+    `/client/bi/operations/pipeline-health${nbQs({ companyId: tenant })}`
   )
   return data.data
 }
@@ -165,7 +165,7 @@ export async function getBiOperationsAlerts(
 ): Promise<NbPagedApiResponse<OperationAlert>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<OperationAlert>>(
-    `/api/client/bi/operations/alerts${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/operations/alerts${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }
@@ -175,7 +175,7 @@ export async function getBiOperationsDataQuality(
 ): Promise<NbPagedApiResponse<OperationDataQuality>> {
   const tenant = await getTenant()
   const { data } = await api.get<NbPagedApiResponse<OperationDataQuality>>(
-    `/api/client/bi/operations/data-quality${nbQs({ companyId: tenant, ...params })}`
+    `/client/bi/operations/data-quality${nbQs({ companyId: tenant, ...params })}`
   )
   return data
 }

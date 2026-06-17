@@ -22,7 +22,7 @@ function fmtDate(iso: string | null) {
   })
 }
 
-type Tab = 'suppliers' | 'receiving' | 'evolution'
+type Tab = 'resumen' | 'suppliers' | 'receiving' | 'evolution'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -32,13 +32,14 @@ function initPag(sortBy: string): PaginationParams {
 }
 
 const tabs: { id: Tab; label: string }[] = [
+  { id: 'resumen',   label: 'Resumen' },
   { id: 'suppliers', label: 'Proveedores' },
   { id: 'receiving', label: 'Recepciones' },
-  { id: 'evolution', label: 'Evolución OC (30d)' },
+  { id: 'evolution', label: 'Evolución OC' },
 ]
 
 export default function PurchasingDashboardPage() {
-  const [tab, setTab] = useState<Tab>('suppliers')
+  const [tab, setTab] = useState<Tab>('resumen')
   const [suppP, setSuppP] = useState<PaginationParams>(initPag('poAmount'))
   const [recvP, setRecvP] = useState<PaginationParams>(initPag('grAmount'))
 
@@ -224,6 +225,51 @@ export default function PurchasingDashboardPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'resumen' && (
+          loadingExec ? (
+            <div style={{ padding: 24 }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="cp-skeleton" style={{ height: 44, borderRadius: 6, marginBottom: 8 }} />
+              ))}
+            </div>
+          ) : !execData || execData.length === 0 ? (
+            <NbEmptyState
+              message="Sin datos de compras disponibles. Disponible al completar carga histórica."
+              icon="table"
+            />
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Evolución diaria (últimos 5 días con actividad)
+              </div>
+              <div className="nb-table-scroll">
+                <table className="db-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th style={{ textAlign: 'right' }}>OC</th>
+                      <th style={{ textAlign: 'right' }}>Monto OC</th>
+                      <th style={{ textAlign: 'right' }}>Monto recibido</th>
+                      <th style={{ textAlign: 'right' }}>Prov. activos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {execData.slice(-5).reverse().map((d) => (
+                      <tr key={d.purchaseDate}>
+                        <td style={{ fontSize: 13 }}>{fmtDate(d.purchaseDate)}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{d.poCount}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.poAmount)}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.receivedAmount)}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{d.activeSuppliers}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        )}
 
         {tab === 'suppliers' && (
           suppData?.data.length === 0 && !loadingSupp ? (

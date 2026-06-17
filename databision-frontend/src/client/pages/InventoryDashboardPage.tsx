@@ -36,7 +36,7 @@ const ROTATION_COLOR: Record<string, string> = {
   NO_MOVEMENT: '#94A3B8',
 }
 
-type Tab = 'rotation' | 'warehouses' | 'no-movement'
+type Tab = 'resumen' | 'rotation' | 'warehouses' | 'no-movement'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -46,13 +46,14 @@ function initPag(sortBy: string): PaginationParams {
 }
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'rotation', label: 'Rotación' },
-  { id: 'warehouses', label: 'Almacenes' },
+  { id: 'resumen',     label: 'Resumen' },
+  { id: 'rotation',    label: 'Rotación' },
+  { id: 'warehouses',  label: 'Almacenes' },
   { id: 'no-movement', label: 'Sin movimiento' },
 ]
 
 export default function InventoryDashboardPage() {
-  const [tab, setTab] = useState<Tab>('rotation')
+  const [tab, setTab] = useState<Tab>('resumen')
   const [rotP, setRotP] = useState<PaginationParams>(initPag('qtySold90d'))
 
   const { data: rotData, isLoading: loadingRot, error: rotErr, refetch: refetchRot } = useBiInventoryRotation(rotP)
@@ -233,6 +234,57 @@ export default function InventoryDashboardPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'resumen' && (
+          rotLoading ? (
+            <div style={{ padding: 24 }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="cp-skeleton" style={{ height: 44, borderRadius: 6, marginBottom: 8 }} />
+              ))}
+            </div>
+          ) : allRotation.length === 0 ? (
+            <NbEmptyState
+              message="Sin datos de inventario disponibles. Disponible al completar carga histórica."
+              icon="table"
+            />
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Distribución por estado de rotación
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
+                {([
+                  { status: 'FAST',        label: 'Alta rotación',   count: fastCount,   color: '#16A34A' },
+                  { status: 'NORMAL',      label: 'Rotación normal', count: normalCount, color: '#2563EB' },
+                  { status: 'SLOW',        label: 'Baja rotación',   count: slowCount,   color: '#D97706' },
+                  { status: 'NO_MOVEMENT', label: 'Sin movimiento',  count: noMoveCount, color: '#94A3B8' },
+                ] as const).map((row) => (
+                  <div
+                    key={row.status}
+                    style={{
+                      border: '1px solid var(--c-border)',
+                      borderRadius: 8,
+                      padding: '12px 16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: 'var(--c-text-muted)', fontWeight: 500 }}>{row.label}</span>
+                    <span style={{ fontSize: 26, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: row.color }}>
+                      {row.count}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>artículos en esta página</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 12.5, color: 'var(--c-text-faint)' }}>
+                Los conteos reflejan la página actual de resultados ({allRotation.length} artículos).
+                Navega a "Rotación" para filtrar y ordenar.
+              </p>
+            </div>
+          )
+        )}
 
         {tab === 'rotation' && (
           allRotation.length === 0 && !loadingRot ? (
