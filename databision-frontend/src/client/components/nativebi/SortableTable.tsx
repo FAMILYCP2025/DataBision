@@ -6,7 +6,7 @@ export interface ColumnDef<T> {
   label: string
   sortKey?: string
   align?: 'left' | 'right'
-  render: (row: T) => ReactNode
+  render: (row: T, index?: number) => ReactNode
 }
 
 interface SortableTableProps<T extends object> {
@@ -87,11 +87,11 @@ export default function SortableTable<T extends object>({
                 </td>
               </tr>
             ) : (
-              data.map((row) => (
+              data.map((row, rowIdx) => (
                 <tr key={rowKey(row)}>
                   {columns.map((col) => (
                     <td key={col.key} style={{ textAlign: col.align ?? 'left' }}>
-                      {col.render(row)}
+                      {col.render(row, rowIdx)}
                     </td>
                   ))}
                 </tr>

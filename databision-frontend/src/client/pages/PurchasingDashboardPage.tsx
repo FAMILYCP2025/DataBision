@@ -3,6 +3,7 @@ import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import KpiCard from '../components/nativebi/KpiCard'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
+import NativeBiMiniBarList from '../components/nativebi/NativeBiMiniBarList'
 import {
   useBiPurchasingExecutive,
   useBiPurchasingSuppliers,
@@ -15,11 +16,20 @@ function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
 }
 
+function fmtPct(n: number) {
+  return `${n.toLocaleString('es-CL', { maximumFractionDigits: 1 })}%`
+}
+
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-CL', {
     day: '2-digit', month: 'short', year: 'numeric',
   })
+}
+
+function pct(part: number, total: number) {
+  if (!total) return 0
+  return (part / total) * 100
 }
 
 type Tab = 'resumen' | 'suppliers' | 'receiving' | 'evolution'
@@ -38,6 +48,26 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'evolution', label: 'Evolución OC' },
 ]
 
+function TabButton({ label, active, onClick }: { id?: string; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      style={{
+        padding: '0 16px', height: 44, background: 'none', border: 'none',
+        borderBottom: active ? '2px solid var(--brand-primary, #2563EB)' : '2px solid transparent',
+        color: active ? 'var(--brand-primary, #2563EB)' : 'var(--c-text-muted)',
+        fontWeight: active ? 600 : 500, fontSize: 13.5, cursor: 'pointer',
+        fontFamily: 'inherit', marginBottom: -1,
+        transition: 'color 150ms, border-color 150ms', whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 export default function PurchasingDashboardPage() {
   const [tab, setTab] = useState<Tab>('resumen')
   const [suppP, setSuppP] = useState<PaginationParams>(initPag('poAmount'))
@@ -47,11 +77,19 @@ export default function PurchasingDashboardPage() {
   const { data: suppData, isLoading: loadingSupp } = useBiPurchasingSuppliers(suppP)
   const { data: recvData, isLoading: loadingRecv } = useBiPurchasingReceiving(recvP)
 
-  // Aggregate KPIs from time-series
-  const totalPo      = execData?.reduce((s, d) => s + d.poCount, 0) ?? 0
-  const totalPoAmt   = execData?.reduce((s, d) => s + d.poAmount, 0) ?? 0
-  const totalRecvAmt = execData?.reduce((s, d) => s + d.receivedAmount, 0) ?? 0
-  const maxSuppliers = execData?.reduce((m, d) => Math.max(m, d.activeSuppliers), 0) ?? 0
+  // ── KPI aggregates ──────────────────────────────────────────────────────
+  const totalPo       = execData?.reduce((s, d) => s + d.poCount, 0) ?? 0
+  const totalPoAmt    = execData?.reduce((s, d) => s + d.poAmount, 0) ?? 0
+  const totalRecvAmt  = execData?.reduce((s, d) => s + d.receivedAmount, 0) ?? 0
+  const totalRecvCnt  = execData?.reduce((s, d) => s + d.receivedCount, 0) ?? 0
+  const maxSuppliers  = execData?.reduce((m, d) => Math.max(m, d.activeSuppliers), 0) ?? 0
+  const pctReceived   = totalPoAmt > 0 ? pct(totalRecvAmt, totalPoAmt) : 0
+  const gap           = totalPoAmt - totalRecvAmt
+  const avgPoAmt      = totalPo > 0 ? totalPoAmt / totalPo : 0
+
+  const suppliers     = suppData?.data ?? []
+  const totalSuppAmt  = suppliers.reduce((s, p) => s + p.poAmount, 0)
+  const topSupplier   = suppliers[0]
 
   const execCols: ColumnDef<PurchasingExecutive>[] = [
     {
@@ -72,16 +110,36 @@ export default function PurchasingDashboardPage() {
       render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.poAmount)}</span>,
     },
     {
-      key: 'receivedCount',
-      label: 'Recepciones',
-      align: 'right',
-      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.receivedCount}</span>,
-    },
-    {
       key: 'receivedAmount',
-      label: 'Monto recibido',
+      label: 'Recibido',
       align: 'right',
       render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.receivedAmount)}</span>,
+    },
+    {
+      key: 'pctRecv',
+      label: '% Recibido',
+      align: 'right',
+      render: (r) => {
+        const p = r.poAmount > 0 ? pct(r.receivedAmount, r.poAmount) : 0
+        return (
+          <span style={{ fontVariantNumeric: 'tabular-nums', color: p < 50 ? '#D97706' : '#16A34A' }}>
+            {fmtPct(p)}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'gap',
+      label: 'Brecha',
+      align: 'right',
+      render: (r) => {
+        const g = r.poAmount - r.receivedAmount
+        return (
+          <span style={{ fontVariantNumeric: 'tabular-nums', color: g > 0 ? '#D97706' : 'var(--c-text-muted)' }}>
+            {fmtAmt(g)}
+          </span>
+        )
+      },
     },
     {
       key: 'activeSuppliers',
@@ -92,6 +150,15 @@ export default function PurchasingDashboardPage() {
   ]
 
   const suppCols: ColumnDef<PurchasingSupplier>[] = [
+    {
+      key: 'rank',
+      label: '#',
+      render: (_r, i) => (
+        <span style={{ fontSize: 12, color: 'var(--c-text-faint)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+          {(suppP.offset ?? 0) + (i ?? 0) + 1}
+        </span>
+      ),
+    },
     {
       key: 'name',
       label: 'Proveedor',
@@ -117,11 +184,34 @@ export default function PurchasingDashboardPage() {
       render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.poAmount)}</span>,
     },
     {
+      key: 'pct',
+      label: '% Part.',
+      align: 'right',
+      render: (r) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--c-text-muted)' }}>
+          {pct(r.poAmount, totalSuppAmt).toFixed(1)}%
+        </span>
+      ),
+    },
+    {
       key: 'receivedAmount',
       label: 'Recibido',
       sortKey: 'receivedAmount',
       align: 'right',
       render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.receivedAmount)}</span>,
+    },
+    {
+      key: 'pctRecv',
+      label: '% Recibido',
+      align: 'right',
+      render: (r) => {
+        const p = r.poAmount > 0 ? pct(r.receivedAmount, r.poAmount) : 0
+        return (
+          <span style={{ fontVariantNumeric: 'tabular-nums', color: p < 50 ? '#D97706' : '#16A34A' }}>
+            {fmtPct(p)}
+          </span>
+        )
+      },
     },
     {
       key: 'avgPoAmount',
@@ -138,6 +228,15 @@ export default function PurchasingDashboardPage() {
   ]
 
   const recvCols: ColumnDef<PurchasingReceiving>[] = [
+    {
+      key: 'rank',
+      label: '#',
+      render: (_r, i) => (
+        <span style={{ fontSize: 12, color: 'var(--c-text-faint)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+          {(recvP.offset ?? 0) + (i ?? 0) + 1}
+        </span>
+      ),
+    },
     {
       key: 'name',
       label: 'Proveedor',
@@ -177,22 +276,27 @@ export default function PurchasingDashboardPage() {
         description="Órdenes de compra, proveedores y recepciones — últimos 30 días"
       />
 
-      {/* KPI cards */}
+      {/* KPI row */}
       {execErr ? (
-        <NbErrorState
-          message="Error al cargar datos de compras."
-          onRetry={() => refetchExec()}
-        />
+        <NbErrorState message="Error al cargar datos de compras." onRetry={() => refetchExec()} />
       ) : (
         <div className="nb-card-grid">
-          <KpiCard label="Órdenes de compra" value={totalPo} loading={loadingExec} />
-          <KpiCard label="Monto OC" value={loadingExec ? '—' : fmtAmt(totalPoAmt)} loading={loadingExec} />
-          <KpiCard label="Monto recibido" value={loadingExec ? '—' : fmtAmt(totalRecvAmt)} loading={loadingExec} />
-          <KpiCard label="Proveedores activos" value={maxSuppliers} loading={loadingExec} />
+          <KpiCard label="Órdenes de compra"  value={totalPo}                                                loading={loadingExec} />
+          <KpiCard label="Monto OC"           value={loadingExec ? '—' : fmtAmt(totalPoAmt)}               loading={loadingExec} />
+          <KpiCard label="Monto recibido"     value={loadingExec ? '—' : fmtAmt(totalRecvAmt)}             loading={loadingExec} />
+          <KpiCard label="% Recibido vs OC"   value={loadingExec ? '—' : fmtPct(pctReceived)}              loading={loadingExec} />
+          <KpiCard label="Proveedores activos" value={maxSuppliers}                                         loading={loadingExec} />
+          <KpiCard label="Recepciones"        value={totalRecvCnt}                                         loading={loadingExec} />
+          <KpiCard label="Promedio OC"        value={loadingExec ? '—' : fmtAmt(avgPoAmt)}                 loading={loadingExec} />
+          <KpiCard
+            label="Brecha pendiente"
+            value={loadingExec ? '—' : fmtAmt(gap)}
+            subLabel={gap > 0 ? 'OC emitidas sin recibir' : undefined}
+            loading={loadingExec}
+          />
         </div>
       )}
 
-      {/* Tabbed tables */}
       <div className="db-card">
         <div
           className="db-card-header nb-tab-bar"
@@ -201,31 +305,11 @@ export default function PurchasingDashboardPage() {
           aria-label="Secciones de compras"
         >
           {tabs.map((t) => (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                padding: '0 16px',
-                height: 44,
-                background: 'none',
-                border: 'none',
-                borderBottom: tab === t.id ? '2px solid var(--brand-primary, #2563EB)' : '2px solid transparent',
-                color: tab === t.id ? 'var(--brand-primary, #2563EB)' : 'var(--c-text-muted)',
-                fontWeight: tab === t.id ? 600 : 500,
-                fontSize: 13.5,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                marginBottom: -1,
-                transition: 'color 150ms, border-color 150ms',
-              }}
-            >
-              {t.label}
-            </button>
+            <TabButton key={t.id} id={t.id} label={t.label} active={tab === t.id} onClick={() => setTab(t.id)} />
           ))}
         </div>
 
+        {/* ── Resumen ─────────────────────────────────────────────────────── */}
         {tab === 'resumen' && (
           loadingExec ? (
             <div style={{ padding: 24 }}>
@@ -234,14 +318,58 @@ export default function PurchasingDashboardPage() {
               ))}
             </div>
           ) : !execData || execData.length === 0 ? (
-            <NbEmptyState
-              message="Sin datos de compras disponibles. Disponible al completar carga histórica."
-              icon="table"
-            />
+            <NbEmptyState message="Sin datos de compras disponibles. Disponible al completar carga histórica." icon="table" />
           ) : (
             <div style={{ padding: '16px 20px' }}>
+              {/* OC vs Recibido comparison */}
               <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Evolución diaria (últimos 5 días con actividad)
+                OC vs Recibido (30 días)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: 'var(--c-text-muted)' }}>Monto OC emitido</span>
+                    <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(totalPoAmt)}</span>
+                  </div>
+                  <div style={{ height: 8, backgroundColor: 'var(--c-border)', borderRadius: 4 }}>
+                    <div style={{ width: '100%', height: '100%', backgroundColor: 'var(--brand-primary, #2563EB)', borderRadius: 4 }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: 'var(--c-text-muted)' }}>Monto recibido</span>
+                    <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: pctReceived < 70 ? '#D97706' : '#16A34A' }}>{fmtAmt(totalRecvAmt)}</span>
+                  </div>
+                  <div style={{ height: 8, backgroundColor: 'var(--c-border)', borderRadius: 4 }}>
+                    <div style={{ width: `${Math.min(pctReceived, 100)}%`, height: '100%', backgroundColor: pctReceived < 70 ? '#D97706' : '#16A34A', borderRadius: 4, transition: 'width 400ms ease' }} />
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--c-text-faint)' }}>
+                    {fmtPct(pctReceived)} de las OC ha sido recibido · Brecha: {fmtAmt(gap)}
+                  </div>
+                </div>
+
+                {/* Top proveedores mini bar */}
+                <div>
+                  {suppliers.length === 0 ? (
+                    <NbEmptyState message="Sin datos de proveedores aún." icon="table" />
+                  ) : (
+                    <NativeBiMiniBarList
+                      title="Top proveedores por monto OC"
+                      items={suppliers.slice(0, 5).map((s) => ({
+                        label: s.supplierName ?? s.supplierCode,
+                        sublabel: s.supplierCode,
+                        value: s.poAmount,
+                        pct: pct(s.poAmount, totalSuppAmt),
+                        color: 'var(--brand-primary, #2563EB)',
+                      }))}
+                      formatValue={fmtAmt}
+                      maxItems={5}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Evolución últimos 5 días */}
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Evolución diaria (últimos 5 períodos)
               </div>
               <div className="nb-table-scroll">
                 <table className="db-table">
@@ -250,27 +378,40 @@ export default function PurchasingDashboardPage() {
                       <th>Fecha</th>
                       <th style={{ textAlign: 'right' }}>OC</th>
                       <th style={{ textAlign: 'right' }}>Monto OC</th>
-                      <th style={{ textAlign: 'right' }}>Monto recibido</th>
-                      <th style={{ textAlign: 'right' }}>Prov. activos</th>
+                      <th style={{ textAlign: 'right' }}>Recibido</th>
+                      <th style={{ textAlign: 'right' }}>% Recibido</th>
+                      <th style={{ textAlign: 'right' }}>Brecha</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {execData.slice(-5).reverse().map((d) => (
-                      <tr key={d.purchaseDate}>
-                        <td style={{ fontSize: 13 }}>{fmtDate(d.purchaseDate)}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{d.poCount}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.poAmount)}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.receivedAmount)}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{d.activeSuppliers}</td>
-                      </tr>
-                    ))}
+                    {execData.slice(-5).reverse().map((d) => {
+                      const p = d.poAmount > 0 ? pct(d.receivedAmount, d.poAmount) : 0
+                      return (
+                        <tr key={d.purchaseDate}>
+                          <td style={{ fontSize: 13 }}>{fmtDate(d.purchaseDate)}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{d.poCount}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.poAmount)}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.receivedAmount)}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: p < 50 ? '#D97706' : '#16A34A' }}>{fmtPct(p)}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: (d.poAmount - d.receivedAmount) > 0 ? '#D97706' : 'inherit' }}>
+                            {fmtAmt(d.poAmount - d.receivedAmount)}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
+              {topSupplier && (
+                <p style={{ fontSize: 12, color: 'var(--c-text-faint)', marginTop: 16 }}>
+                  Proveedor líder: <strong>{topSupplier.supplierName ?? topSupplier.supplierCode}</strong> · {fmtAmt(topSupplier.poAmount)} en OC
+                </p>
+              )}
             </div>
           )
         )}
 
+        {/* ── Proveedores ─────────────────────────────────────────────────── */}
         {tab === 'suppliers' && (
           suppData?.data.length === 0 && !loadingSupp ? (
             <NbEmptyState message="Sin datos de proveedores en el período analizado." icon="table" />
@@ -289,6 +430,7 @@ export default function PurchasingDashboardPage() {
           )
         )}
 
+        {/* ── Recepciones ─────────────────────────────────────────────────── */}
         {tab === 'receiving' && (
           recvData?.data.length === 0 && !loadingRecv ? (
             <NbEmptyState message="Sin datos de recepciones en el período analizado." icon="table" />
@@ -307,6 +449,7 @@ export default function PurchasingDashboardPage() {
           )
         )}
 
+        {/* ── Evolución OC ────────────────────────────────────────────────── */}
         {tab === 'evolution' && (
           !execData || execData.length === 0 ? (
             <NbEmptyState message="Sin datos de evolución de órdenes de compra en el período." icon="chart" />
