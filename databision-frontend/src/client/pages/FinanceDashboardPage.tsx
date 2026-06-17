@@ -13,6 +13,7 @@ import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
 import type { FinanceArAging, FinanceApAging } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
 import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
+import { NbStackedBarChart, NbAreaChart, NbLineChart } from '../components/charts'
 
 function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
@@ -41,7 +42,7 @@ function riskLevel(r: FinanceArAging): { text: string; color: string } {
   return                                       { text: 'Bajo',  color: '#16A34A' }
 }
 
-type Tab = 'resumen' | 'ar' | 'ap' | 'risk'
+type Tab = 'resumen' | 'ar' | 'ap' | 'risk' | 'tendencia' | 'resultados' | 'balance' | 'ebitda' | 'cuentas'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -51,10 +52,15 @@ function initPag(sortBy: string): PaginationParams {
 }
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'resumen', label: 'Resumen' },
-  { id: 'ar',      label: 'Cuentas por cobrar' },
-  { id: 'ap',      label: 'Cuentas por pagar' },
-  { id: 'risk',    label: 'Riesgo +90d' },
+  { id: 'resumen',    label: 'Resumen' },
+  { id: 'ar',         label: 'Cuentas por cobrar' },
+  { id: 'ap',         label: 'Cuentas por pagar' },
+  { id: 'risk',       label: 'Riesgo +90d' },
+  { id: 'tendencia',  label: 'Tendencia' },
+  { id: 'resultados', label: 'Estado de Resultados' },
+  { id: 'balance',    label: 'Balance General' },
+  { id: 'ebitda',     label: 'EBITDA' },
+  { id: 'cuentas',    label: 'Plan de Cuentas' },
 ]
 
 const FINANCE_FILTER_DEFS: NativeBiFilterDefinition[] = [
@@ -107,6 +113,53 @@ function AgingBar({ label, amount, total, color }: { label: string; amount: numb
       <div style={{ height: 6, backgroundColor: 'var(--c-border)', borderRadius: 3 }}>
         <div style={{ width: `${p}%`, height: '100%', backgroundColor: color, borderRadius: 3, transition: 'width 400ms ease' }} />
       </div>
+    </div>
+  )
+}
+
+function FinancialDataPending({
+  title,
+  description,
+  requiredTables,
+}: {
+  title: string
+  description: string
+  requiredTables: string[]
+}) {
+  return (
+    <div style={{ padding: 40, textAlign: 'center' }}>
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 56, height: 56, borderRadius: 12, backgroundColor: '#EFF6FF',
+        marginBottom: 16,
+      }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 0 2-2h2a2 2 0 0 0 2 2" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M9 12h6M9 16h4" stroke="#2563EB" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      </div>
+      <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-text)', marginBottom: 8 }}>{title}</h3>
+      <p style={{ fontSize: 13.5, color: 'var(--c-text-muted)', maxWidth: 420, margin: '0 auto 20px' }}>
+        {description}
+      </p>
+      <div style={{
+        display: 'inline-block', textAlign: 'left', padding: '16px 20px',
+        border: '1px solid var(--c-border)', borderRadius: 8,
+        backgroundColor: 'var(--c-surface)', maxWidth: 480,
+      }}>
+        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Tablas MART requeridas
+        </p>
+        {requiredTables.map(t => (
+          <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#D97706', flexShrink: 0 }} />
+            <code style={{ fontSize: 12.5, color: 'var(--c-text)', fontFamily: 'monospace' }}>{t}</code>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--c-text-faint)', marginTop: 16 }}>
+        Habilitación estimada: Sprint 13 — Módulo contable MART
+      </p>
     </div>
   )
 }
@@ -433,6 +486,36 @@ export default function FinanceDashboardPage() {
                 ))}
               </div>
 
+              {/* AR vs AP trend chart */}
+              <div style={{ marginBottom: 24 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                  Tendencia CxC / CxP
+                </p>
+                <NbAreaChart
+                  series={[
+                    {
+                      name: 'CxC (AR)',
+                      data: execData.map((d) => ({
+                        name: d.periodDate,
+                        value: d.arTotal,
+                      })),
+                      color: '#2563EB',
+                    },
+                    {
+                      name: 'CxP (AP)',
+                      data: execData.map((d) => ({
+                        name: d.periodDate,
+                        value: d.apTotal ?? 0,
+                      })),
+                      color: '#DC2626',
+                    },
+                  ]}
+                  height={200}
+                  loading={loadingExec}
+                  valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                />
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
                 {/* Aging bucket visualization */}
                 <div>
@@ -504,17 +587,40 @@ export default function FinanceDashboardPage() {
           arData?.data.length === 0 && !loadingAr ? (
             <NbEmptyState message="Sin datos de cuentas por cobrar en el período analizado." icon="table" />
           ) : (
-            <SortableTable
-              data={arData?.data ?? []}
-              columns={arCols}
-              meta={arData?.meta ?? EMPTY_META}
-              sortBy={arP.sortBy}
-              sortDir={arP.sortDir}
-              onPageChange={(offset) => setArP((p) => ({ ...p, offset }))}
-              onSortChange={(sortBy, sortDir) => setArP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
-              isLoading={loadingAr}
-              rowKey={(r) => r.cardCode}
-            />
+            <>
+              {arData && arData.data.length > 0 && (
+                <div style={{ padding: '16px 20px 0' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    Distribución por vencimiento — Top 10 clientes
+                  </p>
+                  <NbStackedBarChart
+                    categories={arData.data.slice(0, 10).map((r) => r.cardName ?? r.cardCode)}
+                    series={[
+                      { name: 'Al día',  data: arData.data.slice(0, 10).map((r) => Math.max(0, r.balanceDue - r.overdueAmount)), color: '#16A34A' },
+                      { name: '1–30d',   data: arData.data.slice(0, 10).map((r) => r.aging0To30),   color: '#D97706' },
+                      { name: '31–60d',  data: arData.data.slice(0, 10).map((r) => r.aging31To60),  color: '#EA580C' },
+                      { name: '+90d',    data: arData.data.slice(0, 10).map((r) => r.aging90Plus),  color: '#DC2626' },
+                    ]}
+                    horizontal={true}
+                    height={280}
+                    loading={loadingAr}
+                    valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  />
+                  <div style={{ height: 1, background: 'var(--c-border)', margin: '12px 0 0' }} />
+                </div>
+              )}
+              <SortableTable
+                data={arData?.data ?? []}
+                columns={arCols}
+                meta={arData?.meta ?? EMPTY_META}
+                sortBy={arP.sortBy}
+                sortDir={arP.sortDir}
+                onPageChange={(offset) => setArP((p) => ({ ...p, offset }))}
+                onSortChange={(sortBy, sortDir) => setArP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
+                isLoading={loadingAr}
+                rowKey={(r) => r.cardCode}
+              />
+            </>
           )
         )}
 
@@ -537,17 +643,40 @@ export default function FinanceDashboardPage() {
               </div>
             </div>
           ) : (
-            <SortableTable
-              data={apData?.data ?? []}
-              columns={apCols}
-              meta={apData?.meta ?? EMPTY_META}
-              sortBy={apP.sortBy}
-              sortDir={apP.sortDir}
-              onPageChange={(offset) => setApP((p) => ({ ...p, offset }))}
-              onSortChange={(sortBy, sortDir) => setApP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
-              isLoading={loadingAp}
-              rowKey={(r) => r.supplierCode}
-            />
+            <>
+              {apData && apData.data.length > 0 && (
+                <div style={{ padding: '16px 20px 0' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    Distribución por vencimiento — Top 10 proveedores
+                  </p>
+                  <NbStackedBarChart
+                    categories={apData.data.slice(0, 10).map((r) => r.supplierName ?? r.supplierCode)}
+                    series={[
+                      { name: 'Al día',  data: apData.data.slice(0, 10).map((r) => Math.max(0, r.balanceDue - r.overdueAmount)), color: '#16A34A' },
+                      { name: '1–30d',   data: apData.data.slice(0, 10).map((r) => r.aging0To30),   color: '#D97706' },
+                      { name: '31–60d',  data: apData.data.slice(0, 10).map((r) => r.aging31To60),  color: '#EA580C' },
+                      { name: '+90d',    data: apData.data.slice(0, 10).map((r) => r.aging90Plus),  color: '#DC2626' },
+                    ]}
+                    horizontal={true}
+                    height={280}
+                    loading={loadingAp}
+                    valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  />
+                  <div style={{ height: 1, background: 'var(--c-border)', margin: '12px 0 0' }} />
+                </div>
+              )}
+              <SortableTable
+                data={apData?.data ?? []}
+                columns={apCols}
+                meta={apData?.meta ?? EMPTY_META}
+                sortBy={apP.sortBy}
+                sortDir={apP.sortDir}
+                onPageChange={(offset) => setApP((p) => ({ ...p, offset }))}
+                onSortChange={(sortBy, sortDir) => setApP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
+                isLoading={loadingAp}
+                rowKey={(r) => r.supplierCode}
+              />
+            </>
           )
         )}
 
@@ -577,6 +706,101 @@ export default function FinanceDashboardPage() {
               />
             </>
           )
+        )}
+
+        {/* ── Tendencia ───────────────────────────────────────────────────── */}
+        {tab === 'tendencia' && (
+          <div style={{ padding: 20 }}>
+            <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
+              Evolución histórica de posición financiera neta (CxC − CxP)
+            </p>
+            {(execData ?? []).length > 0 ? (
+              <>
+                <NbLineChart
+                  series={[
+                    {
+                      name: 'Posición neta (CxC − CxP)',
+                      data: (execData ?? []).map((d) => ({
+                        name: d.periodDate,
+                        value: d.arTotal - (d.apTotal ?? 0),
+                      })),
+                      color: '#7C3AED',
+                    },
+                  ]}
+                  height={280}
+                  loading={loadingExec}
+                  valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginTop: 20 }}>
+                  {(execData ?? []).slice(0, 12).map((d, i) => (
+                    <div key={i} className="db-stat-card">
+                      <span className="db-stat-label">{fmtDate(d.periodDate)}</span>
+                      <span className="db-stat-value" style={{ fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>
+                        {(d.arTotal - (d.apTotal ?? 0)).toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                      </span>
+                      <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>
+                        CxC {d.arTotal.toLocaleString('es-CL', { maximumFractionDigits: 0 })} · CxP {(d.apTotal ?? 0).toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <NbEmptyState message="Sin datos de tendencia disponibles." icon="chart" />
+            )}
+          </div>
+        )}
+
+        {/* ── Estado de Resultados ─────────────────────────────────────────── */}
+        {tab === 'resultados' && (
+          <FinancialDataPending
+            title="Estado de Resultados"
+            description="Reporte de ingresos, costos, gastos operacionales, EBITDA y utilidad neta por período. Requiere que el pipeline ETL procese las partidas contables del libro diario SAP B1."
+            requiredTables={[
+              'mart.gl_accounts         — Plan de cuentas SAP B1 (OACT)',
+              'mart.journal_entries     — Partidas contables (OJDT + JDT1)',
+              'mart.financial_periods   — Períodos fiscales',
+            ]}
+          />
+        )}
+
+        {/* ── Balance General ──────────────────────────────────────────────── */}
+        {tab === 'balance' && (
+          <FinancialDataPending
+            title="Balance General"
+            description="Estado de situación financiera: activos, pasivos y patrimonio neto. Muestra la posición financiera consolidada al cierre del período."
+            requiredTables={[
+              'mart.gl_accounts         — Plan de cuentas con clasificación BS/PL',
+              'mart.journal_entries     — Movimientos para saldos acumulados',
+              'mart.balance_snapshot    — Saldos de cuenta por período (opcional)',
+            ]}
+          />
+        )}
+
+        {/* ── EBITDA / Rentabilidad ────────────────────────────────────────── */}
+        {tab === 'ebitda' && (
+          <FinancialDataPending
+            title="EBITDA / Rentabilidad"
+            description="Análisis de rentabilidad operacional: EBITDA, margen bruto, margen operacional, margen neto y evolución trimestral."
+            requiredTables={[
+              'mart.gl_accounts         — Cuentas de resultado clasificadas',
+              'mart.journal_entries     — Base para cálculo de márgenes',
+              'mart.cost_centers        — Centros de costo (opcional, OPRC)',
+            ]}
+          />
+        )}
+
+        {/* ── Plan de Cuentas ──────────────────────────────────────────────── */}
+        {tab === 'cuentas' && (
+          <FinancialDataPending
+            title="Plan de Cuentas"
+            description="Árbol jerárquico del plan de cuentas SAP B1 con saldos actuales, movimientos del período y clasificación por tipo (activo, pasivo, resultado)."
+            requiredTables={[
+              'mart.gl_accounts         — Maestro de cuentas (OACT)',
+              'mart.account_balances    — Saldos por cuenta y período',
+              'mart.journal_entries     — Detalle de movimientos por cuenta',
+            ]}
+          />
         )}
       </div>
     </div>

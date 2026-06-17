@@ -20,6 +20,7 @@ public sealed class ClientBiSalesController(
         [FromQuery] int offset = 0,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] NativeBiFilterDto? filters = null,
         CancellationToken ct = default)
     {
         var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
@@ -29,7 +30,7 @@ public sealed class ClientBiSalesController(
             return this.BadRequestError("invalid_limit", "limit must be between 1 and 200.");
 
         var result = await svc.GetSalesCustomersAsync(ctx.CompanyId!,
-            new PaginationOptions(limit, offset, sortBy, sortDir), ct);
+            new PaginationOptions(limit, offset, sortBy, sortDir), filters, ct);
         return this.OkPaged(result.Data, result.Meta);
     }
 
@@ -40,6 +41,7 @@ public sealed class ClientBiSalesController(
         [FromQuery] int offset = 0,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null,
+        [FromQuery] NativeBiFilterDto? filters = null,
         CancellationToken ct = default)
     {
         var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
@@ -49,7 +51,7 @@ public sealed class ClientBiSalesController(
             return this.BadRequestError("invalid_limit", "limit must be between 1 and 200.");
 
         var result = await svc.GetSalesItemsAsync(ctx.CompanyId!,
-            new PaginationOptions(limit, offset, sortBy, sortDir), ct);
+            new PaginationOptions(limit, offset, sortBy, sortDir), filters, ct);
         return this.OkPaged(result.Data, result.Meta);
     }
 
@@ -67,5 +69,30 @@ public sealed class ClientBiSalesController(
 
         var result = await svc.GetSalesFulfillmentAsync(ctx.CompanyId!, days, ct);
         return this.OkData(result);
+    }
+
+    // GET /api/client/bi/sales/item-groups
+    [HttpGet("item-groups")]
+    public async Task<IActionResult> GetItemGroupSummary(
+        [FromQuery] NativeBiFilterDto filters,
+        CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        return this.OkData(await svc.GetSalesItemGroupSummaryAsync(ctx.CompanyId!, filters, ct));
+    }
+
+    // GET /api/client/bi/sales/warehouses
+    [HttpGet("warehouses")]
+    public async Task<IActionResult> GetWarehouseSummary(
+        [FromQuery] NativeBiFilterDto? filters,
+        CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        var data = await svc.GetSalesWarehouseSummaryAsync(ctx.CompanyId!, filters, ct);
+        return this.OkData(data);
     }
 }

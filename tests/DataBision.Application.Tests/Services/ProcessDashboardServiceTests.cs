@@ -28,13 +28,13 @@ public sealed class ProcessDashboardServiceTests
     public async Task GetSalesCustomers_ClampsLimitToMax200()
     {
         _repo.Setup(r => r.GetSalesCustomersAsync("c1",
-                It.Is<PaginationOptions>(p => p.Limit == 201), It.IsAny<CancellationToken>()))
+                It.Is<PaginationOptions>(p => p.Limit == 201), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
         await NewService().GetSalesCustomersAsync("c1", new PaginationOptions(500, 0));
 
         _repo.Verify(r => r.GetSalesCustomersAsync("c1",
-            It.Is<PaginationOptions>(p => p.Limit == 201), It.IsAny<CancellationToken>()),
+            It.Is<PaginationOptions>(p => p.Limit == 201), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -42,13 +42,13 @@ public sealed class ProcessDashboardServiceTests
     public async Task GetSalesCustomers_ClampsLimitToMin1()
     {
         _repo.Setup(r => r.GetSalesCustomersAsync("c1",
-                It.Is<PaginationOptions>(p => p.Limit == 2), It.IsAny<CancellationToken>()))
+                It.Is<PaginationOptions>(p => p.Limit == 2), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
         await NewService().GetSalesCustomersAsync("c1", new PaginationOptions(-5, 0));
 
         _repo.Verify(r => r.GetSalesCustomersAsync("c1",
-            It.Is<PaginationOptions>(p => p.Limit == 2), It.IsAny<CancellationToken>()),
+            It.Is<PaginationOptions>(p => p.Limit == 2), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -58,7 +58,7 @@ public sealed class ProcessDashboardServiceTests
     public async Task GetSalesCustomers_WhenEmpty_ReturnsEmptyPagedResult()
     {
         _repo.Setup(r => r.GetSalesCustomersAsync(It.IsAny<string>(),
-                It.IsAny<PaginationOptions>(), It.IsAny<CancellationToken>()))
+                It.IsAny<PaginationOptions>(), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
         var result = await NewService().GetSalesCustomersAsync("c1", new PaginationOptions(50, 0));
@@ -92,7 +92,7 @@ public sealed class ProcessDashboardServiceTests
             .ToList();
 
         _repo.Setup(r => r.GetSalesCustomersAsync("c1",
-                It.Is<PaginationOptions>(p => p.Limit == 51), It.IsAny<CancellationToken>()))
+                It.Is<PaginationOptions>(p => p.Limit == 51), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync(customers);
 
         var result = await NewService().GetSalesCustomersAsync("c1", new PaginationOptions(50, 0));
@@ -148,18 +148,18 @@ public sealed class ProcessDashboardServiceTests
     public async Task GetSalesCustomers_UsesExactCompanyId()
     {
         _repo.Setup(r => r.GetSalesCustomersAsync("tenant-a",
-                It.IsAny<PaginationOptions>(), It.IsAny<CancellationToken>()))
+                It.IsAny<PaginationOptions>(), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync([]);
 
         await NewService().GetSalesCustomersAsync("tenant-a", new PaginationOptions(10, 0));
 
         _repo.Verify(r => r.GetSalesCustomersAsync("tenant-a",
-            It.IsAny<PaginationOptions>(), It.IsAny<CancellationToken>()),
+            It.IsAny<PaginationOptions>(), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()),
             Times.Once);
 
         _repo.Verify(r => r.GetSalesCustomersAsync(
             It.Is<string>(s => s != "tenant-a"),
-            It.IsAny<PaginationOptions>(), It.IsAny<CancellationToken>()),
+            It.IsAny<PaginationOptions>(), It.IsAny<NativeBiFilterDto?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 }

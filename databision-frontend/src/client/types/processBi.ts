@@ -179,3 +179,24 @@ export interface OperationDataQuality {
   detectedAtUtc: string
   isResolved: boolean
 }
+
+// ── Sales item groups ─────────────────────────────────────────────────────────
+
+export interface SalesItemGroupSummary {
+  itemGroupCode: string
+  itemGroupName: string | null
+  grossSales: number
+  netSales: number
+  invoiceCount: number
+  skuCount: number
+  grossMarginPct: number
+}
+
+export interface SalesWarehouseSummary {
+  warehouseCode: string
+  warehouseName: string | null
+  grossSales: number
+  netSales: number
+  invoiceCount: number
+  skuCount: number
+}

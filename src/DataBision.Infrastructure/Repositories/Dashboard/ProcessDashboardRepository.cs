@@ -57,7 +57,7 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
     // ── SALES ────────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<SalesCustomerDashboardDto>> GetSalesCustomersAsync(
-        string companyId, PaginationOptions p, CancellationToken ct = default)
+        string companyId, PaginationOptions p, NativeBiFilterDto? filters = null, CancellationToken ct = default)
     {
         var col = ResolveCol(p.SortBy, CustomerSortCols, "net_sales");
         var dir = ResolveDir(p.SortDir);
@@ -76,6 +76,7 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
                 is_active           AS "IsActive"
             FROM mart.sales_customer_dashboard
             WHERE company_id = @company_id
+              AND (@salesperson IS NULL OR salesperson_name = ANY(string_to_array(@salesperson, ',')))
             ORDER BY {col} {dir}
             LIMIT @limit OFFSET @offset;
             """;
@@ -83,7 +84,13 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         await using var conn = OpenConnection();
         await conn.OpenAsync(ct);
         var rows = await conn.QueryAsync<SalesCustomerDashboardRow>(
-            new CommandDefinition(sql, new { company_id = companyId, limit = p.Limit, offset = p.Offset }, cancellationToken: ct));
+            new CommandDefinition(sql, new
+            {
+                company_id  = companyId,
+                limit       = p.Limit,
+                offset      = p.Offset,
+                salesperson = string.IsNullOrWhiteSpace(filters?.SalespersonCodes) ? null : filters!.SalespersonCodes,
+            }, cancellationToken: ct));
         return rows.Select(r => new SalesCustomerDashboardDto
         {
             CardCode         = r.CardCode,
@@ -101,10 +108,11 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
     }
 
     public async Task<IReadOnlyList<SalesItemDashboardDto>> GetSalesItemsAsync(
-        string companyId, PaginationOptions p, CancellationToken ct = default)
+        string companyId, PaginationOptions p, NativeBiFilterDto? filters = null, CancellationToken ct = default)
     {
         var col = ResolveCol(p.SortBy, ItemSortCols, "gross_sales");
         var dir = ResolveDir(p.SortDir);
+        var (dateFrom, dateTo) = filters?.EffectiveDateRange() ?? (null, null);
         var sql = $"""
             SELECT
                 item_code           AS "ItemCode",
@@ -117,6 +125,9 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
                 last_sale_date      AS "LastSaleDate"
             FROM mart.sales_item_dashboard
             WHERE company_id = @company_id
+              AND (@date_from IS NULL OR last_sale_date >= @date_from::date)
+              AND (@date_to   IS NULL OR last_sale_date <= @date_to::date)
+              AND (@item_group IS NULL OR item_group_code = ANY(string_to_array(@item_group, ',')))
             ORDER BY {col} {dir}
             LIMIT @limit OFFSET @offset;
             """;
@@ -124,7 +135,15 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         await using var conn = OpenConnection();
         await conn.OpenAsync(ct);
         var rows = await conn.QueryAsync<SalesItemDashboardRow>(
-            new CommandDefinition(sql, new { company_id = companyId, limit = p.Limit, offset = p.Offset }, cancellationToken: ct));
+            new CommandDefinition(sql, new
+            {
+                company_id  = companyId,
+                limit       = p.Limit,
+                offset      = p.Offset,
+                date_from   = dateFrom.HasValue ? (object)dateFrom.Value.ToString("yyyy-MM-dd") : null,
+                date_to     = dateTo.HasValue ? (object)dateTo.Value.ToString("yyyy-MM-dd") : null,
+                item_group  = string.IsNullOrWhiteSpace(filters?.ItemGroupCodes) ? null : filters!.ItemGroupCodes,
+            }, cancellationToken: ct));
         return rows.Select(r => new SalesItemDashboardDto
         {
             ItemCode       = r.ItemCode,
@@ -136,6 +155,81 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
             InvoiceCount   = r.InvoiceCount,
             LastSaleDate   = r.LastSaleDate.HasValue ? DateOnly.FromDateTime(r.LastSaleDate.Value) : null,
         }).ToList();
+    }
+
+    public async Task<IReadOnlyList<SalesItemGroupSummaryDto>> GetSalesItemGroupSummaryAsync(
+        string companyId, NativeBiFilterDto? filters = null, CancellationToken ct = default)
+    {
+        var (dateFrom, dateTo) = filters?.EffectiveDateRange() ?? (null, null);
+
+        const string sql = """
+            SELECT
+                item_group_code                              AS "ItemGroupCode",
+                item_group_code                              AS "ItemGroupName",
+                SUM(gross_sales)                             AS "GrossSales",
+                SUM(gross_sales - COALESCE(credit_memos, 0)) AS "NetSales",
+                SUM(invoice_count)                           AS "InvoiceCount",
+                COUNT(DISTINCT item_code)                    AS "SkuCount",
+                CASE WHEN SUM(gross_sales) > 0
+                     THEN AVG(gross_margin_pct)
+                     ELSE 0 END                              AS "GrossMarginPct"
+            FROM mart.sales_item_dashboard
+            WHERE company_id = @company_id
+              AND (@date_from IS NULL OR last_sale_date >= @date_from::date)
+              AND (@date_to   IS NULL OR last_sale_date <= @date_to::date)
+              AND (@item_group IS NULL OR item_group_code = ANY(string_to_array(@item_group, ',')))
+            GROUP BY item_group_code
+            ORDER BY SUM(gross_sales) DESC;
+            """;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var rows = await conn.QueryAsync<SalesItemGroupSummaryDto>(
+            new CommandDefinition(sql, new
+            {
+                company_id  = companyId,
+                date_from   = dateFrom.HasValue ? (object)dateFrom.Value.ToString("yyyy-MM-dd") : null,
+                date_to     = dateTo.HasValue ? (object)dateTo.Value.ToString("yyyy-MM-dd") : null,
+                item_group  = string.IsNullOrWhiteSpace(filters?.ItemGroupCodes) ? null : filters!.ItemGroupCodes,
+            }, cancellationToken: ct));
+        return rows.ToList();
+    }
+
+    public async Task<IReadOnlyList<SalesWarehouseSummaryDto>> GetSalesWarehouseSummaryAsync(
+        string companyId, NativeBiFilterDto? filters = null, CancellationToken ct = default)
+    {
+        var (dateFrom, dateTo) = filters?.EffectiveDateRange() ?? (null, null);
+
+        const string sql = """
+            SELECT
+                warehouse_code         AS "WarehouseCode",
+                MAX(warehouse_name)    AS "WarehouseName",
+                SUM(gross_sales_amount)  AS "GrossSales",
+                SUM(net_sales_amount)    AS "NetSales",
+                COUNT(DISTINCT CONCAT(invoice_doc_num::text, '_', invoice_line_num::text)) AS "InvoiceCount",
+                COUNT(DISTINCT item_code)  AS "SkuCount"
+            FROM mart.sales_item_dashboard
+            WHERE company_id = @companyId
+              AND warehouse_code IS NOT NULL
+              AND warehouse_code <> ''
+              AND (@dateFrom IS NULL OR invoice_date >= @dateFrom::date)
+              AND (@dateTo   IS NULL OR invoice_date <= @dateTo::date)
+              AND (@itemGroupCodes IS NULL OR item_group_code = ANY(string_to_array(@itemGroupCodes, ',')))
+            GROUP BY warehouse_code
+            ORDER BY SUM(net_sales_amount) DESC;
+            """;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var rows = await conn.QueryAsync<SalesWarehouseSummaryDto>(
+            new CommandDefinition(sql, new
+            {
+                companyId,
+                dateFrom       = dateFrom.HasValue ? (object)dateFrom.Value.ToString("yyyy-MM-dd") : null,
+                dateTo         = dateTo.HasValue ? (object)dateTo.Value.ToString("yyyy-MM-dd") : null,
+                itemGroupCodes = string.IsNullOrWhiteSpace(filters?.ItemGroupCodes) ? null : filters!.ItemGroupCodes,
+            }, cancellationToken: ct));
+        return rows.ToList();
     }
 
     public async Task<IReadOnlyList<SalesFulfillmentDto>> GetSalesFulfillmentAsync(

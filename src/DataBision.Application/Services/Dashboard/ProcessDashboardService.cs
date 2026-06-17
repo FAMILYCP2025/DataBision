@@ -14,20 +14,36 @@ public sealed class ProcessDashboardService(
         => analyticsResolver.ResolveAsync(companyId, ct);
 
     public async Task<PagedResultDto<SalesCustomerDashboardDto>> GetSalesCustomersAsync(
-        string companyId, PaginationOptions p, CancellationToken ct = default)
+        string companyId, PaginationOptions p, NativeBiFilterDto? filters = null, CancellationToken ct = default)
     {
         var limit = Math.Clamp(p.Limit, 1, MaxLimit);
-        var rows = await repo.GetSalesCustomersAsync(await MapAsync(companyId, ct), p with { Limit = limit + 1 }, ct);
+        var rows = await repo.GetSalesCustomersAsync(await MapAsync(companyId, ct), p with { Limit = limit + 1 }, filters, ct);
         return BuildPaged(rows, limit, p.Offset);
     }
 
     public async Task<PagedResultDto<SalesItemDashboardDto>> GetSalesItemsAsync(
-        string companyId, PaginationOptions p, CancellationToken ct = default)
+        string companyId, PaginationOptions p, NativeBiFilterDto? filters = null, CancellationToken ct = default)
     {
         var limit = Math.Clamp(p.Limit, 1, MaxLimit);
-        var rows = await repo.GetSalesItemsAsync(await MapAsync(companyId, ct), p with { Limit = limit + 1 }, ct);
+        var rows = await repo.GetSalesItemsAsync(await MapAsync(companyId, ct), p with { Limit = limit + 1 }, filters, ct);
         return BuildPaged(rows, limit, p.Offset);
     }
+
+    public async Task<IReadOnlyList<SalesItemGroupSummaryDto>> GetSalesItemGroupSummaryAsync(
+        string companyId, NativeBiFilterDto? filters = null, CancellationToken ct = default)
+    {
+        var aid = await MapAsync(companyId, ct);
+        return await repo.GetSalesItemGroupSummaryAsync(aid, filters, ct);
+    }
+
+    public async Task<IReadOnlyList<SalesWarehouseSummaryDto>> GetSalesWarehouseSummaryAsync(
+        string companyId,
+        NativeBiFilterDto? filters = null,
+        CancellationToken ct = default)
+        => await repo.GetSalesWarehouseSummaryAsync(
+            await MapAsync(companyId, ct),
+            filters,
+            ct);
 
     public async Task<IReadOnlyList<SalesFulfillmentDto>> GetSalesFulfillmentAsync(
         string companyId, int days, CancellationToken ct = default)

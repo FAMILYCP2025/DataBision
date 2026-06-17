@@ -5,6 +5,8 @@ import type {
   SalesCustomerDashboard,
   SalesItemDashboard,
   SalesFulfillment,
+  SalesItemGroupSummary,
+  SalesWarehouseSummary,
   PurchasingExecutive,
   PurchasingSupplier,
   PurchasingReceiving,
@@ -52,6 +54,26 @@ export async function getBiSalesFulfillment(
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<SalesFulfillment[]>>(
     `/client/bi/sales/fulfillment${nbQs({ companyId: tenant, days })}`
+  )
+  return data.data
+}
+
+export async function getSalesItemGroupSummary(
+  params: Record<string, string | undefined> = {}
+): Promise<SalesItemGroupSummary[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<SalesItemGroupSummary[]>>(
+    `/client/bi/sales/item-groups${nbQs({ companyId: tenant ?? undefined, ...params })}`
+  )
+  return data.data
+}
+
+export async function getSalesWarehouseSummary(
+  params: Record<string, string | undefined> = {}
+): Promise<SalesWarehouseSummary[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<SalesWarehouseSummary[]>>(
+    `/client/bi/sales/warehouses${nbQs({ companyId: tenant ?? undefined, ...params })}`
   )
   return data.data
 }

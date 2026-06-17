@@ -4,13 +4,16 @@ import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
 import NativeBiMiniBarList from '../components/nativebi/NativeBiMiniBarList'
 import NativeBiFilterBar from '../components/nativebi/NativeBiFilterBar'
+import { NbBarChart, NbLineChart, NbAreaChart, NbPieChart, NbScatterChart } from '../components/charts'
+import type { ChartDataPoint } from '../components/charts'
 import {
   useSalesOverview,
+  useSalesMonthly,
   useSalesCustomers,
   useSalesItems,
   useSalesSalespersons,
 } from '../hooks/useNativeBiSales'
-import { useBiSalesFulfillment } from '../hooks/useProcessBi'
+import { useBiSalesFulfillment, useBiSalesItemGroupSummary, useBiSalesWarehouseSummary } from '../hooks/useProcessBi'
 import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
 import { useItemGroupOptions, useCustomerGroupOptions, useSalespersonOptions } from '../hooks/useFilterOptions'
 import type {
@@ -20,7 +23,7 @@ import type {
   NbPagedMeta,
   PaginationParams,
 } from '../types/nativeBi'
-import type { SalesFulfillment } from '../types/processBi'
+import type { SalesFulfillment, SalesWarehouseSummary } from '../types/processBi'
 import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 
 function defaultDates() {
@@ -66,7 +69,7 @@ function semaforo(value: number, total: number): { text: string; color: string }
   return { text: 'Bajo', color: '#94A3B8' }
 }
 
-type Tab = 'resumen' | 'customers' | 'items' | 'salespersons' | 'fulfillment'
+type Tab = 'resumen' | 'tendencia' | 'grupos' | 'almacenes' | 'customers' | 'items' | 'salespersons' | 'fulfillment'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -139,10 +142,21 @@ export default function NativeBiSalesPage() {
   ])
 
   const { data: overview, isLoading: loadingOv } = useSalesOverview({ dateFrom: filters.dateFrom, dateTo: filters.dateTo })
+  const { data: monthly, isLoading: loadingMonthly } = useSalesMonthly({ dateFrom: filters.dateFrom, dateTo: filters.dateTo })
+  const { data: groupData, isLoading: loadingGroups } = useBiSalesItemGroupSummary({
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    itemGroupCodes: filters.itemGroupCodes,
+  })
   const { data: custData, isLoading: loadingCust }     = useSalesCustomers(custP)
   const { data: itemData, isLoading: loadingItems }    = useSalesItems(itemP)
   const { data: spData, isLoading: loadingSp }         = useSalesSalespersons(spP)
   const { data: fulfillData, isLoading: loadingFulfill } = useBiSalesFulfillment(30)
+  const { data: whSales, isLoading: loadingWhSales } = useBiSalesWarehouseSummary({
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    itemGroupCodes: filters.itemGroupCodes,
+  })
 
   // ── Derived KPIs ─────────────────────────────────────────────────────────
   const customers   = custData?.data ?? []
@@ -418,6 +432,9 @@ export default function NativeBiSalesPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'resumen',      label: 'Resumen' },
+    { id: 'tendencia',    label: 'Tendencia' },
+    { id: 'grupos',       label: 'Por Grupo' },
+    { id: 'almacenes',    label: 'Por Almacén' },
     { id: 'customers',    label: 'Clientes' },
     { id: 'items',        label: 'Productos' },
     { id: 'salespersons', label: 'Vendedores' },
@@ -458,6 +475,25 @@ export default function NativeBiSalesPage() {
         {/* ── Resumen ─────────────────────────────────────────────────────── */}
         {tab === 'resumen' && (
           <div style={{ padding: '20px 20px 16px' }}>
+
+            {/* Trend chart */}
+            {monthly && monthly.length > 0 && (
+              <div style={{ padding: '0 0 16px' }}>
+                <NbAreaChart
+                  series={[{
+                    name: 'Ventas netas',
+                    data: monthly.slice().reverse().map((m): ChartDataPoint => ({
+                      name: new Date(m.salesMonth + 'T00:00:00').toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }),
+                      value: m.netSalesAmount,
+                    })),
+                    color: 'var(--brand-primary, #2563EB)',
+                  }]}
+                  height={180}
+                  loading={loadingMonthly}
+                  valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                />
+              </div>
+            )}
 
             {/* KPI grid — 4 columns */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
@@ -552,19 +588,239 @@ export default function NativeBiSalesPage() {
           </div>
         )}
 
+        {/* ── Tendencia ───────────────────────────────────────────────────── */}
+        {tab === 'tendencia' && (
+          <div style={{ padding: '20px' }}>
+            <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
+              Evolución mensual de ventas — ventas brutas vs netas
+            </p>
+            <NbLineChart
+              series={[
+                {
+                  name: 'Ventas brutas',
+                  data: (monthly ?? []).slice().reverse().map((m): ChartDataPoint => ({
+                    name: new Date(m.salesMonth + 'T00:00:00').toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }),
+                    value: m.grossSalesAmount,
+                  })),
+                  color: '#7C3AED',
+                },
+                {
+                  name: 'Ventas netas',
+                  data: (monthly ?? []).slice().reverse().map((m): ChartDataPoint => ({
+                    name: new Date(m.salesMonth + 'T00:00:00').toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }),
+                    value: m.netSalesAmount,
+                  })),
+                  color: 'var(--brand-primary, #2563EB)',
+                },
+              ]}
+              height={300}
+              loading={loadingMonthly}
+              valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+            />
+            <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+              {(monthly ?? []).slice().reverse().map((m) => (
+                <div key={m.salesMonth} className="db-stat-card">
+                  <span className="db-stat-label">
+                    {new Date(m.salesMonth + 'T00:00:00').toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <span className="db-stat-value" style={{ fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>
+                    {m.netSalesAmount.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>
+                    {m.invoiceCount} facturas · {m.activeCustomers} clientes
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Por Grupo ───────────────────────────────────────────────────── */}
+        {tab === 'grupos' && (
+          <div style={{ padding: '20px' }}>
+            {loadingGroups ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                <div className="cp-skeleton" style={{ height: 280, borderRadius: 8 }} />
+                <div className="cp-skeleton" style={{ height: 280, borderRadius: 8 }} />
+              </div>
+            ) : !groupData || groupData.length === 0 ? (
+              <NbEmptyState message="Sin datos de grupos de artículos disponibles." icon="table" />
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+                  {/* Donut: share by group */}
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                      Participación por grupo
+                    </p>
+                    <NbPieChart
+                      data={groupData.slice(0, 8).map((g): ChartDataPoint => ({
+                        name: g.itemGroupName ?? g.itemGroupCode,
+                        value: g.grossSales,
+                      }))}
+                      height={280}
+                      valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                    />
+                  </div>
+                  {/* Bar: top groups */}
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                      Ventas brutas por grupo
+                    </p>
+                    <NbBarChart
+                      data={groupData.slice(0, 10).map((g): ChartDataPoint => ({
+                        name: g.itemGroupName ?? g.itemGroupCode,
+                        value: g.grossSales,
+                      }))}
+                      height={280}
+                      valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                    />
+                  </div>
+                </div>
+                {/* Table */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                      <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Grupo</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Ventas brutas</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Ventas netas</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Facturas</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>SKUs</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Margen %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupData.map((g, i) => (
+                      <tr key={g.itemGroupCode} style={{ borderBottom: '1px solid var(--c-border)', height: 44, background: i % 2 === 1 ? 'var(--c-surface-alt, #F8FAFC)' : undefined }}>
+                        <td style={{ padding: '8px 12px', fontWeight: 500 }}>{g.itemGroupName ?? g.itemGroupCode}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {g.grossSales.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {g.netSales.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{g.invoiceCount}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{g.skuCount}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: g.grossMarginPct >= 30 ? '#16A34A' : g.grossMarginPct >= 15 ? '#D97706' : 'var(--c-text-muted)' }}>
+                          {g.grossMarginPct.toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Por Almacén ─────────────────────────────────────────────────── */}
+        {tab === 'almacenes' && (
+          <div style={{ padding: 20 }}>
+            {loadingWhSales ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                <div className="cp-skeleton" style={{ height: 260, borderRadius: 8 }} />
+                <div className="cp-skeleton" style={{ height: 260, borderRadius: 8 }} />
+              </div>
+            ) : !whSales || whSales.length === 0 ? (
+              <NbEmptyState message="Sin datos de almacén disponibles." icon="table" />
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                      Ventas brutas por almacén
+                    </p>
+                    <NbBarChart
+                      data={whSales.slice(0, 10).map((w): ChartDataPoint => ({
+                        name: w.warehouseName ?? w.warehouseCode,
+                        value: w.grossSales,
+                      }))}
+                      height={260}
+                      valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                    />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                      Participación por almacén
+                    </p>
+                    <NbPieChart
+                      data={whSales.slice(0, 8).map((w): ChartDataPoint => ({
+                        name: w.warehouseName ?? w.warehouseCode,
+                        value: w.grossSales,
+                      }))}
+                      height={260}
+                      valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                    />
+                  </div>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                      <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Almacén</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Ventas brutas</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Ventas netas</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Facturas</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>SKUs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {whSales.map((w: SalesWarehouseSummary, i: number) => (
+                      <tr key={w.warehouseCode} style={{ borderBottom: '1px solid var(--c-border)', height: 44, background: i % 2 === 1 ? 'var(--c-surface-alt, #F8FAFC)' : undefined }}>
+                        <td style={{ padding: '8px 12px', fontWeight: 500 }}>{w.warehouseName ?? w.warehouseCode}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {w.grossSales.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {w.netSales.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{w.invoiceCount}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{w.skuCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Clientes ────────────────────────────────────────────────────── */}
         {tab === 'customers' && (
-          <SortableTable
-            data={custData?.data ?? []}
-            columns={custCols}
-            meta={custData?.meta ?? EMPTY_META}
-            sortBy={custP.sortBy}
-            sortDir={custP.sortDir}
-            onPageChange={(offset) => setCustP((p) => ({ ...p, offset }))}
-            onSortChange={(sortBy, sortDir) => setCustP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
-            isLoading={loadingCust}
-            rowKey={(r) => r.cardCode}
-          />
+          <>
+            {custData && custData.data.length > 0 && (
+              <div style={{ padding: '16px 20px 0' }}>
+                <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                  Dispersión: ticket promedio vs. volumen de facturas
+                </p>
+                <NbScatterChart
+                  data={custData.data.slice(0, 50).map((c) => ({
+                    x: c.invoiceCount,
+                    y: c.avgTicketAmount,
+                    name: c.cardName,
+                    size: Math.max(6, Math.min(20, c.netSalesAmount / (totalCustNet / 20 || 1))),
+                  }))}
+                  height={220}
+                  xLabel="Facturas"
+                  yLabel="Ticket promedio"
+                  xFormatter={(v) => String(Math.round(v))}
+                  yFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  color="var(--brand-primary, #2563EB)"
+                />
+                <div style={{ height: 1, background: 'var(--c-border)', margin: '12px 0 0' }} />
+              </div>
+            )}
+            <SortableTable
+              data={custData?.data ?? []}
+              columns={custCols}
+              meta={custData?.meta ?? EMPTY_META}
+              sortBy={custP.sortBy}
+              sortDir={custP.sortDir}
+              onPageChange={(offset) => setCustP((p) => ({ ...p, offset }))}
+              onSortChange={(sortBy, sortDir) => setCustP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
+              isLoading={loadingCust}
+              rowKey={(r) => r.cardCode}
+            />
+          </>
         )}
 
         {/* ── Productos ───────────────────────────────────────────────────── */}
@@ -584,17 +840,32 @@ export default function NativeBiSalesPage() {
 
         {/* ── Vendedores ──────────────────────────────────────────────────── */}
         {tab === 'salespersons' && (
-          <SortableTable
-            data={spData?.data ?? []}
-            columns={spCols}
-            meta={spData?.meta ?? EMPTY_META}
-            sortBy={spP.sortBy}
-            sortDir={spP.sortDir}
-            onPageChange={(offset) => setSpP((p) => ({ ...p, offset }))}
-            onSortChange={(sortBy, sortDir) => setSpP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
-            isLoading={loadingSp}
-            rowKey={(r) => r.salesPersonCode}
-          />
+          <>
+            {sps.length > 0 && (
+              <div style={{ padding: '16px 20px 0' }}>
+                <NbBarChart
+                  data={sps.slice(0, 10).map((sp): ChartDataPoint => ({
+                    name: sp.salesPersonName,
+                    value: sp.netSalesAmount,
+                  }))}
+                  height={220}
+                  valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                />
+                <div style={{ height: 1, background: 'var(--c-border)', margin: '12px 0 0' }} />
+              </div>
+            )}
+            <SortableTable
+              data={spData?.data ?? []}
+              columns={spCols}
+              meta={spData?.meta ?? EMPTY_META}
+              sortBy={spP.sortBy}
+              sortDir={spP.sortDir}
+              onPageChange={(offset) => setSpP((p) => ({ ...p, offset }))}
+              onSortChange={(sortBy, sortDir) => setSpP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
+              isLoading={loadingSp}
+              rowKey={(r) => r.salesPersonCode}
+            />
+          </>
         )}
 
         {/* ── Fulfillment ─────────────────────────────────────────────────── */}

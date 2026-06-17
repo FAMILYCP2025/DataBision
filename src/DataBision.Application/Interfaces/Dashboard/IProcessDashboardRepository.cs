@@ -5,9 +5,11 @@ namespace DataBision.Application.Interfaces.Dashboard;
 public interface IProcessDashboardRepository
 {
     // SALES
-    Task<IReadOnlyList<SalesCustomerDashboardDto>> GetSalesCustomersAsync(string companyId, PaginationOptions p, CancellationToken ct = default);
-    Task<IReadOnlyList<SalesItemDashboardDto>> GetSalesItemsAsync(string companyId, PaginationOptions p, CancellationToken ct = default);
+    Task<IReadOnlyList<SalesCustomerDashboardDto>> GetSalesCustomersAsync(string companyId, PaginationOptions p, NativeBiFilterDto? filters = null, CancellationToken ct = default);
+    Task<IReadOnlyList<SalesItemDashboardDto>> GetSalesItemsAsync(string companyId, PaginationOptions p, NativeBiFilterDto? filters = null, CancellationToken ct = default);
     Task<IReadOnlyList<SalesFulfillmentDto>> GetSalesFulfillmentAsync(string companyId, int days, CancellationToken ct = default);
+    Task<IReadOnlyList<SalesItemGroupSummaryDto>> GetSalesItemGroupSummaryAsync(string companyId, NativeBiFilterDto? filters = null, CancellationToken ct = default);
+    Task<IReadOnlyList<SalesWarehouseSummaryDto>> GetSalesWarehouseSummaryAsync(string companyId, NativeBiFilterDto? filters = null, CancellationToken ct = default);
 
     // FINANCE
     Task<IReadOnlyList<FinanceExecutiveDto>> GetFinanceExecutiveAsync(string companyId, int days, CancellationToken ct = default);

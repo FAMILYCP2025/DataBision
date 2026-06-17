@@ -5,6 +5,8 @@ import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTa
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
 import NativeBiMiniBarList from '../components/nativebi/NativeBiMiniBarList'
 import NativeBiFilterBar from '../components/nativebi/NativeBiFilterBar'
+import { NbBarChart, NbAreaChart, NbPieChart, NbStackedBarChart } from '../components/charts'
+import type { ChartDataPoint } from '../components/charts'
 import {
   useBiPurchasingExecutive,
   useBiPurchasingSuppliers,
@@ -36,7 +38,7 @@ function pct(part: number, total: number) {
   return (part / total) * 100
 }
 
-type Tab = 'resumen' | 'suppliers' | 'receiving' | 'evolution'
+type Tab = 'resumen' | 'suppliers' | 'receiving' | 'evolution' | 'grupos'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -50,6 +52,7 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'suppliers', label: 'Proveedores' },
   { id: 'receiving', label: 'Recepciones' },
   { id: 'evolution', label: 'Evolución OC' },
+  { id: 'grupos',    label: 'Por Grupo' },
 ]
 
 const PURCHASING_FILTER_DEFS: NativeBiFilterDefinition[] = [
@@ -434,6 +437,37 @@ export default function PurchasingDashboardPage() {
                   Proveedor líder: <strong>{topSupplier.supplierName ?? topSupplier.supplierCode}</strong> · {fmtAmt(topSupplier.poAmount)} en OC
                 </p>
               )}
+
+              {/* Evolución de compras — area chart */}
+              <div style={{ marginTop: 28 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Evolución de compras (30 días)
+                </div>
+                <NbAreaChart
+                  series={[
+                    {
+                      name: 'Monto OC',
+                      data: execData.map((d): ChartDataPoint => ({
+                        name: d.purchaseDate,
+                        value: d.poAmount,
+                      })),
+                      color: 'var(--brand-primary, #2563EB)',
+                    },
+                    {
+                      name: 'Recibido',
+                      data: execData.map((d): ChartDataPoint => ({
+                        name: d.purchaseDate,
+                        value: d.receivedAmount,
+                      })),
+                      color: '#16A34A',
+                    },
+                  ]}
+                  height={220}
+                  loading={loadingExec}
+                  smooth
+                  valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                />
+              </div>
             </div>
           )
         )}
@@ -443,6 +477,24 @@ export default function PurchasingDashboardPage() {
           suppData?.data.length === 0 && !loadingSupp ? (
             <NbEmptyState message="Sin datos de proveedores en el período analizado." icon="table" />
           ) : (
+            <>
+              {suppData && suppData.data.length > 0 && (
+                <div style={{ padding: '16px 20px 0' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    Top proveedores por monto OC
+                  </p>
+                  <NbBarChart
+                    data={suppData.data.slice(0, 10).map((s): ChartDataPoint => ({
+                      name: s.supplierName ?? s.supplierCode,
+                      value: s.poAmount,
+                    }))}
+                    height={220}
+                    loading={loadingSupp}
+                    valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  />
+                  <div style={{ height: 1, background: 'var(--c-border)', margin: '12px 0 0' }} />
+                </div>
+              )}
             <SortableTable
               data={suppData?.data ?? []}
               columns={suppCols}
@@ -454,6 +506,7 @@ export default function PurchasingDashboardPage() {
               isLoading={loadingSupp}
               rowKey={(r) => r.supplierCode}
             />
+            </>
           )
         )}
 
@@ -492,6 +545,57 @@ export default function PurchasingDashboardPage() {
             />
           )
         )}
+
+        {/* ── Por Grupo ───────────────────────────────────────────────────── */}
+        {tab === 'grupos' && (() => {
+          const supp = suppData?.data ?? []
+
+          if (supp.length === 0) {
+            return (
+              <div style={{ padding: 20 }}>
+                <NbEmptyState message="Sin datos de proveedores disponibles." icon="table" />
+              </div>
+            )
+          }
+
+          const top10 = supp.slice(0, 10)
+
+          return (
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    OC por proveedor (top 10)
+                  </p>
+                  <NbPieChart
+                    data={top10.map((s): ChartDataPoint => ({
+                      name: s.supplierName ?? s.supplierCode,
+                      value: s.poAmount,
+                    }))}
+                    height={260}
+                    loading={loadingSupp}
+                    valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  />
+                </div>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    OC vs Recibido por proveedor
+                  </p>
+                  <NbStackedBarChart
+                    categories={top10.map((s) => s.supplierName ?? s.supplierCode)}
+                    series={[
+                      { name: 'Monto OC', data: top10.map((s) => s.poAmount),        color: '#2563EB' },
+                      { name: 'Recibido', data: top10.map((s) => s.receivedAmount),   color: '#16A34A' },
+                    ]}
+                    height={260}
+                    loading={loadingSupp}
+                    valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  />
+                </div>
+              </div>
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

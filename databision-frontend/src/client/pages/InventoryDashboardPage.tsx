@@ -5,6 +5,8 @@ import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTa
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
 import NativeBiMiniBarList from '../components/nativebi/NativeBiMiniBarList'
 import NativeBiFilterBar from '../components/nativebi/NativeBiFilterBar'
+import { NbBarChart, NbPieChart, NbScatterChart } from '../components/charts'
+import type { ChartDataPoint } from '../components/charts'
 import {
   useBiInventoryRotation,
   useBiInventoryWarehouses,
@@ -47,7 +49,7 @@ const ROTATION_COLOR: Record<string, string> = {
   NO_MOVEMENT: '#94A3B8',
 }
 
-type Tab = 'resumen' | 'rotation' | 'warehouses' | 'no-movement'
+type Tab = 'resumen' | 'grupos' | 'rotation' | 'warehouses' | 'no-movement'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -58,6 +60,7 @@ function initPag(sortBy: string): PaginationParams {
 
 const tabs: { id: Tab; label: string }[] = [
   { id: 'resumen',     label: 'Resumen' },
+  { id: 'grupos',      label: 'Por Grupo' },
   { id: 'rotation',    label: 'Rotación' },
   { id: 'warehouses',  label: 'Almacenes' },
   { id: 'no-movement', label: 'Sin movimiento' },
@@ -356,6 +359,43 @@ export default function InventoryDashboardPage() {
           ) : (
             <div style={{ padding: '16px 20px' }}>
 
+              {/* Rotation status donut + warehouse bar */}
+              {totalCount > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start', marginBottom: 24 }}>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                      Distribución por rotación
+                    </p>
+                    <NbPieChart
+                      data={([
+                        { name: 'Alta',           value: fastCount   },
+                        { name: 'Normal',         value: normalCount },
+                        { name: 'Baja',           value: slowCount   },
+                        { name: 'Sin movimiento', value: noMoveCount },
+                      ] as ChartDataPoint[]).filter((d) => d.value > 0)}
+                      colors={['#16A34A', '#2563EB', '#D97706', '#94A3B8']}
+                      height={220}
+                      loading={loadingRot}
+                      valueFormatter={(v) => `${v} artículos`}
+                    />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                      Entradas por almacén (cant.)
+                    </p>
+                    <NbBarChart
+                      data={(whData ?? []).slice(0, 8).map((w): ChartDataPoint => ({
+                        name: w.warehouseName ?? w.warehouseCode,
+                        value: w.transferInQty,
+                      }))}
+                      height={220}
+                      loading={loadingWh}
+                      valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Secondary KPIs */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
                 {[
@@ -437,22 +477,120 @@ export default function InventoryDashboardPage() {
           )
         )}
 
+        {/* ── Por Grupo ───────────────────────────────────────────────────── */}
+        {tab === 'grupos' && (() => {
+          const groupMap = new Map<string, { name: string; count: number; totalQty: number; fastCount: number; noMoveCount: number }>()
+          for (const r of allRotation) {
+            const code = r.itemGroupCode ?? 'SIN GRUPO'
+            const existing = groupMap.get(code) ?? { name: code, count: 0, totalQty: 0, fastCount: 0, noMoveCount: 0 }
+            groupMap.set(code, {
+              name: code,
+              count: existing.count + 1,
+              totalQty: existing.totalQty + (r.onHandQty ?? 0),
+              fastCount: existing.fastCount + (r.rotationStatus === 'FAST' ? 1 : 0),
+              noMoveCount: existing.noMoveCount + (r.rotationStatus === 'NO_MOVEMENT' ? 1 : 0),
+            })
+          }
+          const groups = Array.from(groupMap.values()).sort((a, b) => b.totalQty - a.totalQty)
+
+          if (groups.length === 0) {
+            return (
+              <div style={{ padding: 20 }}>
+                <NbEmptyState message="Sin datos de grupos disponibles." icon="table" />
+              </div>
+            )
+          }
+
+          return (
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    Stock por grupo (cantidad)
+                  </p>
+                  <NbBarChart
+                    data={groups.slice(0, 10).map((g): ChartDataPoint => ({ name: g.name, value: g.totalQty }))}
+                    height={260}
+                    loading={loadingRot}
+                    valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  />
+                </div>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    Artículos por grupo
+                  </p>
+                  <NbPieChart
+                    data={groups.slice(0, 8).map((g): ChartDataPoint => ({ name: g.name, value: g.count }))}
+                    height={260}
+                    loading={loadingRot}
+                    valueFormatter={(v) => `${v} artículos`}
+                  />
+                </div>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Grupo</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Artículos</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Stock total</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Alta rotación</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--c-text-muted)', fontWeight: 500 }}>Sin movimiento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map((g, i) => (
+                    <tr key={g.name} style={{ borderBottom: '1px solid var(--c-border)', height: 44, background: i % 2 === 1 ? 'var(--c-surface-alt, #F8FAFC)' : undefined }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 500 }}>{g.name}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{g.count}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{g.totalQty.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>{g.fastCount}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#94A3B8' }}>{g.noMoveCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
+
         {/* ── Rotación ────────────────────────────────────────────────────── */}
         {tab === 'rotation' && (
           allRotation.length === 0 && !loadingRot ? (
             <NbEmptyState message="Sin datos de rotación de artículos en el período analizado." icon="table" />
           ) : (
-            <SortableTable
-              data={allRotation}
-              columns={rotCols}
-              meta={rotData?.meta ?? EMPTY_META}
-              sortBy={rotP.sortBy}
-              sortDir={rotP.sortDir}
-              onPageChange={(offset) => setRotP((p) => ({ ...p, offset }))}
-              onSortChange={(sortBy, sortDir) => setRotP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
-              isLoading={loadingRot}
-              rowKey={(r) => r.itemCode}
-            />
+            <>
+              {allRotation.length > 0 && (
+                <div style={{ padding: '16px 20px 0' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                    Días de cobertura vs. unidades vendidas (90d)
+                  </p>
+                  <NbScatterChart
+                    data={allRotation.slice(0, 60).map((r) => ({
+                      x: r.qtySold90d,
+                      y: r.coverageDays ?? 0,
+                      name: r.itemName ?? r.itemCode,
+                      size: Math.max(6, Math.min(18, (r.onHandQty ?? 0) / 100 + 6)),
+                    }))}
+                    height={220}
+                    xLabel="Uds vendidas 90d"
+                    yLabel="Cobertura (días)"
+                    color="var(--brand-primary, #2563EB)"
+                  />
+                  <div style={{ height: 1, background: 'var(--c-border)', margin: '12px 0 0' }} />
+                </div>
+              )}
+              <SortableTable
+                data={allRotation}
+                columns={rotCols}
+                meta={rotData?.meta ?? EMPTY_META}
+                sortBy={rotP.sortBy}
+                sortDir={rotP.sortDir}
+                onPageChange={(offset) => setRotP((p) => ({ ...p, offset }))}
+                onSortChange={(sortBy, sortDir) => setRotP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
+                isLoading={loadingRot}
+                rowKey={(r) => r.itemCode}
+              />
+            </>
           )
         )}
 

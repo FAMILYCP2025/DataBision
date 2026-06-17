@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
 import NativeBiHealthScore from '../components/nativebi/NativeBiHealthScore'
 import NativeBiInfoBanner from '../components/nativebi/NativeBiInfoBanner'
+import { NbBarChart, NbPieChart } from '../components/charts'
+import type { ChartDataPoint } from '../components/charts'
 import {
   useBiOperationsPipelineHealth,
   useBiOperationsAlerts,
@@ -35,6 +37,14 @@ const STATUS_COLOR: Record<string, string> = {
   unknown: '#94A3B8',
 }
 
+/** Map a status string to a 0-100 health numeric for charts */
+function statusToScore(status: string): number {
+  if (status === 'ok')      return 100
+  if (status === 'warning') return 60
+  if (status === 'error')   return 20
+  return 0
+}
+
 type Tab = 'pipeline' | 'alerts' | 'dq' | 'runs'
 
 const LIMIT = 20
@@ -43,11 +53,15 @@ const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: fa
 function initPag(): PaginationParams { return { limit: LIMIT, offset: 0 } }
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'pipeline', label: 'Estado' },
   { id: 'alerts',   label: 'Alertas' },
   { id: 'dq',       label: 'Calidad de datos' },
   { id: 'runs',     label: 'Historial runs' },
 ]
+
+// Stable color arrays (defined outside component to preserve reference identity)
+const SEVERITY_COLORS = ['#DC2626', '#D97706', '#2563EB'] as const
+const DQ_SEVERITY_COLORS = ['#DC2626', '#D97706', '#2563EB'] as const
 
 function StatusBadge({ status }: { status: string }) {
   return (
@@ -93,6 +107,14 @@ function ProcessCard({ label, status, lastRun }: { label: string; status: string
   )
 }
 
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      {children}
+    </div>
+  )
+}
+
 export default function OperationsDashboardPage() {
   const [tab, setTab] = useState<Tab>('pipeline')
   const [alertP, setAlertP] = useState<PaginationParams>(initPag())
@@ -110,6 +132,89 @@ export default function OperationsDashboardPage() {
   const dqIssues        = dqData?.data ?? []
   const criticalDq      = dqIssues.filter((d) => d.severity === 'critical').length
   const totalDqRows     = dqIssues.reduce((s, d) => s + d.affectedRows, 0)
+
+  // ── Chart data (memoized) ─────────────────────────────────────────────────
+
+  /** Estado tab: process health scores as bar chart */
+  const processHealthData = useMemo<ChartDataPoint[]>(() => {
+    if (!health) return []
+    return [
+      { name: 'Extractor', value: statusToScore(health.extractorStatus) },
+      { name: 'Transform', value: statusToScore(health.transformStatus) },
+    ]
+  }, [health])
+
+  /** Estado tab: KPI summary bar chart */
+  const kpiSummaryData = useMemo<ChartDataPoint[]>(() => {
+    if (!health) return []
+    return [
+      { name: 'Health score',         value: health.healthScore },
+      { name: 'Objetos extraídos',    value: Math.min(health.objectsExtracted, 100) },
+      { name: 'Alertas activas',      value: health.activeAlerts },
+      { name: 'Errores DQ',           value: health.dqErrorsUnresolved },
+    ]
+  }, [health])
+
+  /** Alertas tab: severity distribution donut */
+  const alertSeverityData = useMemo<ChartDataPoint[]>(() => {
+    const pts: ChartDataPoint[] = [
+      { name: 'Crítica',       value: criticalCount },
+      { name: 'Advertencia',   value: warningCount },
+      { name: 'Informativa',   value: infoCount },
+    ]
+    return pts.filter((d) => d.value > 0)
+  }, [criticalCount, warningCount, infoCount])
+
+  /** DQ tab: issues by type bar chart */
+  const dqByTypeData = useMemo<ChartDataPoint[]>(() => {
+    if (!dqIssues.length) return []
+    const counts = dqIssues.reduce<Record<string, number>>((acc, d) => {
+      acc[d.issueType] = (acc[d.issueType] ?? 0) + 1
+      return acc
+    }, {})
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+  }, [dqIssues])
+
+  /** DQ tab: severity distribution donut */
+  const dqSeverityData = useMemo<ChartDataPoint[]>(() => {
+    if (!dqIssues.length) return []
+    const critCount = dqIssues.filter((d) => d.severity === 'critical').length
+    const warnCount = dqIssues.filter((d) => d.severity === 'warning').length
+    const infCount  = dqIssues.filter((d) => d.severity === 'info').length
+    return ([
+      { name: 'Crítica',     value: critCount },
+      { name: 'Advertencia', value: warnCount },
+      { name: 'Informativa', value: infCount  },
+    ] as ChartDataPoint[]).filter((d) => d.value > 0)
+  }, [dqIssues])
+
+  /** DQ tab: affected rows by SAP object bar chart */
+  const dqByObjectData = useMemo<ChartDataPoint[]>(() => {
+    if (!dqIssues.length) return []
+    const counts = dqIssues.reduce<Record<string, number>>((acc, d) => {
+      acc[d.sapObject] = (acc[d.sapObject] ?? 0) + d.affectedRows
+      return acc
+    }, {})
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+  }, [dqIssues])
+
+  /** Historial runs: health KPIs over pipeline run as bar */
+  const runsKpiData = useMemo<ChartDataPoint[]>(() => {
+    if (!health) return []
+    return [
+      { name: 'Health score',      value: health.healthScore },
+      { name: 'Objetos extraídos', value: health.objectsExtracted },
+      { name: 'Alertas activas',   value: health.activeAlerts },
+      { name: 'Errores DQ',        value: health.dqErrorsUnresolved },
+    ]
+  }, [health])
+
+  // ── Column definitions ────────────────────────────────────────────────────
 
   const alertCols: ColumnDef<OperationAlert>[] = [
     {
@@ -238,7 +343,7 @@ export default function OperationsDashboardPage() {
           ))}
         </div>
 
-        {/* ── Pipeline ────────────────────────────────────────────────────── */}
+        {/* ── Estado ──────────────────────────────────────────────────────── */}
         {tab === 'pipeline' && (
           healthErr ? (
             <div style={{ padding: '16px 20px' }}>
@@ -264,9 +369,9 @@ export default function OperationsDashboardPage() {
                 <NativeBiHealthScore score={health.healthScore} size="lg" />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12 }}>
                   {[
-                    { label: 'Alertas activas',      value: health.activeAlerts,      color: health.activeAlerts > 0 ? '#DC2626' : '#16A34A' },
-                    { label: 'Objetos extraídos',    value: health.objectsExtracted,  color: 'var(--c-text)' },
-                    { label: 'Errores DQ sin resolver', value: health.dqErrorsUnresolved, color: health.dqErrorsUnresolved > 0 ? '#D97706' : '#16A34A' },
+                    { label: 'Alertas activas',         value: health.activeAlerts,       color: health.activeAlerts > 0 ? '#DC2626' : '#16A34A' },
+                    { label: 'Objetos extraídos',        value: health.objectsExtracted,   color: 'var(--c-text)' },
+                    { label: 'Errores DQ sin resolver',  value: health.dqErrorsUnresolved, color: health.dqErrorsUnresolved > 0 ? '#D97706' : '#16A34A' },
                   ].map((kpi) => (
                     <div key={kpi.label} style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: 24, fontWeight: 700, color: kpi.color, fontVariantNumeric: 'tabular-nums' }}>
@@ -279,12 +384,32 @@ export default function OperationsDashboardPage() {
               </div>
 
               {/* Process status cards */}
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Estado de procesos
-              </div>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: health.activeAlerts > 0 ? 20 : 0 }}>
+              <SectionTitle>Estado de procesos</SectionTitle>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
                 <ProcessCard label="Extractor" status={health.extractorStatus} lastRun={health.lastExtractorRunUtc} />
                 <ProcessCard label="Transform" status={health.transformStatus} lastRun={health.lastTransformRunUtc} />
+              </div>
+
+              {/* Chart: process health score per component */}
+              <SectionTitle>Puntuación de salud por componente</SectionTitle>
+              <div style={{ marginBottom: 24 }}>
+                <NbBarChart
+                  data={processHealthData}
+                  color="#2563EB"
+                  height={200}
+                  valueFormatter={(v) => `${v} / 100`}
+                />
+              </div>
+
+              {/* Chart: key metrics overview */}
+              <SectionTitle>Métricas del pipeline</SectionTitle>
+              <div style={{ marginBottom: health.activeAlerts > 0 ? 20 : 0 }}>
+                <NbBarChart
+                  data={kpiSummaryData}
+                  color="#7C3AED"
+                  height={200}
+                  valueFormatter={(v) => v.toLocaleString('es-CL')}
+                />
               </div>
 
               {health.activeAlerts > 0 && (
@@ -308,26 +433,40 @@ export default function OperationsDashboardPage() {
           ) : (
             <>
               {(criticalCount + warningCount + infoCount > 0) && (
-                <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--c-border)', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)' }}>Resumen:</span>
-                  {criticalCount > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#DC2626', display: 'inline-block' }} />
-                      <strong style={{ color: '#DC2626' }}>{criticalCount}</strong>&nbsp;crítica(s)
-                    </span>
-                  )}
-                  {warningCount > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#D97706', display: 'inline-block' }} />
-                      <strong style={{ color: '#D97706' }}>{warningCount}</strong>&nbsp;advertencia(s)
-                    </span>
-                  )}
-                  {infoCount > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#2563EB', display: 'inline-block' }} />
-                      <strong style={{ color: '#2563EB' }}>{infoCount}</strong>&nbsp;informativa(s)
-                    </span>
-                  )}
+                <div style={{ padding: '16px 20px 0', borderBottom: '1px solid var(--c-border)' }}>
+                  {/* Severity summary row */}
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)' }}>Resumen:</span>
+                    {criticalCount > 0 && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#DC2626', display: 'inline-block' }} />
+                        <strong style={{ color: '#DC2626' }}>{criticalCount}</strong>&nbsp;crítica(s)
+                      </span>
+                    )}
+                    {warningCount > 0 && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#D97706', display: 'inline-block' }} />
+                        <strong style={{ color: '#D97706' }}>{warningCount}</strong>&nbsp;advertencia(s)
+                      </span>
+                    )}
+                    {infoCount > 0 && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#2563EB', display: 'inline-block' }} />
+                        <strong style={{ color: '#2563EB' }}>{infoCount}</strong>&nbsp;informativa(s)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Severity donut chart */}
+                  <div style={{ maxWidth: 360 }}>
+                    <NbPieChart
+                      data={alertSeverityData}
+                      colors={SEVERITY_COLORS as unknown as string[]}
+                      height={220}
+                      donut={true}
+                      valueFormatter={(v) => `${v} alerta(s)`}
+                    />
+                  </div>
                 </div>
               )}
               <SortableTable
@@ -352,19 +491,67 @@ export default function OperationsDashboardPage() {
           ) : (
             <>
               {dqIssues.length > 0 && (
-                <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--c-border)', display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)' }}>
-                    {dqIssues.length} issue(s) detectado(s)
-                  </span>
-                  {criticalDq > 0 && (
-                    <span style={{ fontSize: 12.5, color: '#DC2626', fontWeight: 600 }}>
-                      {criticalDq} crítico(s)
+                <div style={{ padding: '16px 20px 0', borderBottom: '1px solid var(--c-border)' }}>
+                  {/* Summary row */}
+                  <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap', marginBottom: 20 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-text-muted)' }}>
+                      {dqIssues.length} issue(s) detectado(s)
                     </span>
-                  )}
-                  {totalDqRows > 0 && (
-                    <span style={{ fontSize: 12.5, color: 'var(--c-text-muted)' }}>
-                      {totalDqRows.toLocaleString('es-CL')} filas afectadas
-                    </span>
+                    {criticalDq > 0 && (
+                      <span style={{ fontSize: 12.5, color: '#DC2626', fontWeight: 600 }}>
+                        {criticalDq} crítico(s)
+                      </span>
+                    )}
+                    {totalDqRows > 0 && (
+                      <span style={{ fontSize: 12.5, color: 'var(--c-text-muted)' }}>
+                        {totalDqRows.toLocaleString('es-CL')} filas afectadas
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Charts row: issue type bar + severity donut */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(240px, 320px)', gap: 24, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                        Issues por tipo
+                      </div>
+                      <NbBarChart
+                        data={dqByTypeData}
+                        color="#DC2626"
+                        height={200}
+                        valueFormatter={(v) => `${v} issue(s)`}
+                        loading={loadingDq}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                        Distribución por severidad
+                      </div>
+                      <NbPieChart
+                        data={dqSeverityData}
+                        colors={DQ_SEVERITY_COLORS as unknown as string[]}
+                        height={200}
+                        donut={true}
+                        valueFormatter={(v) => `${v} issue(s)`}
+                        loading={loadingDq}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Affected rows by SAP object */}
+                  {dqByObjectData.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                        Filas afectadas por objeto SAP
+                      </div>
+                      <NbBarChart
+                        data={dqByObjectData}
+                        color="#D97706"
+                        height={180}
+                        valueFormatter={(v) => v.toLocaleString('es-CL')}
+                        loading={loadingDq}
+                      />
+                    </div>
                   )}
                 </div>
               )}
@@ -398,7 +585,9 @@ export default function OperationsDashboardPage() {
             </div>
           ) : health ? (
             <div style={{ padding: '20px 24px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 600 }}>
+              {/* Process run cards */}
+              <SectionTitle>Último estado de ejecución</SectionTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 600, marginBottom: 28 }}>
                 {[
                   {
                     label: 'Extractor',
@@ -437,6 +626,17 @@ export default function OperationsDashboardPage() {
                 <div style={{ fontSize: 11.5, color: 'var(--c-text-faint)', marginTop: 4 }}>
                   Última actualización: {fmtUtc(health.updatedAtUtc)}
                 </div>
+              </div>
+
+              {/* Chart: KPI overview bar */}
+              <SectionTitle>Indicadores del último run</SectionTitle>
+              <div style={{ maxWidth: 560 }}>
+                <NbBarChart
+                  data={runsKpiData}
+                  color="#16A34A"
+                  height={200}
+                  valueFormatter={(v) => v.toLocaleString('es-CL')}
+                />
               </div>
             </div>
           ) : null

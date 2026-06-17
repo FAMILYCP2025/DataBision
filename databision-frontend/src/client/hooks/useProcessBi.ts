@@ -30,6 +30,22 @@ export function useBiSalesFulfillment(days = 30) {
   })
 }
 
+export function useBiSalesItemGroupSummary(params: Record<string, string | undefined> = {}) {
+  return useQuery({
+    queryKey: ['bi-sales-item-groups', params],
+    queryFn: () => pbApi.getSalesItemGroupSummary(params),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useBiSalesWarehouseSummary(params: Record<string, string | undefined> = {}) {
+  return useQuery({
+    queryKey: ['bi-sales-warehouses', params],
+    queryFn: () => pbApi.getSalesWarehouseSummary(params),
+    staleTime: 5 * 60_000,
+  })
+}
+
 // ── Purchasing process ────────────────────────────────────────────────────────
 
 export function useBiPurchasingExecutive(days = 30) {
