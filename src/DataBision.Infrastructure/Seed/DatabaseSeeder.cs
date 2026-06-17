@@ -2,17 +2,19 @@ using DataBision.Domain.Entities;
 using DataBision.Domain.Enums;
 using DataBision.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DataBision.Infrastructure.Seed;
 
-public class DatabaseSeeder(AppDbContext db, ILogger<DatabaseSeeder> logger)
+public class DatabaseSeeder(AppDbContext db, ILogger<DatabaseSeeder> logger, IConfiguration config)
 {
     public async Task SeedAsync()
     {
         await SeedModulesAsync();
         await SeedSuperAdminAsync();
         await SeedDemoCompanyAsync();
+        await SeedAnalyticsCompanyIdsAsync();
     }
 
     // ── Modules ───────────────────────────────────────────────────────────────
@@ -152,6 +154,38 @@ public class DatabaseSeeder(AppDbContext db, ILogger<DatabaseSeeder> logger)
         logger.LogInformation(
             "Demo company seeded: company={Slug}, admin={AdminEmail}, viewer={ViewerEmail}, reports={Count}",
             company.Slug, admin.Email, viewer.Email, reports.Count);
+    }
+
+    // ── Analytics Company ID back-fill (dev only) ─────────────────────────────
+    // Reads NativeBi:CompanySlugMap from config and sets AnalyticsCompanyId on
+    // any company whose row still has NULL. Idempotent: skips rows already set.
+
+    private async Task SeedAnalyticsCompanyIdsAsync()
+    {
+        var section = config.GetSection("NativeBi:CompanySlugMap");
+        var map = section.GetChildren()
+            .Where(c => !string.IsNullOrWhiteSpace(c.Value))
+            .ToDictionary(c => c.Key, c => c.Value!, StringComparer.OrdinalIgnoreCase);
+
+        if (map.Count == 0) return;
+
+        var slugs = map.Keys.ToList();
+        var companies = await db.Companies
+            .Where(c => slugs.Contains(c.Slug) && c.AnalyticsCompanyId == null)
+            .ToListAsync();
+
+        if (companies.Count == 0) return;
+
+        foreach (var co in companies)
+        {
+            if (map.TryGetValue(co.Slug, out var analyticsId))
+                co.AnalyticsCompanyId = analyticsId;
+        }
+
+        await db.SaveChangesAsync();
+        logger.LogInformation(
+            "AnalyticsCompanyId seeded for {Count} company(ies): {Slugs}",
+            companies.Count, string.Join(", ", companies.Select(c => c.Slug)));
     }
 }
 
