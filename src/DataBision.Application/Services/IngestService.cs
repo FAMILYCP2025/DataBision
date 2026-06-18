@@ -216,6 +216,40 @@ public sealed class IngestService(
         return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
     }
 
+    // ── Chart of Accounts (OACT) — full-refresh, no UpdateDate ────────────────
+
+    public async Task<IngestBatchResponse> IngestChartOfAccountsAsync(
+        IngestBatchRequest<SapOactRow> request, CancellationToken ct = default)
+    {
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertChartOfAccountsAsync(request.CompanyId, request.Rows, ct);
+        await UpdateCheckpointAsync(request, ins + upd, null, null, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, null, null);
+    }
+
+    // ── Journal Entry Headers (OJDT) — incremental by RefDate ─────────────────
+
+    public async Task<IngestBatchResponse> IngestJournalEntriesAsync(
+        IngestBatchRequest<SapOjdtRow> request, CancellationToken ct = default)
+    {
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertJournalEntriesAsync(request.CompanyId, request.Rows, ct);
+        var (wmDate, wmTs) = GetWatermark(request.Rows, r => r.RefDate, _ => null);
+        await UpdateCheckpointAsync(request, ins + upd, wmDate, wmTs, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, wmDate, wmTs);
+    }
+
+    // ── Journal Entry Lines (JDT1) — embedded in OJDT, no independent watermark
+
+    public async Task<IngestBatchResponse> IngestJournalEntryLinesAsync(
+        IngestBatchRequest<SapJdt1Row> request, CancellationToken ct = default)
+    {
+        ComputeHashes(request.Rows);
+        var (ins, upd) = await rawRepo.UpsertJournalEntryLinesAsync(request.CompanyId, request.Rows, ct);
+        await UpdateCheckpointAsync(request, ins + upd, null, null, ct);
+        return BuildResponse(request.SapObject, request.Rows.Count, ins, upd, null, null);
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     private static void ComputeHashes<T>(IEnumerable<T> rows) where T : IIngestRow

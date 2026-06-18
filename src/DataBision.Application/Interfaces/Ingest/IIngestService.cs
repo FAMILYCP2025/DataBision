@@ -19,4 +19,7 @@ public interface IIngestService
     Task<IngestBatchResponse> IngestSalesOrdersAsync(IngestBatchRequest<SapOrdrRow> request, CancellationToken ct = default);
     Task<IngestBatchResponse> IngestDeliveriesAsync(IngestBatchRequest<SapOdlnRow> request, CancellationToken ct = default);
     Task<IngestBatchResponse> IngestStockTransfersAsync(IngestBatchRequest<SapOwtrRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestChartOfAccountsAsync(IngestBatchRequest<SapOactRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestJournalEntriesAsync(IngestBatchRequest<SapOjdtRow> request, CancellationToken ct = default);
+    Task<IngestBatchResponse> IngestJournalEntryLinesAsync(IngestBatchRequest<SapJdt1Row> request, CancellationToken ct = default);
 }

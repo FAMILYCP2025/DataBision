@@ -168,4 +168,33 @@ public sealed class SapB1IngestController(IIngestService ingestService) : Contro
         var result = await ingestService.IngestDeliveriesAsync(request, ct);
         return Ok(new { data = result });
     }
+
+    // ── Accounting ─────────────────────────────────────────────────────────────
+
+    [HttpPost("sap-b1/chart-of-accounts")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestChartOfAccounts(
+        [FromBody] IngestBatchRequest<SapOactRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestChartOfAccountsAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    [HttpPost("sap-b1/journal-entries")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestJournalEntries(
+        [FromBody] IngestBatchRequest<SapOjdtRow> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestJournalEntriesAsync(request, ct);
+        return Ok(new { data = result });
+    }
+
+    [HttpPost("sap-b1/journal-entry-lines")]
+    [ServiceFilter(typeof(ApiKeyAuthFilter))]
+    public async Task<ActionResult<IngestBatchResponse>> IngestJournalEntryLines(
+        [FromBody] IngestBatchRequest<SapJdt1Row> request, CancellationToken ct)
+    {
+        var result = await ingestService.IngestJournalEntryLinesAsync(request, ct);
+        return Ok(new { data = result });
+    }
 }

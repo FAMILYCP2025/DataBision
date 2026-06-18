@@ -20,6 +20,10 @@ public interface ISapRawRepository
     Task<(int inserted, int updated)> UpsertDeliveriesAsync(string companyId, IEnumerable<SapOdlnRow> rows, CancellationToken ct = default);
     Task<(int inserted, int updated)> UpsertStockTransfersAsync(string companyId, IEnumerable<SapOwtrRow> rows, CancellationToken ct = default);
 
+    Task<(int inserted, int updated)> UpsertChartOfAccountsAsync(string companyId, IEnumerable<SapOactRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertJournalEntriesAsync(string companyId, IEnumerable<SapOjdtRow> rows, CancellationToken ct = default);
+    Task<(int inserted, int updated)> UpsertJournalEntryLinesAsync(string companyId, IEnumerable<SapJdt1Row> rows, CancellationToken ct = default);
+
     /// <summary>Returns the subset of <paramref name="docEntries"/> that exist in raw.sap_orin for the company.</summary>
     Task<IReadOnlyList<int>> GetExistingCreditMemoDocEntriesAsync(string companyId, IEnumerable<int> docEntries, CancellationToken ct = default);
 }

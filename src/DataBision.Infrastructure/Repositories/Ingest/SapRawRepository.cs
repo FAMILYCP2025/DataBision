@@ -915,6 +915,242 @@ public sealed class SapRawRepository(string connectionString, ILogger<SapRawRepo
         return CountResults(allResults);
     }
 
+    // ── Chart of Accounts (OACT) — full-refresh, hash-only guard ─────────────
+
+    public async Task<(int inserted, int updated)> UpsertChartOfAccountsAsync(
+        string companyId, IEnumerable<SapOactRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_oact" (
+                company_id, "Code", "Name", "FatherNum", "Levels", "GroupMask",
+                "AccountType", "Postable", "Frozen", "ValidFor", "CashAccount",
+                "ControlAccount", "Currency", "FormatCode", "ExternalCode",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @Code, @Name, @FatherNum, @Levels, @GroupMask,
+                @AccountType, @Postable, @Frozen, @ValidFor, @CashAccount,
+                @ControlAccount, @Currency, @FormatCode, @ExternalCode,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "Code") DO UPDATE SET
+                "Name"             = EXCLUDED."Name",
+                "FatherNum"        = EXCLUDED."FatherNum",
+                "Levels"           = EXCLUDED."Levels",
+                "GroupMask"        = EXCLUDED."GroupMask",
+                "AccountType"      = EXCLUDED."AccountType",
+                "Postable"         = EXCLUDED."Postable",
+                "Frozen"           = EXCLUDED."Frozen",
+                "ValidFor"         = EXCLUDED."ValidFor",
+                "CashAccount"      = EXCLUDED."CashAccount",
+                "ControlAccount"   = EXCLUDED."ControlAccount",
+                "Currency"         = EXCLUDED."Currency",
+                "FormatCode"       = EXCLUDED."FormatCode",
+                "ExternalCode"     = EXCLUDED."ExternalCode",
+                source_hash_hex    = EXCLUDED.source_hash_hex,
+                extraction_run_id  = EXCLUDED.extraction_run_id,
+                batch_id           = EXCLUDED.batch_id,
+                extracted_at_utc   = EXCLUDED.extracted_at_utc,
+                ingestion_mode     = EXCLUDED.ingestion_mode,
+                raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_oact".source_hash_hex != EXCLUDED.source_hash_hex
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var p = new DynamicParameters();
+            p.Add("company_id",        companyId);
+            p.Add("Code",              r.Code);
+            p.Add("Name",              r.Name);
+            p.Add("FatherNum",         r.FatherNum);
+            p.Add("Levels",            r.Levels);
+            p.Add("GroupMask",         r.GroupMask);
+            p.Add("AccountType",       r.AccountType);
+            p.Add("Postable",          r.Postable);
+            p.Add("Frozen",            r.Frozen);
+            p.Add("ValidFor",          r.ValidFor);
+            p.Add("CashAccount",       r.CashAccount);
+            p.Add("ControlAccount",    r.ControlAccount);
+            p.Add("Currency",          r.Currency);
+            p.Add("FormatCode",        r.FormatCode);
+            p.Add("ExternalCode",      r.ExternalCode);
+            p.Add("source_hash_hex",   r.SourceHashHex);
+            p.Add("extraction_run_id", r.ExtractionRunId);
+            p.Add("batch_id",          r.BatchId);
+            p.Add("extracted_at_utc",  r.ExtractedAtUtc);
+            p.Add("ingestion_mode",    r.IngestionMode);
+            var result = await conn.QueryAsync<int>(sql, p);
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Journal Entry Headers (OJDT) — hash-only guard (no UpdateDate in SL) ──
+
+    public async Task<(int inserted, int updated)> UpsertJournalEntriesAsync(
+        string companyId, IEnumerable<SapOjdtRow> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_ojdt" (
+                company_id, "TransId", "JdtNum", "RefDate", "DueDate", "TaxDate",
+                "Memo", "TransType", "BaseRef", "UserRef", "CreatedBy",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @TransId, @JdtNum, @RefDate, @DueDate, @TaxDate,
+                @Memo, @TransType, @BaseRef, @UserRef, @CreatedBy,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "TransId") DO UPDATE SET
+                "JdtNum"           = EXCLUDED."JdtNum",
+                "RefDate"          = EXCLUDED."RefDate",
+                "DueDate"          = EXCLUDED."DueDate",
+                "TaxDate"          = EXCLUDED."TaxDate",
+                "Memo"             = EXCLUDED."Memo",
+                "TransType"        = EXCLUDED."TransType",
+                "BaseRef"          = EXCLUDED."BaseRef",
+                "UserRef"          = EXCLUDED."UserRef",
+                "CreatedBy"        = EXCLUDED."CreatedBy",
+                source_hash_hex    = EXCLUDED.source_hash_hex,
+                extraction_run_id  = EXCLUDED.extraction_run_id,
+                batch_id           = EXCLUDED.batch_id,
+                extracted_at_utc   = EXCLUDED.extracted_at_utc,
+                ingestion_mode     = EXCLUDED.ingestion_mode,
+                raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_ojdt".source_hash_hex != EXCLUDED.source_hash_hex
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var p = new DynamicParameters();
+            p.Add("company_id",        companyId);
+            p.Add("TransId",           r.TransId);
+            p.Add("JdtNum",            r.JdtNum);
+            p.Add("RefDate",           r.RefDate);
+            p.Add("DueDate",           r.DueDate);
+            p.Add("TaxDate",           r.TaxDate);
+            p.Add("Memo",              r.Memo);
+            p.Add("TransType",         r.TransType);
+            p.Add("BaseRef",           r.BaseRef);
+            p.Add("UserRef",           r.UserRef);
+            p.Add("CreatedBy",         r.CreatedBy);
+            p.Add("source_hash_hex",   r.SourceHashHex);
+            p.Add("extraction_run_id", r.ExtractionRunId);
+            p.Add("batch_id",          r.BatchId);
+            p.Add("extracted_at_utc",  r.ExtractedAtUtc);
+            p.Add("ingestion_mode",    r.IngestionMode);
+            var result = await conn.QueryAsync<int>(sql, p);
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
+    // ── Journal Entry Lines (JDT1) — hash-only guard ──────────────────────────
+
+    public async Task<(int inserted, int updated)> UpsertJournalEntryLinesAsync(
+        string companyId, IEnumerable<SapJdt1Row> rows, CancellationToken ct)
+    {
+        const string sql = """
+            INSERT INTO "raw"."sap_jdt1" (
+                company_id, "TransId", "LineId", "Account",
+                "Debit", "Credit", "FcDebit", "FcCredit", "SysDebit", "SysCredit",
+                "ShortName", "ContraAct", "LineMemo", "RefDate",
+                "ProfitCode", "OcrCode", "OcrCode2", "OcrCode3", "OcrCode4", "OcrCode5",
+                "ProjectCode",
+                source_hash_hex, extraction_run_id, batch_id, extracted_at_utc, ingestion_mode,
+                raw_created_at_utc
+            )
+            VALUES (
+                @company_id, @TransId, @LineId, @Account,
+                @Debit, @Credit, @FcDebit, @FcCredit, @SysDebit, @SysCredit,
+                @ShortName, @ContraAct, @LineMemo, @RefDate,
+                @ProfitCode, @OcrCode, @OcrCode2, @OcrCode3, @OcrCode4, @OcrCode5,
+                @ProjectCode,
+                @source_hash_hex, @extraction_run_id, @batch_id, @extracted_at_utc, @ingestion_mode,
+                NOW()
+            )
+            ON CONFLICT (company_id, "TransId", "LineId") DO UPDATE SET
+                "Account"          = EXCLUDED."Account",
+                "Debit"            = EXCLUDED."Debit",
+                "Credit"           = EXCLUDED."Credit",
+                "FcDebit"          = EXCLUDED."FcDebit",
+                "FcCredit"         = EXCLUDED."FcCredit",
+                "SysDebit"         = EXCLUDED."SysDebit",
+                "SysCredit"        = EXCLUDED."SysCredit",
+                "ShortName"        = EXCLUDED."ShortName",
+                "ContraAct"        = EXCLUDED."ContraAct",
+                "LineMemo"         = EXCLUDED."LineMemo",
+                "RefDate"          = EXCLUDED."RefDate",
+                "ProfitCode"       = EXCLUDED."ProfitCode",
+                "OcrCode"          = EXCLUDED."OcrCode",
+                "OcrCode2"         = EXCLUDED."OcrCode2",
+                "OcrCode3"         = EXCLUDED."OcrCode3",
+                "OcrCode4"         = EXCLUDED."OcrCode4",
+                "OcrCode5"         = EXCLUDED."OcrCode5",
+                "ProjectCode"      = EXCLUDED."ProjectCode",
+                source_hash_hex    = EXCLUDED.source_hash_hex,
+                extraction_run_id  = EXCLUDED.extraction_run_id,
+                batch_id           = EXCLUDED.batch_id,
+                extracted_at_utc   = EXCLUDED.extracted_at_utc,
+                ingestion_mode     = EXCLUDED.ingestion_mode,
+                raw_updated_at_utc = NOW()
+            WHERE "raw"."sap_jdt1".source_hash_hex != EXCLUDED.source_hash_hex
+            RETURNING (xmax = 0)::int AS is_insert;
+            """;
+
+        var rowList = rows.ToList();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var allResults = new List<int>(rowList.Count);
+        foreach (var r in rowList)
+        {
+            var p = new DynamicParameters();
+            p.Add("company_id",        companyId);
+            p.Add("TransId",           r.TransId);
+            p.Add("LineId",            r.LineId);
+            p.Add("Account",           r.Account);
+            p.Add("Debit",             r.Debit);
+            p.Add("Credit",            r.Credit);
+            p.Add("FcDebit",           r.FcDebit);
+            p.Add("FcCredit",          r.FcCredit);
+            p.Add("SysDebit",          r.SysDebit);
+            p.Add("SysCredit",         r.SysCredit);
+            p.Add("ShortName",         r.ShortName);
+            p.Add("ContraAct",         r.ContraAct);
+            p.Add("LineMemo",          r.LineMemo);
+            p.Add("RefDate",           r.RefDate);
+            p.Add("ProfitCode",        r.ProfitCode);
+            p.Add("OcrCode",           r.OcrCode);
+            p.Add("OcrCode2",          r.OcrCode2);
+            p.Add("OcrCode3",          r.OcrCode3);
+            p.Add("OcrCode4",          r.OcrCode4);
+            p.Add("OcrCode5",          r.OcrCode5);
+            p.Add("ProjectCode",       r.ProjectCode);
+            p.Add("source_hash_hex",   r.SourceHashHex);
+            p.Add("extraction_run_id", r.ExtractionRunId);
+            p.Add("batch_id",          r.BatchId);
+            p.Add("extracted_at_utc",  r.ExtractedAtUtc);
+            p.Add("ingestion_mode",    r.IngestionMode);
+            var result = await conn.QueryAsync<int>(sql, p);
+            allResults.AddRange(result);
+        }
+        return CountResults(allResults);
+    }
+
     // ── Cross-table helpers ───────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<int>> GetExistingCreditMemoDocEntriesAsync(
