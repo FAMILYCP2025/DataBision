@@ -9,8 +9,8 @@ Audiencia: CFO, Gerente de Finanzas, Controller
 ## Antes de la demo
 
 **Pre-requisitos técnicos:**
-- [ ] OACT, OJDT, JDT1 extraídos (verificar `readinessStatus = "ready"` en panel de resumen)
-- [ ] `mart.refresh_accounting_all('company-id')` ejecutado exitosamente
+- [ ] OACT + OJDT extraídos — JDT1 se extrae automáticamente embebido en OJDT (verificar `readinessStatus = "ready"` en panel de resumen)
+- [ ] `SELECT * FROM mart.refresh_accounting_all('company-id')` ejecutado exitosamente — todos los pasos con status OK
 - [ ] Reglas de clasificación contable validadas con contador del cliente
 - [ ] Balance cuadra (Activos = Pasivos + Patrimonio)
 - [ ] Revenue positivo en períodos recientes

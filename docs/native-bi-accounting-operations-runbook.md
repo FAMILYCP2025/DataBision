@@ -15,13 +15,12 @@ This runbook covers the operational lifecycle of the Native BI accounting module
 ```
 1. Configure AnalyticsCompanyId          → SuperAdmin → Company → Analytics ID
 2. Configure classification rules        → SuperAdmin → Company → Native BI → Clasificación Contable
-3. Extract OACT (chart of accounts)      → dotnet run [extractor] -- --object OACT
-4. Extract OJDT (journal headers)        → dotnet run [extractor] -- --object OJDT
-5. Extract JDT1 (journal lines)          → dotnet run [extractor] -- --object JDT1
-6. Run ETL                               → SELECT mart.refresh_accounting_all('company-id');
-7. Validate                              → GET /api/client/bi/finance/readiness  (expect readinessStatus = "ready")
-8. Validate                              → GET /api/client/bi/finance/validations (expect healthScore >= 80)
-9. Demo                                  → FinanceDashboardPage → Resumen + Resultados + Balance + EBITDA
+3. Extract OACT (chart of accounts)      → dotnet run [extractor] -- --object OACT --send
+4. Extract OJDT + JDT1                   → dotnet run [extractor] -- --object OJDT --send  (JDT1 lines are embedded — one command extracts both)
+5. Run ETL                               → SELECT * FROM mart.refresh_accounting_all('company-id');
+6. Validate                              → GET /api/client/bi/finance/readiness  (expect readinessStatus = "ready")
+7. Validate                              → GET /api/client/bi/finance/validations (expect healthScore >= 80)
+8. Demo                                  → FinanceDashboardPage → Resumen + Resultados + Balance + EBITDA
 ```
 
 ---
@@ -35,11 +34,9 @@ This runbook covers the operational lifecycle of the Native BI accounting module
 # OACT — chart of accounts (extract once, re-extract when accounts change)
 dotnet run --project src/DataBision.Extractor -- --object OACT --company-id <slug> --send
 
-# OJDT — journal entry headers (incremental from last watermark)
+# OJDT + JDT1 — journal entries with embedded lines (incremental from last watermark)
+# JDT1 lines are extracted via $expand=JournalEntryLines — there is NO separate --object JDT1 command
 dotnet run --project src/DataBision.Extractor -- --object OJDT --company-id <slug> --send
-
-# JDT1 — journal entry lines (incremental from last watermark)
-dotnet run --project src/DataBision.Extractor -- --object JDT1 --company-id <slug> --send
 ```
 
 ### Run MART refresh (Supabase)
@@ -51,13 +48,13 @@ SELECT * FROM mart.refresh_accounting_all('company-analytics-id');
 ```
 
 This function runs in sequence:
-1. `stg.load_oact(company_id)` — loads OACT from raw to stg
-2. `stg.load_ojdt(company_id)` — loads OJDT from raw to stg
-3. `stg.load_jdt1(company_id)` — loads JDT1 from raw to stg
-4. `mart.build_gl_accounts(company_id)` — creates gl_accounts from stg + classification rules
-5. `mart.build_income_statement(company_id)` — P&L summary
-6. `mart.build_balance_sheet(company_id)` — balance sheet snapshots
-7. `mart.build_ebitda(company_id)` — EBITDA summary
+1. `stg.refresh_gl_accounts(p_company_id)` — raw.sap_oact → stg.gl_account
+2. `stg.refresh_journal_entries(p_company_id)` — raw.sap_ojdt + raw.sap_jdt1 → stg.journal_entry + stg.journal_entry_line
+3. `mart.refresh_gl_accounts(p_company_id)` — stg.gl_account + cfg rules → mart.gl_accounts
+4. `mart.refresh_account_balances(p_company_id)` — stg.journal_entry_line → mart.account_balances
+5. `mart.refresh_income_statement(p_company_id)` — mart.account_balances → mart.income_statement_summary
+6. `mart.refresh_balance_sheet(p_company_id)` — mart.account_balances → mart.balance_sheet_summary
+7. `mart.refresh_ebitda(p_company_id)` — mart.income_statement_summary → mart.ebitda_summary
 
 ### Validate readiness (API)
 
@@ -137,16 +134,15 @@ LIMIT 20;
 **Resolution:**  
 In many Latin American SAP instances, revenue accounts have debit-credit polarity inverted.  
 The ETL sign convention: revenue amounts are stored as positive in MART.  
-If negative: check if the `mart.build_income_statement` function applies the correct sign flip for the company's accounting standard.
+If negative: check if the `mart.refresh_income_statement` function applies the correct sign flip for the company's accounting standard.
 
 ### Error: "Orphan journal lines"
 **Symptom:** `orphanJournalLines > 0`  
 **Resolution:**  
-1. Usually indicates incomplete extraction (OJDT extracted but JDT1 not, or vice versa)
-2. Re-run both extractions to ensure consistency:
+1. Usually indicates incomplete extraction (raw.sap_jdt1 lines referencing accounts not in raw.sap_oact)
+2. Re-run OJDT extraction — JDT1 lines are embedded in OJDT via `$expand=JournalEntryLines`:
    ```
    dotnet run -- --object OJDT --send
-   dotnet run -- --object JDT1 --send
    ```
 3. Re-run MART refresh
 
@@ -167,8 +163,8 @@ If negative: check if the `mart.build_income_statement` function applies the cor
 ## Scheduled Maintenance
 
 **Daily (recommended):**
-- Run OJDT + JDT1 extractors (incremental)
-- Run `mart.refresh_accounting_all()`
+- Run OJDT extractor (incremental — JDT1 lines are embedded automatically)
+- Run `SELECT * FROM mart.refresh_accounting_all('<company-id>')`
 
 **Weekly:**
 - Run OACT extractor (accounts change infrequently)

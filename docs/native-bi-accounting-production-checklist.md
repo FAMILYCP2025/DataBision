@@ -14,7 +14,7 @@ Use this checklist when onboarding a new client to the accounting module or prom
 - [ ] Migrations applied: `dotnet ef database update --context StagingDbContext`
 - [ ] `StagingConnection` in `appsettings.Development.json` points to DEV Supabase project
 - [ ] `AnalyticsCompanyId` set for at least one test company
-- [ ] At least one test extraction completed (OACT + OJDT + JDT1)
+- [ ] At least one test extraction completed (OACT + OJDT — JDT1 lines are embedded in OJDT extraction)
 - [ ] `mart.refresh_accounting_all()` ran without errors
 - [ ] `GET /api/client/bi/finance/readiness` returns `readinessStatus = "ready"` for test company
 - [ ] Finance dashboard tabs load without error (Resultados, Balance, EBITDA, Cuentas)
@@ -28,7 +28,7 @@ Use this checklist when onboarding a new client to the accounting module or prom
 - [ ] StagingDbContext migrations applied to TST Supabase project
 - [ ] TST company record has `AnalyticsCompanyId` set
 - [ ] Classification rules configured for TST company
-- [ ] Full extraction completed: OACT + OJDT (at least 12 months) + JDT1
+- [ ] Full extraction completed: OACT + OJDT (at least 12 months — JDT1 lines are embedded in OJDT)
 - [ ] MART refresh completed: `mart.refresh_accounting_all('tst-company-id')`
 - [ ] Readiness endpoint: `blocked_reasons: []`
 - [ ] Validations endpoint: `healthScore >= 80`, `criticalIssues = 0`
@@ -54,14 +54,14 @@ Use this checklist when onboarding a new client to the accounting module or prom
 - [ ] StagingDbContext migrations applied to PRD Supabase (MANUAL — not auto-run at startup)
 - [ ] PRD company record has `AnalyticsCompanyId` set
 - [ ] Classification rules exported from TST → imported in PRD
-- [ ] Full extraction from PRD SAP: OACT + OJDT + JDT1
+- [ ] Full extraction from PRD SAP: OACT + OJDT (JDT1 lines embedded in OJDT)
 - [ ] MART refresh: `mart.refresh_accounting_all('prd-company-id')`
 - [ ] Readiness endpoint passes in PRD
 - [ ] Validations endpoint: `healthScore >= 80`
 - [ ] Client demo completed in PRD
 
 **Post-deployment:**
-- [ ] Daily extractor schedule confirmed (OJDT + JDT1)
+- [ ] Daily extractor schedule confirmed (OJDT — includes JDT1 lines automatically)
 - [ ] Weekly MART refresh schedule confirmed
 - [ ] Alerting configured for extractor failures
 - [ ] Client training completed (how to interpret Validaciones tab)
@@ -87,7 +87,7 @@ Critical checks:
 | Risk | Impact | Mitigation |
 |---|---|---|
 | PgBouncer transaction pooler (port 6543) | Migrations fail if run via API startup | Always run migrations manually with `dotnet ef database update` |
-| OACT sign convention varies by SAP version | Revenue appears negative | Verify `mart.build_income_statement` applies correct sign for client |
+| OACT sign convention varies by SAP version | Revenue appears negative | Verify `mart.refresh_income_statement` applies correct sign for client |
 | Unclassified accounts grow over time | MART data degrades | Monthly review with `mart.gl_accounts WHERE statement_line = 'unclassified'` |
 | Balance imbalance after re-classification | CFO visibility issue | Always re-run full MART refresh after changing classification rules |
 | Watermark drift | Duplicate or missing journal lines | Monitor `ctl.ingest_checkpoint` after each extraction |
