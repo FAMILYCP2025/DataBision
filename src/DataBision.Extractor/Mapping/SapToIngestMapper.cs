@@ -468,6 +468,85 @@ public static class SapToIngestMapper
         BatchId         = ctx.BatchId,
         ExtractedAtUtc  = ctx.ExtractedAtUtc,
     };
+
+    // ── OACT — Chart of Accounts ──────────────────────────────────────────────
+    // Full-refresh only — SL ChartOfAccounts entity has no UpdateDate field.
+    // Field names to validate against SL v1000290 before first live run.
+    public static SapOactRow MapOactRow(JsonNode row, MappingContext ctx) => new()
+    {
+        Code            = GetStr(row, "Code"),
+        Name            = GetStr(row, "Name"),
+        FatherNum       = GetStr(row, "FatherNum"),
+        Levels          = GetStr(row, "Level"),
+        GroupMask       = GetStr(row, "GroupMask"),
+        AccountType     = GetStr(row, "AccountType"),
+        Postable        = MapYesNo(GetStr(row, "Postable")),
+        Frozen          = MapYesNo(GetStr(row, "Frozen")),
+        ValidFor        = MapYesNo(GetStr(row, "ValidFor")),
+        CashAccount     = MapYesNo(GetStr(row, "CashAccount")),
+        ControlAccount  = MapYesNo(GetStr(row, "ControlAccount")),
+        Currency        = GetStr(row, "Currency"),
+        FormatCode      = GetStr(row, "FormatCode"),
+        ExternalCode    = GetStr(row, "ExternalCode"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── OJDT — Journal Entry headers ──────────────────────────────────────────
+    // Incremental by ReferenceDate (not UpdateDate — not exposed in SL JournalEntries entity).
+    // Lines (JDT1) are embedded via $expand=JournalEntryLines and sent separately.
+    // Field names to validate against SL v1000290.
+    public static SapOjdtRow MapOjdtRow(JsonNode row, MappingContext ctx) => new()
+    {
+        TransId         = GetInt(row, "JdtNum"),           // SL OData key; internal TransId not exposed
+        JdtNum          = GetIntNullable(row, "JdtNum"),
+        RefDate         = GetDate(row, "ReferenceDate"),
+        DueDate         = GetDate(row, "DueDate"),
+        TaxDate         = GetDate(row, "TaxDate"),
+        Memo            = GetStr(row, "Memo"),
+        TransType       = GetStr(row, "TransactionCode"),
+        BaseRef         = GetStr(row, "BaseRef"),
+        UserRef         = GetStrAny(row, "Ref1", "UserRef"),
+        CreatedBy       = GetStr(row, "CreatedBy"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
+
+    // ── JDT1 — Journal Entry lines ────────────────────────────────────────────
+    // Extracted from $expand=JournalEntryLines on JournalEntries entity.
+    // transId is the parent JdtNum (SL key), passed explicitly.
+    // Field names to validate against SL v1000290.
+    public static SapJdt1Row MapJdt1Row(int transId, JsonNode line, MappingContext ctx) => new()
+    {
+        TransId         = transId,
+        LineId          = GetInt(line, "LineId"),
+        Account         = GetStrAny(line, "AccountCode", "Account"),
+        Debit           = GetDec(line, "Debit"),
+        Credit          = GetDec(line, "Credit"),
+        FcDebit         = GetDecAny(line, "FCDebit", "FcDebit"),
+        FcCredit        = GetDecAny(line, "FCCredit", "FcCredit"),
+        SysDebit        = GetDecAny(line, "SystemDebit", "SysDebit"),
+        SysCredit       = GetDecAny(line, "SystemCredit", "SysCredit"),
+        ShortName       = GetStrAny(line, "ShortName", "BPCode"),
+        ContraAct       = GetStrAny(line, "ContraAccount", "ContraAct"),
+        LineMemo        = GetStr(line, "LineMemo"),
+        RefDate         = GetDate(line, "ReferenceDate1"),
+        ProfitCode      = GetStrAny(line, "CostingCode", "ProfitCode"),
+        OcrCode         = GetStrAny(line, "CostingCode2", "OcrCode"),
+        OcrCode2        = GetStrAny(line, "CostingCode3", "OcrCode2"),
+        OcrCode3        = GetStrAny(line, "CostingCode4", "OcrCode3"),
+        OcrCode4        = GetStrAny(line, "CostingCode5", "OcrCode4"),
+        OcrCode5        = GetStr(line, "OcrCode5"),
+        ProjectCode     = GetStr(line, "ProjectCode"),
+        IngestionMode   = ctx.IngestionMode,
+        ExtractionRunId = ctx.RunId,
+        BatchId         = ctx.BatchId,
+        ExtractedAtUtc  = ctx.ExtractedAtUtc,
+    };
 }
 
 /// <summary>

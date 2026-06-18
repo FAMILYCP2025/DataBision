@@ -59,6 +59,8 @@ if (args.Contains("--service"))
             services.AddSingleton<OrdrExtractorJob>();
             services.AddSingleton<OdlnExtractorJob>();
             services.AddSingleton<OwtrExtractorJob>();
+            services.AddSingleton<OactExtractorJob>();
+            services.AddSingleton<OjdtExtractorJob>();
             services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
                 new IExtractorJob[]
                 {
@@ -75,6 +77,8 @@ if (args.Contains("--service"))
                     sp.GetRequiredService<OrdrExtractorJob>(),
                     sp.GetRequiredService<OdlnExtractorJob>(),
                     sp.GetRequiredService<OwtrExtractorJob>(),
+                    sp.GetRequiredService<OactExtractorJob>(),
+                    sp.GetRequiredService<OjdtExtractorJob>(),
                 },
                 sp.GetRequiredService<ExtractorOptions>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ExtractorRunner>>(),
@@ -162,6 +166,8 @@ services.AddSingleton<OpchExtractorJob>();
 services.AddSingleton<OrdrExtractorJob>();
 services.AddSingleton<OdlnExtractorJob>();
 services.AddSingleton<OwtrExtractorJob>();
+services.AddSingleton<OactExtractorJob>();
+services.AddSingleton<OjdtExtractorJob>();
 services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
     new IExtractorJob[]
     {
@@ -178,6 +184,8 @@ services.AddSingleton<ExtractorRunner>(sp => new ExtractorRunner(
         sp.GetRequiredService<OrdrExtractorJob>(),
         sp.GetRequiredService<OdlnExtractorJob>(),
         sp.GetRequiredService<OwtrExtractorJob>(),
+        sp.GetRequiredService<OactExtractorJob>(),
+        sp.GetRequiredService<OjdtExtractorJob>(),
     },
     sp.GetRequiredService<ExtractorOptions>(),
     sp.GetRequiredService<ILogger<ExtractorRunner>>(),
@@ -202,7 +210,9 @@ if (args.Contains("--help") || args.Contains("-h"))
           --validate                     Test Service Layer login + GET OSLP top 5 + logout
           --validate-staging             Validate Supabase schemas and table counts (no SAP required)
           --dry-run                      Show resolved configuration (no connections)
-          --object <name>                Extract single object: OSLP|OCRD|OITM|OINV|INV1|ORIN|RIN1|OPOR|OPDN|OPCH|ORDR|ODLN|OWTR|ALL
+          --object <name>                Extract single object: OSLP|OCRD|OITM|OINV|INV1|ORIN|RIN1|OPOR|OPDN|OPCH|ORDR|ODLN|OWTR|OACT|OJDT|ALL
+                                         NOTE: OACT (Chart of Accounts, full-refresh) and OJDT (Journal Entries, incremental)
+                                               are accounting objects — explicit CLI only, NOT included in ALL or scheduled runs.
           --object <name> --send         Extract and send to DataBision Ingest API
           --page-size N                  Override Extractor.PageSize for this run (default from config)
           --max-pages N                  Override Extractor.MaxPages for this run (default from config)
@@ -465,7 +475,7 @@ if (objectArg is not null)
 {
     if (!ExtractorRunner.IsSupported(objectArg))
     {
-        log.LogError("Unknown object '{Obj}'. Supported: OSLP, OCRD, OITM, OINV, INV1, ORIN, RIN1, OPOR, OPDN, OPCH, ORDR, ODLN, OWTR, ALL", objectArg);
+        log.LogError("Unknown object '{Obj}'. Supported: OSLP, OCRD, OITM, OINV, INV1, ORIN, RIN1, OPOR, OPDN, OPCH, ORDR, ODLN, OWTR, OACT, OJDT, ALL", objectArg);
         return 1;
     }
 

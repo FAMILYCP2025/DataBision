@@ -12,10 +12,14 @@ public sealed class ExtractorRunner
         {
             "OSLP", "OCRD", "OITM", "OINV", "INV1", "ORIN", "RIN1",
             "OPOR", "OPDN", "OPCH", "ORDR", "ODLN", "OWTR",
+            // Accounting — explicit CLI only; NOT in AllObjects to prevent accidental full accounting load
+            "OACT", "OJDT",
             "ALL"
         };
 
-    // ALL excludes line objects; OITW is in Prepared (no top-level SL entity in v1000290).
+    // ALL excludes line objects and accounting objects.
+    // OITW is in Prepared (no top-level SL entity in v1000290).
+    // OACT/OJDT require deliberate CLI invocation — never run as part of a scheduled cycle.
     private static readonly IReadOnlySet<string> AllObjects =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "OSLP", "OCRD", "OITM", "OINV", "OPOR", "OPDN", "OPCH", "ORDR", "ODLN", "OWTR" };

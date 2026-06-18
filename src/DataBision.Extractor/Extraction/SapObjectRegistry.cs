@@ -56,6 +56,11 @@ public static class SapObjectRegistry
         public const string OITW = "OITW";   // Item Warehouse Info — no top-level SL entity in v1000290
         public const string OWHS = "OWHS";   // Warehouses            → mart.inventory_warehouse_dashboard
 
+        // Accounting — Sprint 13A; explicit CLI only, NOT in AllObjects (no accidental full-refresh)
+        public const string OACT = "OACT";   // Chart of Accounts    → mart.gl_accounts (full-refresh)
+        public const string OJDT = "OJDT";   // Journal Entries      → mart.account_balances (incremental by ReferenceDate)
+        // JDT1 lines are embedded in OJDT via $expand — no separate Prepared entry needed
+
         public static readonly IReadOnlyList<string> All =
             [RDR1, DLN1, POR1, PDN1, PCH1, WTR1, OWHS];
     }
@@ -66,18 +71,20 @@ public static class SapObjectRegistry
     public static readonly IReadOnlyDictionary<string, string> Endpoints =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            [Active.OINV] = "Invoices",
-            [Active.ORIN] = "CreditNotes",
-            [Active.OCRD] = "BusinessPartners",
-            [Active.OITM] = "Items",
-            [Active.OSLP] = "SalesPersons",
-            [Active.OPOR] = "PurchaseOrders",
-            [Active.OPDN] = "PurchaseDeliveryNotes",
-            [Active.OPCH] = "PurchaseInvoices",
-            [Prepared.OITW] = "ItemWarehouseInfoCollection",
-            [Active.OWTR] = "StockTransfers",
-            [Active.ORDR] = "Orders",
-            [Active.ODLN] = "DeliveryNotes",
-            [Prepared.OWHS] = "Warehouses",
+            [Active.OINV]     = "Invoices",
+            [Active.ORIN]     = "CreditNotes",
+            [Active.OCRD]     = "BusinessPartners",
+            [Active.OITM]     = "Items",
+            [Active.OSLP]     = "SalesPersons",
+            [Active.OPOR]     = "PurchaseOrders",
+            [Active.OPDN]     = "PurchaseDeliveryNotes",
+            [Active.OPCH]     = "PurchaseInvoices",
+            [Prepared.OITW]   = "ItemWarehouseInfoCollection",
+            [Active.OWTR]     = "StockTransfers",
+            [Active.ORDR]     = "Orders",
+            [Active.ODLN]     = "DeliveryNotes",
+            [Prepared.OWHS]   = "Warehouses",
+            [Prepared.OACT]   = "ChartOfAccounts",
+            [Prepared.OJDT]   = "JournalEntries",
         };
 }
