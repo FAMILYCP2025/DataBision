@@ -4,6 +4,7 @@ import NativeBiFilterSelect from './NativeBiFilterSelect'
 import NativeBiFilterChip from './NativeBiFilterChip'
 import DateRangePicker from './DateRangePicker'
 import { MONTH_OPTIONS, yearOptions, SALES_TYPE_OPTIONS } from '../../utils/nativeBiFilterUtils'
+import { useBiFilterConfig, applyFilterConfig } from '../../hooks/useBiFilterConfig'
 
 interface NativeBiFilterBarProps {
   filters: NativeBiFilterState
@@ -48,12 +49,15 @@ export default function NativeBiFilterBar({
   hasActiveFilters = false,
 }: NativeBiFilterBarProps) {
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const { data: filterConfig } = useBiFilterConfig()
 
-  const visible  = definitions.filter((d) => !d.isAdvanced && d.isEnabled !== false)
-  const advanced = definitions.filter((d) => d.isAdvanced  && d.isEnabled !== false)
+  const effectiveDefs = applyFilterConfig(definitions, filterConfig?.filters)
+
+  const visible  = effectiveDefs.filter((d) => !d.isAdvanced && d.isEnabled !== false)
+  const advanced = effectiveDefs.filter((d) => d.isAdvanced  && d.isEnabled !== false)
 
   // Active filter chips (only from definitions visible here)
-  const activeChips = definitions
+  const activeChips = effectiveDefs
     .filter((d) => d.isEnabled !== false)
     .flatMap((def) => {
       const val = filters[def.key]

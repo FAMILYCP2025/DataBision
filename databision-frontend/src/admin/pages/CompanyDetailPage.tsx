@@ -6,7 +6,12 @@ import {
   getNativeBiFilters, upsertNativeBiFilter,
   getNativeBiItemUdfFilters, upsertNativeBiItemUdfFilter,
   getNativeBiDimensions, upsertNativeBiDimension,
+  getAccountClassificationRules, createAccountClassificationRule,
+  updateAccountClassificationRule, deleteAccountClassificationRule,
+  getAccountClassificationTemplate,
+  STATEMENT_LINES,
   type NativeBiFilterConfig, type NativeBiItemUdfFilterConfig, type NativeBiDimensionConfig,
+  type AccountClassificationRule, type AccountClassificationTemplateSuggestion,
 } from '../api/adminApi'
 import { statusBadge } from '../components/Badge'
 import { format } from 'date-fns'
@@ -492,6 +497,9 @@ function NativeBiConfigTab({ companyId }: { companyId: number }) {
         </form>
       </div>
 
+      {/* ── Account Classification ───────────────────────────────────────────── */}
+      <AccountClassificationSection companyId={companyId} />
+
       {/* ── Dimensions ───────────────────────────────────────────────────────── */}
       <div className="db-card">
         <div className="db-card-header">
@@ -528,6 +536,264 @@ function NativeBiConfigTab({ companyId }: { companyId: number }) {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+// ── Account Classification Section ────────────────────────────────────────────
+
+function AccountClassificationSection({ companyId }: { companyId: number }) {
+  const qc = useQueryClient()
+  const { data: rules = [], isLoading, isError } = useQuery({
+    queryKey: ['nb-acr', companyId],
+    queryFn: () => getAccountClassificationRules(companyId),
+    retry: false,
+  })
+
+  const [newAccountCode, setNewAccountCode]   = React.useState('')
+  const [newFormatCode, setNewFormatCode]     = React.useState('')
+  const [newStatementLine, setNewStatementLine] = React.useState<string>(STATEMENT_LINES[0])
+  const [addError, setAddError]               = React.useState<string | null>(null)
+  const [editingId, setEditingId]             = React.useState<number | null>(null)
+  const [editLine, setEditLine]               = React.useState('')
+
+  const [templateRules, setTemplateRules]     = React.useState<AccountClassificationTemplateSuggestion[]>([])
+  const [showTemplate, setShowTemplate]       = React.useState(false)
+  const [templateLoading, setTemplateLoading] = React.useState(false)
+
+  const addMutation = useMutation({
+    mutationFn: () => createAccountClassificationRule(companyId, {
+      accountCode: newAccountCode.trim() || null,
+      formatCode: newFormatCode.trim() || null,
+      statementLine: newStatementLine,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nb-acr', companyId] })
+      setNewAccountCode(''); setNewFormatCode(''); setAddError(null)
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { message?: string } } }
+      setAddError(axiosErr?.response?.data?.message ?? 'Error al agregar regla.')
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (ruleId: number) => deleteAccountClassificationRule(companyId, ruleId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['nb-acr', companyId] }),
+  })
+
+  const startEdit = (rule: AccountClassificationRule) => {
+    setEditingId(rule.id)
+    setEditLine(rule.statementLine)
+  }
+
+  const saveEdit = async (rule: AccountClassificationRule) => {
+    await updateAccountClassificationRule(companyId, rule.id, {
+      accountCode: rule.accountCode,
+      formatCode: rule.formatCode,
+      statementLine: editLine,
+    })
+    qc.invalidateQueries({ queryKey: ['nb-acr', companyId] })
+    setEditingId(null)
+  }
+
+  const loadTemplate = async () => {
+    setTemplateLoading(true)
+    try {
+      const suggestions = await getAccountClassificationTemplate(companyId)
+      setTemplateRules(suggestions)
+      setShowTemplate(true)
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  const applyTemplateSuggestion = (s: AccountClassificationTemplateSuggestion) =>
+    createAccountClassificationRule(companyId, {
+      accountCode: s.accountCode,
+      formatCode: s.formatCode,
+      statementLine: s.suggestedStatementLine,
+    }).then(() => qc.invalidateQueries({ queryKey: ['nb-acr', companyId] }))
+
+  if (isError) {
+    return (
+      <div className="db-alert db-alert--warning" style={{ margin: '0 0 16px' }}>
+        No se puede cargar clasificación contable. Verifique que Analytics Company ID esté configurado y que la conexión a Supabase esté activa.
+      </div>
+    )
+  }
+
+  return (
+    <div className="db-card">
+      <div className="db-card-header">
+        <h2 className="db-card-title">Clasificación contable</h2>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="db-btn db-btn--ghost db-btn--sm"
+            onClick={loadTemplate}
+            disabled={templateLoading}
+          >
+            {templateLoading ? 'Cargando...' : 'Sugerencias desde OACT'}
+          </button>
+        </div>
+      </div>
+
+      <div className="db-alert db-alert--warning" style={{ margin: '0 16px 12px', fontSize: '12px' }}>
+        Validar todas las reglas con el contador o finanzas del cliente. Una clasificación incorrecta
+        afecta Estado de Resultados, Balance General y EBITDA.
+      </div>
+
+      <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', padding: '0 16px 12px' }}>
+        Mapea cuentas SAP B1 (por código exacto o prefijo de formato) a líneas del estado financiero.
+        Las reglas se usan por el ETL al ejecutar <code className="db-code">mart.refresh_accounting_all()</code>.
+      </p>
+
+      {isLoading ? (
+        <div style={{ padding: '16px' }}><span className="db-spinner" /></div>
+      ) : (
+        <>
+          {rules.length > 0 && (
+            <table className="db-table" style={{ marginBottom: '16px' }}>
+              <thead>
+                <tr>
+                  <th>Código cuenta</th>
+                  <th>Prefijo formato</th>
+                  <th>Línea estado financiero</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map(rule => (
+                  <tr key={rule.id}>
+                    <td><code className="db-code">{rule.accountCode ?? '—'}</code></td>
+                    <td><code className="db-code">{rule.formatCode ?? '—'}</code></td>
+                    <td>
+                      {editingId === rule.id ? (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <select
+                            className="db-select"
+                            style={{ minWidth: '200px' }}
+                            value={editLine}
+                            onChange={e => setEditLine(e.target.value)}
+                          >
+                            {STATEMENT_LINES.map(sl => (
+                              <option key={sl} value={sl}>{sl}</option>
+                            ))}
+                          </select>
+                          <button className="db-btn db-btn--primary db-btn--sm" onClick={() => saveEdit(rule)}>Guardar</button>
+                          <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => setEditingId(null)}>Cancelar</button>
+                        </div>
+                      ) : (
+                        <span
+                          className="db-badge db-badge--muted"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => startEdit(rule)}
+                          title="Click para editar"
+                        >
+                          {rule.statementLine}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        className="db-btn db-btn--ghost db-btn--sm"
+                        style={{ color: 'var(--color-error)' }}
+                        onClick={() => deleteMutation.mutate(rule.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {rules.length === 0 && !isLoading && (
+            <p style={{ padding: '0 16px 16px', color: 'var(--color-text-muted)', fontSize: '13px' }}>
+              No hay reglas configuradas. Los informes financieros mostrarán todas las cuentas como "unclassified".
+            </p>
+          )}
+
+          <form
+            className="db-form"
+            style={{ padding: '0 16px 16px', borderTop: rules.length > 0 ? '1px solid var(--color-border)' : 'none', paddingTop: rules.length > 0 ? '16px' : 0 }}
+            onSubmit={e => { e.preventDefault(); addMutation.mutate() }}
+          >
+            <div className="db-form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr auto' }}>
+              <div className="db-field">
+                <label className="db-label">Código cuenta</label>
+                <input className="db-input" value={newAccountCode} onChange={e => setNewAccountCode(e.target.value)} placeholder="ej. 41000001" />
+              </div>
+              <div className="db-field">
+                <label className="db-label">Prefijo formato</label>
+                <input className="db-input" value={newFormatCode} onChange={e => setNewFormatCode(e.target.value)} placeholder="ej. 41 (todas las 41*)" />
+              </div>
+              <div className="db-field">
+                <label className="db-label">Línea estado financiero *</label>
+                <select className="db-select" value={newStatementLine} onChange={e => setNewStatementLine(e.target.value)}>
+                  {STATEMENT_LINES.map(sl => <option key={sl} value={sl}>{sl}</option>)}
+                </select>
+              </div>
+              <div className="db-field" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <button
+                  type="submit"
+                  className="db-btn db-btn--primary db-btn--sm"
+                  disabled={addMutation.isPending || (!newAccountCode.trim() && !newFormatCode.trim())}
+                >
+                  Agregar
+                </button>
+              </div>
+            </div>
+            {addError && <div className="db-alert db-alert--error">{addError}</div>}
+          </form>
+        </>
+      )}
+
+      {showTemplate && templateRules.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--color-border)', padding: '16px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>
+            Sugerencias automáticas (no aplicadas)
+          </h3>
+          <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '12px' }}>
+            Basadas en el tipo de cuenta SAP B1. Revisar con contador antes de aplicar.
+          </p>
+          <table className="db-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Tipo SAP</th>
+                <th>Sugerencia</th>
+                <th>Razón</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {templateRules.map(s => (
+                <tr key={s.accountCode}>
+                  <td><code className="db-code">{s.accountCode}</code></td>
+                  <td>{s.accountName}</td>
+                  <td><code className="db-code">{s.accountType}</code></td>
+                  <td><span className="db-badge db-badge--muted">{s.suggestedStatementLine}</span></td>
+                  <td style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{s.reason}</td>
+                  <td>
+                    <button
+                      className="db-btn db-btn--ghost db-btn--sm"
+                      onClick={() => applyTemplateSuggestion(s)}
+                    >
+                      Aplicar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button className="db-btn db-btn--ghost db-btn--sm" style={{ marginTop: '12px' }} onClick={() => setShowTemplate(false)}>
+            Cerrar sugerencias
+          </button>
+        </div>
+      )}
     </div>
   )
 }

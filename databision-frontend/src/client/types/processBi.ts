@@ -268,3 +268,57 @@ export interface ChartOfAccountEntry {
   postable: boolean
   balance: number
 }
+
+// ── Finance readiness (Sprint 14E) ────────────────────────────────────────────
+
+export interface FinanceReadiness {
+  rawOactCount: number
+  rawOjdtCount: number
+  rawJdt1Count: number
+  stgOactCount: number
+  stgOjdtCount: number
+  stgJdt1Count: number
+  martGlAccounts: number
+  martIncomeStatement: number
+  martBalanceSheet: number
+  martEbitda: number
+  classificationRules: number
+  unclassifiedPostable: number
+  readinessStatus: 'blocked' | 'warning' | 'ready'
+  blockingReasons: string[]
+  warnings: string[]
+}
+
+// ── Finance validation (Sprint 14C) ──────────────────────────────────────────
+
+export interface FinanceValidationIssue {
+  severity: 'critical' | 'warning' | 'info'
+  issueType: string
+  title: string
+  description: string
+  count: number
+  period: string | null
+}
+
+export interface FinanceReconciliation {
+  snapshotDate: string | null
+  totalAssets: number
+  totalLiabilities: number
+  totalEquity: number
+  imbalance: number
+  isBalanced: boolean
+}
+
+export interface FinanceValidationSummary {
+  healthScore: number
+  healthStatus: 'ok' | 'warning' | 'critical'
+  criticalIssues: number
+  warningIssues: number
+  infoIssues: number
+  lastPeriodValidated: string | null
+  balanceImbalance: number
+  unclassifiedAccounts: number
+  orphanJournalLines: number
+  issues: FinanceValidationIssue[]
+  reconciliation: FinanceReconciliation | null
+}

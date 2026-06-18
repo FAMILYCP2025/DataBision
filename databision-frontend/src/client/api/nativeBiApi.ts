@@ -205,3 +205,39 @@ export const getCustomerGroupOptions = () => getFilterOptions('customer-groups')
 export const getSupplierGroupOptions = () => getFilterOptions('supplier-groups')
 export const getWarehouseOptions     = () => getFilterOptions('warehouses')
 export const getSalespersonOptions   = () => getFilterOptions('salespersons')
+
+// ── Native BI client filter config (Sprint 14D) ───────────────────────────────
+
+export interface BiFilterConfigItem {
+  filterKey: string
+  label: string | null
+  isEnabled: boolean
+  isAdvanced: boolean
+  displayOrder: number
+  defaultValue: string | null
+}
+
+export interface BiItemUdfFilterConfigItem {
+  udfFieldName: string
+  label: string | null
+  isEnabled: boolean
+  isMultiSelect: boolean
+  displayOrder: number
+}
+
+export interface BiDimensionConfigItem {
+  dimensionNumber: number
+  label: string | null
+  isEnabled: boolean
+}
+
+export interface BiClientFilterConfig {
+  filters: BiFilterConfigItem[]
+  itemUdfFilters: BiItemUdfFilterConfigItem[]
+  dimensions: BiDimensionConfigItem[]
+}
+
+export async function getBiFilterConfig(): Promise<BiClientFilterConfig> {
+  const { data } = await api.get<{ data: BiClientFilterConfig }>('/client/bi/filter-config')
+  return data.data
+}

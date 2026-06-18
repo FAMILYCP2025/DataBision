@@ -146,6 +146,14 @@ public sealed class ProcessDashboardService(
         string companyId, bool postableOnly, CancellationToken ct = default)
         => await repo.GetChartOfAccountsAsync(await MapAsync(companyId, ct), postableOnly, ct);
 
+    public async Task<FinanceValidationSummaryDto> GetFinanceValidationsAsync(
+        string companyId, CancellationToken ct = default)
+        => await repo.GetFinanceValidationsAsync(await MapAsync(companyId, ct), ct);
+
+    public async Task<FinanceReadinessDto> GetFinanceReadinessAsync(
+        string companyId, CancellationToken ct = default)
+        => await repo.GetFinanceReadinessAsync(await MapAsync(companyId, ct), ct);
+
     private static PagedResultDto<T> BuildPaged<T>(IReadOnlyList<T> rows, int limit, int offset)
     {
         var hasMore = rows.Count > limit;

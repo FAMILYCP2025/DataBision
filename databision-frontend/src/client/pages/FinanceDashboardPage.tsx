@@ -12,12 +12,14 @@ import {
   useBiBalanceSheet,
   useBiEbitda,
   useBiChartOfAccounts,
+  useBiFinanceValidations,
 } from '../hooks/useProcessBi'
 import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
 import type { FinanceArAging, FinanceApAging } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
 import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 import { NbStackedBarChart, NbAreaChart, NbLineChart } from '../components/charts'
+import NativeBiFinanceReadinessPanel from '../components/nativebi/NativeBiFinanceReadinessPanel'
 
 function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
@@ -46,7 +48,7 @@ function riskLevel(r: FinanceArAging): { text: string; color: string } {
   return                                       { text: 'Bajo',  color: '#16A34A' }
 }
 
-type Tab = 'resumen' | 'ar' | 'ap' | 'risk' | 'tendencia' | 'resultados' | 'balance' | 'ebitda' | 'cuentas'
+type Tab = 'resumen' | 'ar' | 'ap' | 'risk' | 'tendencia' | 'resultados' | 'balance' | 'ebitda' | 'cuentas' | 'validaciones'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -56,15 +58,16 @@ function initPag(sortBy: string): PaginationParams {
 }
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: 'resumen',    label: 'Resumen' },
-  { id: 'ar',         label: 'Cuentas por cobrar' },
-  { id: 'ap',         label: 'Cuentas por pagar' },
-  { id: 'risk',       label: 'Riesgo +90d' },
-  { id: 'tendencia',  label: 'Tendencia' },
-  { id: 'resultados', label: 'Estado de Resultados' },
-  { id: 'balance',    label: 'Balance General' },
-  { id: 'ebitda',     label: 'EBITDA' },
-  { id: 'cuentas',    label: 'Plan de Cuentas' },
+  { id: 'resumen',      label: 'Resumen' },
+  { id: 'ar',           label: 'Cuentas por cobrar' },
+  { id: 'ap',           label: 'Cuentas por pagar' },
+  { id: 'risk',         label: 'Riesgo +90d' },
+  { id: 'tendencia',    label: 'Tendencia' },
+  { id: 'resultados',   label: 'Estado de Resultados' },
+  { id: 'balance',      label: 'Balance General' },
+  { id: 'ebitda',       label: 'EBITDA' },
+  { id: 'cuentas',      label: 'Plan de Cuentas' },
+  { id: 'validaciones', label: 'Validaciones' },
 ]
 
 const FINANCE_FILTER_DEFS: NativeBiFilterDefinition[] = [
@@ -185,6 +188,7 @@ export default function FinanceDashboardPage() {
   const { data: bsData  } = useBiBalanceSheet()
   const { data: ebData,  isLoading: loadingEb  } = useBiEbitda(24)
   const { data: coaData } = useBiChartOfAccounts(false)
+  const { data: valData, isLoading: loadingVal, isError: valError } = useBiFinanceValidations()
 
   const latest      = execData && execData.length > 0 ? execData[execData.length - 1] : null
   const totalArOv   = execData?.reduce((s, d) => s + d.arOverdue, 0) ?? 0
@@ -473,6 +477,19 @@ export default function FinanceDashboardPage() {
             />
           ) : (
             <div style={{ padding: '16px 20px' }}>
+              {/* Executive header */}
+              <div style={{ marginBottom: 20 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-text)', marginBottom: 4 }}>
+                  Finanzas — Vista ejecutiva
+                </h2>
+                <p style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
+                  Posición financiera neta, riesgo de cartera y tendencia de flujo
+                </p>
+              </div>
+
+              {/* Readiness panel — only visible when MART data is incomplete */}
+              <NativeBiFinanceReadinessPanel />
+
               {/* Secondary KPIs */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
                 {[
@@ -1073,6 +1090,118 @@ export default function FinanceDashboardPage() {
             </div>
           )
         )}
+
+        {/* ── Validaciones ────────────────────────────────────────────────── */}
+        {tab === 'validaciones' && (
+          loadingVal ? (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-muted)', fontSize: 13 }}>Cargando validaciones…</div>
+          ) : valError || !valData ? (
+            <div style={{ padding: 40, textAlign: 'center' }}>
+              <p style={{ fontSize: 13.5, color: 'var(--c-text-muted)', marginBottom: 8 }}>No se pudieron cargar las validaciones.</p>
+              <p style={{ fontSize: 12, color: 'var(--c-text-faint)' }}>Verifique que la base de datos de staging está disponible y que la empresa tiene datos contables.</p>
+            </div>
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              {/* Health Score KPI Row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+                {[
+                  {
+                    label: 'Health Score',
+                    value: `${valData.healthScore}/100`,
+                    color: valData.healthScore >= 80 ? '#16A34A' : valData.healthScore >= 50 ? '#D97706' : '#DC2626',
+                    sub: valData.healthStatus === 'ok' ? 'Sin problemas críticos' : valData.healthStatus === 'warning' ? 'Requiere revisión' : 'Atención inmediata',
+                  },
+                  { label: 'Issues críticos',   value: String(valData.criticalIssues), color: valData.criticalIssues > 0 ? '#DC2626' : '#16A34A', sub: '' },
+                  { label: 'Issues warning',    value: String(valData.warningIssues),  color: valData.warningIssues  > 0 ? '#D97706' : '#16A34A', sub: '' },
+                  { label: 'Cuentas sin clas.', value: String(valData.unclassifiedAccounts), color: valData.unclassifiedAccounts > 0 ? '#D97706' : '#16A34A', sub: 'Postables' },
+                ].map((k) => (
+                  <div key={k.label} className="db-stat-card">
+                    <span className="db-stat-label">{k.label}</span>
+                    <span className="db-stat-value" style={{ fontSize: 22, fontVariantNumeric: 'tabular-nums', color: k.color }}>{k.value}</span>
+                    {k.sub && <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>{k.sub}</span>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Last period + orphan info */}
+              <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap', fontSize: 13, color: 'var(--c-text-muted)' }}>
+                <span>Último período: <strong style={{ color: 'var(--c-text)' }}>{valData.lastPeriodValidated ?? 'Sin datos'}</strong></span>
+                <span>·</span>
+                <span>Líneas huérfanas: <strong style={{ color: valData.orphanJournalLines > 100 ? '#D97706' : 'var(--c-text)' }}>{valData.orphanJournalLines}</strong></span>
+              </div>
+
+              {/* Issues list */}
+              {valData.issues.length === 0 ? (
+                <div style={{ padding: '24px', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, marginBottom: 20 }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#15803D', marginBottom: 4 }}>Sin issues detectados</p>
+                  <p style={{ fontSize: 13, color: '#166534' }}>Los datos contables superan todas las validaciones automáticas.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+                  {valData.issues.map((issue, i) => {
+                    const sevColors: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+                      critical: { bg: '#FEF2F2', border: '#FECACA', text: '#991B1B', badge: '#DC2626' },
+                      warning:  { bg: '#FFFBEB', border: '#FDE68A', text: '#92400E', badge: '#D97706' },
+                      info:     { bg: '#EFF6FF', border: '#BFDBFE', text: '#1E40AF', badge: '#2563EB' },
+                    }
+                    const s = sevColors[issue.severity] ?? sevColors.info
+                    return (
+                      <div key={i} style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, borderRadius: 8, padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                          <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: 4, backgroundColor: s.badge, color: '#fff', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                            {issue.severity}
+                          </span>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: s.text }}>{issue.title}</span>
+                          {issue.count > 1 && (
+                            <span style={{ marginLeft: 'auto', fontSize: 12, color: s.text, fontVariantNumeric: 'tabular-nums' }}>({issue.count})</span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: 13, color: s.text, margin: 0 }}>{issue.description}</p>
+                        {issue.period && (
+                          <p style={{ fontSize: 12, color: s.text, opacity: 0.7, marginTop: 4 }}>Período: {issue.period}</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Balance reconciliation */}
+              {valData.reconciliation && (
+                <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 16px', backgroundColor: 'var(--c-surface-subtle, #F8FAFC)', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>
+                      Conciliación del Balance — {valData.reconciliation.snapshotDate ?? 'Sin fecha'}
+                    </span>
+                    <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4,
+                      backgroundColor: valData.reconciliation.isBalanced ? '#F0FDF4' : '#FEF2F2',
+                      color: valData.reconciliation.isBalanced ? '#15803D' : '#991B1B',
+                      fontWeight: 600,
+                    }}>
+                      {valData.reconciliation.isBalanced ? 'Cuadra' : 'Desbalance'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
+                    {[
+                      { label: 'Total Activos',   value: valData.reconciliation.totalAssets },
+                      { label: 'Total Pasivos',    value: valData.reconciliation.totalLiabilities },
+                      { label: 'Patrimonio',       value: valData.reconciliation.totalEquity },
+                      { label: 'Desbalance',       value: valData.reconciliation.imbalance, highlight: valData.reconciliation.imbalance > 0.01 },
+                    ].map((k, i) => (
+                      <div key={i} style={{ padding: '12px 16px', borderRight: i < 3 ? '1px solid var(--c-border)' : 'none' }}>
+                        <div style={{ fontSize: 11.5, color: 'var(--c-text-muted)', marginBottom: 4 }}>{k.label}</div>
+                        <div style={{ fontSize: 16, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: k.highlight ? '#DC2626' : 'var(--c-text)' }}>
+                          {fmtAmt(k.value)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        )}
+
       </div>
     </div>
   )

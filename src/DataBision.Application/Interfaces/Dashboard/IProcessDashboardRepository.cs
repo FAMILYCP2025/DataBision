@@ -36,4 +36,10 @@ public interface IProcessDashboardRepository
     Task<OperationHealthDto?> GetPipelineHealthAsync(string companyId, CancellationToken ct = default);
     Task<IReadOnlyList<OperationAlertDto>> GetActiveAlertsAsync(string companyId, PaginationOptions p, CancellationToken ct = default);
     Task<IReadOnlyList<OperationDataQualityDto>> GetDataQualityIssuesAsync(string companyId, PaginationOptions p, CancellationToken ct = default);
+
+    // FINANCE — VALIDATION (Sprint 14C)
+    Task<FinanceValidationSummaryDto> GetFinanceValidationsAsync(string companyId, CancellationToken ct = default);
+
+    // FINANCE — READINESS (Sprint 14E)
+    Task<FinanceReadinessDto> GetFinanceReadinessAsync(string companyId, CancellationToken ct = default);
 }

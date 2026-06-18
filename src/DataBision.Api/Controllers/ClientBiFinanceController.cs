@@ -128,4 +128,28 @@ public sealed class ClientBiFinanceController(
         var result = await svc.GetChartOfAccountsAsync(ctx.CompanyId!, postableOnly, ct);
         return this.OkData(result);
     }
+
+    // GET /api/client/bi/finance/validations
+    // Returns financial health score, issues, and balance reconciliation.
+    [HttpGet("validations")]
+    public async Task<IActionResult> GetValidations(CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        var result = await svc.GetFinanceValidationsAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
+    }
+
+    // GET /api/client/bi/finance/readiness
+    // Returns layer-by-layer row counts and readiness status (blocked/warning/ready).
+    [HttpGet("readiness")]
+    public async Task<IActionResult> GetReadiness(CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        var result = await svc.GetFinanceReadinessAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
+    }
 }

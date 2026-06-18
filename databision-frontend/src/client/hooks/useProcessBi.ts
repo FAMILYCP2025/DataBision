@@ -192,3 +192,21 @@ export function useBiChartOfAccounts(postableOnly = false) {
     staleTime: 15 * 60_000,
   })
 }
+
+export function useBiFinanceReadiness() {
+  return useQuery({
+    queryKey: ['pb-finance-readiness'],
+    queryFn: () => pbApi.getBiFinanceReadiness(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+}
+
+export function useBiFinanceValidations() {
+  return useQuery({
+    queryKey: ['pb-finance-validations'],
+    queryFn: () => pbApi.getBiFinanceValidations(),
+    staleTime: 10 * 60_000,
+    retry: false,
+  })
+}

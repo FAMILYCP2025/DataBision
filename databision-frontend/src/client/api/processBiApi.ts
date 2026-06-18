@@ -20,6 +20,8 @@ import type {
   BalanceSheetSnapshot,
   EbitdaPeriod,
   ChartOfAccountEntry,
+  FinanceReadiness,
+  FinanceValidationSummary,
   OperationHealth,
   OperationAlert,
   OperationDataQuality,
@@ -214,6 +216,22 @@ export async function getBiChartOfAccounts(
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<ChartOfAccountEntry[]>>(
     `/client/bi/finance/chart-of-accounts${nbQs({ companyId: tenant, postableOnly })}`
+  )
+  return data.data
+}
+
+export async function getBiFinanceReadiness(): Promise<FinanceReadiness> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<FinanceReadiness>>(
+    `/client/bi/finance/readiness${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+export async function getBiFinanceValidations(): Promise<FinanceValidationSummary> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<FinanceValidationSummary>>(
+    `/client/bi/finance/validations${nbQs({ companyId: tenant })}`
   )
   return data.data
 }

@@ -892,6 +892,275 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         return rows.ToList();
     }
 
+    // ── FINANCE VALIDATION (Sprint 14C) ──────────────────────────────────────
+
+    public async Task<FinanceValidationSummaryDto> GetFinanceValidationsAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+
+        // 1. Last period available in income statement
+        var lastPeriod = await conn.QueryFirstOrDefaultAsync<(int? year, int? month)>(
+            new CommandDefinition(
+                """
+                SELECT MAX(period_year) AS year, MAX(period_month) AS month
+                FROM mart.income_statement_summary
+                WHERE company_id = @company_id
+                """,
+                new { company_id = companyId }, cancellationToken: ct));
+
+        // 2. Unclassified postable accounts in mart.gl_accounts
+        var unclassified = await conn.QueryFirstOrDefaultAsync<int>(
+            new CommandDefinition(
+                """
+                SELECT COUNT(*)::INT FROM mart.gl_accounts
+                WHERE company_id = @company_id
+                  AND postable = TRUE
+                  AND (statement_line IS NULL OR statement_line = 'unclassified')
+                """,
+                new { company_id = companyId }, cancellationToken: ct));
+
+        // 3. Balance imbalance from latest snapshot
+        var balRow = await conn.QueryFirstOrDefaultAsync<BalanceCheckRow>(
+            new CommandDefinition(
+                """
+                SELECT
+                    snapshot_date::TEXT AS snapshot_date,
+                    SUM(CASE WHEN category IN ('current_assets','non_current_assets')       THEN amount ELSE 0 END) AS total_assets,
+                    SUM(CASE WHEN category IN ('current_liabilities','non_current_liabilities') THEN amount ELSE 0 END) AS total_liabilities,
+                    SUM(CASE WHEN category = 'equity' THEN amount ELSE 0 END) AS total_equity
+                FROM mart.balance_sheet_summary
+                WHERE company_id  = @company_id
+                  AND snapshot_date = (SELECT MAX(snapshot_date) FROM mart.balance_sheet_summary WHERE company_id = @company_id)
+                GROUP BY snapshot_date
+                """,
+                new { company_id = companyId }, cancellationToken: ct));
+
+        // 4. Orphan journal lines (jdt1 rows with no matching ojdt)
+        var orphanLines = await conn.QueryFirstOrDefaultAsync<int>(
+            new CommandDefinition(
+                """
+                SELECT COUNT(*)::INT
+                FROM stg.sap_jdt1 j
+                WHERE j.company_id = @company_id
+                  AND NOT EXISTS (
+                      SELECT 1 FROM stg.sap_ojdt o
+                      WHERE o.company_id = j.company_id
+                        AND o."TransId"  = j."TransId"
+                  )
+                """,
+                new { company_id = companyId }, cancellationToken: ct));
+
+        // 5. Negative revenue periods
+        var negativeRevenue = await conn.QueryFirstOrDefaultAsync<int>(
+            new CommandDefinition(
+                """
+                SELECT COUNT(*)::INT
+                FROM mart.income_statement_summary
+                WHERE company_id   = @company_id
+                  AND statement_line = 'revenue'
+                  AND amount < 0
+                """,
+                new { company_id = companyId }, cancellationToken: ct));
+
+        // 6. Income statement rows total (to detect no-data state)
+        var incomeRows = await conn.QueryFirstOrDefaultAsync<int>(
+            new CommandDefinition(
+                "SELECT COUNT(*)::INT FROM mart.income_statement_summary WHERE company_id = @company_id",
+                new { company_id = companyId }, cancellationToken: ct));
+
+        // ── Build issues list ─────────────────────────────────────────────────
+
+        var issues = new List<FinanceValidationIssueDto>();
+
+        if (incomeRows == 0)
+        {
+            issues.Add(new FinanceValidationIssueDto
+            {
+                Severity    = "critical",
+                IssueType   = "no_data",
+                Title       = "Sin datos contables",
+                Description = "No hay períodos en mart.income_statement_summary. Verifique que OACT/OJDT fueron extraídos y que se ejecutó refresh_accounting_all.",
+                Count       = 0,
+            });
+        }
+
+        if (unclassified > 0)
+        {
+            issues.Add(new FinanceValidationIssueDto
+            {
+                Severity    = unclassified > 10 ? "critical" : "warning",
+                IssueType   = "unclassified_accounts",
+                Title       = $"{unclassified} cuentas sin clasificar",
+                Description = "Cuentas postables en mart.gl_accounts con statement_line = 'unclassified' o NULL. Clasifíquelas en SuperAdmin → Native BI → Clasificación Contable.",
+                Count       = unclassified,
+            });
+        }
+
+        if (balRow is not null)
+        {
+            var imbalance = Math.Abs(balRow.TotalAssets - balRow.TotalLiabilities - balRow.TotalEquity);
+            if (imbalance > 0.01m)
+            {
+                issues.Add(new FinanceValidationIssueDto
+                {
+                    Severity    = imbalance > 1000 ? "critical" : "warning",
+                    IssueType   = "balance_imbalance",
+                    Title       = $"Balance desbalanceado: {imbalance:N2}",
+                    Description = "Activos ≠ Pasivos + Patrimonio. Verifique clasificación de cuentas de balance y re-ejecute el ETL.",
+                    Count       = 1,
+                    Period      = balRow.SnapshotDate,
+                });
+            }
+        }
+
+        if (orphanLines > 0)
+        {
+            issues.Add(new FinanceValidationIssueDto
+            {
+                Severity    = orphanLines > 100 ? "warning" : "info",
+                IssueType   = "orphan_lines",
+                Title       = $"{orphanLines} líneas de diario huérfanas",
+                Description = "Líneas en stg.sap_jdt1 sin cabecera en stg.sap_ojdt. Puede indicar extracción incompleta.",
+                Count       = orphanLines,
+            });
+        }
+
+        if (negativeRevenue > 0)
+        {
+            issues.Add(new FinanceValidationIssueDto
+            {
+                Severity    = "warning",
+                IssueType   = "negative_revenue",
+                Title       = $"{negativeRevenue} período(s) con revenue negativo",
+                Description = "El importe de 'revenue' es negativo en algunos períodos. Verifique el signo de las cuentas de ingreso.",
+                Count       = negativeRevenue,
+            });
+        }
+
+        // ── Health score (100 - deductions) ──────────────────────────────────
+
+        var score = 100;
+        if (incomeRows == 0)         score -= 50;
+        if (unclassified > 10)       score -= 30;
+        else if (unclassified > 0)   score -= 10;
+        var bal = balRow is not null ? Math.Abs(balRow.TotalAssets - balRow.TotalLiabilities - balRow.TotalEquity) : 0m;
+        if (bal > 1000)              score -= 20;
+        else if (bal > 0.01m)        score -= 5;
+        if (orphanLines > 100)       score -= 10;
+        if (negativeRevenue > 0)     score -= 5;
+        score = Math.Max(0, score);
+
+        var critical = issues.Count(i => i.Severity == "critical");
+        var warning  = issues.Count(i => i.Severity == "warning");
+        var info     = issues.Count(i => i.Severity == "info");
+
+        var healthStatus = critical > 0 ? "critical" : warning > 0 ? "warning" : "ok";
+
+        FinanceReconciliationDto? reconciliation = null;
+        if (balRow is not null)
+        {
+            var imb = balRow.TotalAssets - balRow.TotalLiabilities - balRow.TotalEquity;
+            reconciliation = new FinanceReconciliationDto
+            {
+                SnapshotDate     = balRow.SnapshotDate,
+                TotalAssets      = balRow.TotalAssets,
+                TotalLiabilities = balRow.TotalLiabilities,
+                TotalEquity      = balRow.TotalEquity,
+                Imbalance        = Math.Abs(imb),
+                IsBalanced       = Math.Abs(imb) <= 0.01m,
+            };
+        }
+
+        return new FinanceValidationSummaryDto
+        {
+            HealthScore          = score,
+            HealthStatus         = healthStatus,
+            CriticalIssues       = critical,
+            WarningIssues        = warning,
+            InfoIssues           = info,
+            LastPeriodValidated  = lastPeriod.year.HasValue ? $"{lastPeriod.year:D4}-{lastPeriod.month:D2}" : null,
+            BalanceImbalance     = reconciliation?.Imbalance ?? 0,
+            UnclassifiedAccounts = unclassified,
+            OrphanJournalLines   = orphanLines,
+            Issues               = issues,
+            Reconciliation       = reconciliation,
+        };
+    }
+
+    // ── FINANCE READINESS (Sprint 14E) ───────────────────────────────────────
+
+    public async Task<FinanceReadinessDto> GetFinanceReadinessAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+
+        static Task<int> Count(Npgsql.NpgsqlConnection c, string sql, string cid, CancellationToken token)
+            => c.QueryFirstOrDefaultAsync<int>(new Dapper.CommandDefinition(sql, new { company_id = cid }, cancellationToken: token));
+
+        // Parallel counts from each layer
+        var rawOact = await Count(conn,
+            "SELECT COUNT(*)::INT FROM raw.sap_oact   WHERE company_id = @company_id", companyId, ct);
+        var rawOjdt = await Count(conn,
+            "SELECT COUNT(*)::INT FROM raw.sap_ojdt   WHERE company_id = @company_id", companyId, ct);
+        var rawJdt1 = await Count(conn,
+            "SELECT COUNT(*)::INT FROM raw.sap_jdt1   WHERE company_id = @company_id", companyId, ct);
+        var stgOact = await Count(conn,
+            "SELECT COUNT(*)::INT FROM stg.sap_oact   WHERE company_id = @company_id", companyId, ct);
+        var stgOjdt = await Count(conn,
+            "SELECT COUNT(*)::INT FROM stg.sap_ojdt   WHERE company_id = @company_id", companyId, ct);
+        var stgJdt1 = await Count(conn,
+            "SELECT COUNT(*)::INT FROM stg.sap_jdt1   WHERE company_id = @company_id", companyId, ct);
+        var martGl = await Count(conn,
+            "SELECT COUNT(*)::INT FROM mart.gl_accounts WHERE company_id = @company_id", companyId, ct);
+        var martIs = await Count(conn,
+            "SELECT COUNT(*)::INT FROM mart.income_statement_summary WHERE company_id = @company_id", companyId, ct);
+        var martBs = await Count(conn,
+            "SELECT COUNT(*)::INT FROM mart.balance_sheet_summary    WHERE company_id = @company_id", companyId, ct);
+        var martEb = await Count(conn,
+            "SELECT COUNT(*)::INT FROM mart.ebitda_summary           WHERE company_id = @company_id", companyId, ct);
+        var clsRules = await Count(conn,
+            "SELECT COUNT(*)::INT FROM cfg.account_classification_rules WHERE company_id = @company_id", companyId, ct);
+        var unclassified = await Count(conn,
+            "SELECT COUNT(*)::INT FROM mart.gl_accounts WHERE company_id = @company_id AND postable = TRUE AND (statement_line IS NULL OR statement_line = 'unclassified')", companyId, ct);
+
+        // Determine readiness
+        var blocking = new List<string>();
+        var warnings = new List<string>();
+
+        if (rawOact == 0)    blocking.Add("OACT no extraído — ejecutar extractor con --object OACT");
+        if (rawOjdt == 0)    blocking.Add("OJDT no extraído — ejecutar extractor con --object OJDT");
+        if (rawJdt1 == 0)    blocking.Add("JDT1 no extraído — ejecutar extractor con --object JDT1");
+        if (martGl   == 0)   blocking.Add("mart.gl_accounts vacía — ejecutar mart.refresh_accounting_all()");
+        if (martIs   == 0)   blocking.Add("mart.income_statement_summary vacía — ejecutar mart.refresh_accounting_all()");
+        if (clsRules == 0)   warnings.Add("Sin reglas de clasificación contable — configure en SuperAdmin → Native BI");
+        if (unclassified > 0) warnings.Add($"{unclassified} cuenta(s) postable(s) sin clasificar — revisar con contador");
+        if (martBs   == 0 && rawOact > 0) warnings.Add("mart.balance_sheet_summary vacía — re-ejecutar refresh_accounting_all()");
+
+        var status = blocking.Count > 0 ? "blocked" : warnings.Count > 0 ? "warning" : "ready";
+
+        return new FinanceReadinessDto
+        {
+            RawOactCount         = rawOact,
+            RawOjdtCount         = rawOjdt,
+            RawJdt1Count         = rawJdt1,
+            StgOactCount         = stgOact,
+            StgOjdtCount         = stgOjdt,
+            StgJdt1Count         = stgJdt1,
+            MartGlAccounts       = martGl,
+            MartIncomeStatement  = martIs,
+            MartBalanceSheet     = martBs,
+            MartEbitda           = martEb,
+            ClassificationRules  = clsRules,
+            UnclassifiedPostable = unclassified,
+            ReadinessStatus      = status,
+            BlockingReasons      = blocking,
+            Warnings             = warnings,
+        };
+    }
+
     // ── Private row types (Dapper mapping targets) ────────────────────────────
 
     private sealed class SalesCustomerDashboardRow
@@ -1084,5 +1353,13 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         public decimal FinancialResult  { get; init; }
         public decimal TaxResult        { get; init; }
         public decimal NetIncome        { get; init; }
+    }
+
+    private sealed class BalanceCheckRow
+    {
+        public string?  SnapshotDate     { get; init; }
+        public decimal  TotalAssets      { get; init; }
+        public decimal  TotalLiabilities { get; init; }
+        public decimal  TotalEquity      { get; init; }
     }
 }

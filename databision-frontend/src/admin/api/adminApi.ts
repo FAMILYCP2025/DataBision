@@ -254,3 +254,81 @@ export async function upsertNativeBiDimension(
   )
   return data.data
 }
+
+// ── Account Classification Rules ───────────────────────────────────────────────
+
+export const STATEMENT_LINES = [
+  'revenue', 'cogs', 'opex', 'other_income', 'other_expense',
+  'financial', 'tax', 'depreciation', 'amortization',
+  'current_assets', 'non_current_assets',
+  'current_liabilities', 'non_current_liabilities',
+  'equity', 'unclassified',
+] as const
+
+export type StatementLine = typeof STATEMENT_LINES[number]
+
+export interface AccountClassificationRule {
+  id: number
+  companyId: string
+  accountCode: string | null
+  formatCode: string | null
+  statementLine: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpsertAccountClassificationRule {
+  accountCode?: string | null
+  formatCode?: string | null
+  statementLine: string
+}
+
+export interface AccountClassificationTemplateSuggestion {
+  accountCode: string | null
+  formatCode: string | null
+  suggestedStatementLine: string
+  accountType: string
+  accountName: string | null
+  reason: string
+}
+
+export async function getAccountClassificationRules(companyId: number): Promise<AccountClassificationRule[]> {
+  const { data } = await api.get<ApiResponse<AccountClassificationRule[]>>(
+    `/admin/companies/${companyId}/native-bi/account-classification-rules`
+  )
+  return data.data
+}
+
+export async function createAccountClassificationRule(
+  companyId: number,
+  payload: UpsertAccountClassificationRule
+): Promise<AccountClassificationRule> {
+  const { data } = await api.post<ApiResponse<AccountClassificationRule>>(
+    `/admin/companies/${companyId}/native-bi/account-classification-rules`,
+    payload
+  )
+  return data.data
+}
+
+export async function updateAccountClassificationRule(
+  companyId: number,
+  ruleId: number,
+  payload: UpsertAccountClassificationRule
+): Promise<AccountClassificationRule> {
+  const { data } = await api.put<ApiResponse<AccountClassificationRule>>(
+    `/admin/companies/${companyId}/native-bi/account-classification-rules/${ruleId}`,
+    payload
+  )
+  return data.data
+}
+
+export async function deleteAccountClassificationRule(companyId: number, ruleId: number): Promise<void> {
+  await api.delete(`/admin/companies/${companyId}/native-bi/account-classification-rules/${ruleId}`)
+}
+
+export async function getAccountClassificationTemplate(companyId: number): Promise<AccountClassificationTemplateSuggestion[]> {
+  const { data } = await api.post<{ data: AccountClassificationTemplateSuggestion[] }>(
+    `/admin/companies/${companyId}/native-bi/account-classification-rules/import-template`
+  )
+  return data.data
+}

@@ -88,6 +88,10 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
     builder.Services.AddScoped<IFilterOptionsRepository>(_ =>
         new FilterOptionsRepository(stagingConnectionString));
     builder.Services.AddScoped<IFilterOptionsService, FilterOptionsService>();
+
+    // Account classification rules (cfg.account_classification_rules in staging DB)
+    builder.Services.AddScoped<IAccountClassificationService>(_ =>
+        new AccountClassificationRepository(stagingConnectionString));
 }
 
 // Analytics company ID resolver (maps app slug → staging company_id for Native BI queries)
