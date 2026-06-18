@@ -112,6 +112,7 @@ builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IModuleService, ModuleService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<INativeBiAdminConfigService, NativeBiAdminConfigService>();
 
 // Seeder
 builder.Services.AddScoped<DatabaseSeeder>();

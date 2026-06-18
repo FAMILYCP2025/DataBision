@@ -8,6 +8,10 @@ import {
   useBiFinanceExecutive,
   useBiFinanceArAging,
   useBiFinanceApAging,
+  useBiIncomeStatement,
+  useBiBalanceSheet,
+  useBiEbitda,
+  useBiChartOfAccounts,
 } from '../hooks/useProcessBi'
 import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
 import type { FinanceArAging, FinanceApAging } from '../types/processBi'
@@ -173,6 +177,14 @@ export default function FinanceDashboardPage() {
   const { data: execData, isLoading: loadingExec, error: execErr, refetch: refetchExec } = useBiFinanceExecutive(30)
   const { data: arData,   isLoading: loadingAr } = useBiFinanceArAging(arP)
   const { data: apData,   isLoading: loadingAp } = useBiFinanceApAging(apP)
+
+  const { data: isData,  isLoading: loadingIs  } = useBiIncomeStatement({
+    year:  filters.year  ? Number(filters.year)  : undefined,
+    month: filters.month ? Number(filters.month) : undefined,
+  })
+  const { data: bsData  } = useBiBalanceSheet()
+  const { data: ebData,  isLoading: loadingEb  } = useBiEbitda(24)
+  const { data: coaData } = useBiChartOfAccounts(false)
 
   const latest      = execData && execData.length > 0 ? execData[execData.length - 1] : null
   const totalArOv   = execData?.reduce((s, d) => s + d.arOverdue, 0) ?? 0
@@ -753,54 +765,313 @@ export default function FinanceDashboardPage() {
 
         {/* ── Estado de Resultados ─────────────────────────────────────────── */}
         {tab === 'resultados' && (
-          <FinancialDataPending
-            title="Estado de Resultados"
-            description="Reporte de ingresos, costos, gastos operacionales, EBITDA y utilidad neta por período. Requiere que el pipeline ETL procese las partidas contables del libro diario SAP B1."
-            requiredTables={[
-              'mart.gl_accounts         — Plan de cuentas SAP B1 (OACT)',
-              'mart.journal_entries     — Partidas contables (OJDT + JDT1)',
-              'mart.financial_periods   — Períodos fiscales',
-            ]}
-          />
+          !isData || isData.length === 0 ? (
+            <FinancialDataPending
+              title="Estado de Resultados"
+              description="Requiere extracción y transformación del libro diario SAP B1. Ejecutar: dotnet run -- --object OACT --send && --object OJDT --send, luego SELECT * FROM mart.refresh_accounting_all('company-id')."
+              requiredTables={[
+                'mart.income_statement_summary — Vacía: ejecutar refresh_accounting_all()',
+                'cfg.account_classification_rules — Poblar con clasificación por empresa',
+              ]}
+            />
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              {/* KPI Row */}
+              {(() => {
+                const latest = isData[isData.length - 1]
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+                    {[
+                      { label: 'Ingresos', value: fmtAmt(latest.revenue), highlight: false },
+                      { label: 'Utilidad bruta', value: fmtAmt(latest.grossProfit), sub: `${latest.grossProfitPct.toFixed(1)}% margen`, highlight: false },
+                      { label: 'EBIT', value: fmtAmt(latest.operatingIncome), sub: `${latest.operatingPct.toFixed(1)}% margen`, highlight: false },
+                      { label: 'Utilidad neta', value: fmtAmt(latest.netIncome), sub: `${latest.netPct.toFixed(1)}% margen`, highlight: latest.netIncome < 0 },
+                    ].map((k) => (
+                      <div key={k.label} className="db-stat-card">
+                        <span className="db-stat-label">{k.label}</span>
+                        <span className="db-stat-value" style={{ fontSize: 18, fontVariantNumeric: 'tabular-nums', color: k.highlight ? '#DC2626' : 'inherit' }}>
+                          {k.value}
+                        </span>
+                        {k.sub && <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>{k.sub}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+              {/* Trend chart */}
+              {isData.length > 1 && (
+                <div style={{ marginBottom: 20 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>Tendencia mensual</p>
+                  <NbAreaChart
+                    series={[
+                      { name: 'Ingresos',       data: isData.map((d) => ({ name: `${d.periodYear}-${String(d.periodMonth).padStart(2,'0')}`, value: d.revenue })),        color: '#2563EB' },
+                      { name: 'Costo de ventas',data: isData.map((d) => ({ name: `${d.periodYear}-${String(d.periodMonth).padStart(2,'0')}`, value: d.cogs })),           color: '#DC2626' },
+                      { name: 'Utilidad neta',  data: isData.map((d) => ({ name: `${d.periodYear}-${String(d.periodMonth).padStart(2,'0')}`, value: d.netIncome })),     color: '#16A34A' },
+                    ]}
+                    height={200}
+                    loading={loadingIs}
+                    valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                  />
+                </div>
+              )}
+              {/* P&L detail table for latest period */}
+              <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
+                Detalle — {isData[isData.length - 1].periodYear}/{String(isData[isData.length - 1].periodMonth).padStart(2,'0')}
+              </p>
+              <div className="nb-table-scroll">
+                <table className="db-table" style={{ fontSize: 13 }}>
+                  <thead>
+                    <tr><th>Línea</th><th style={{ textAlign: 'right' }}>Monto</th><th style={{ textAlign: 'right' }}>% Ingreso</th></tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { key: 'revenue',      label: 'Ingresos',             bold: true  },
+                      { key: 'cogs',         label: 'Costo de ventas',      bold: false },
+                      { key: 'gross_profit', label: 'Utilidad bruta',       bold: true, computed: true },
+                      { key: 'opex',         label: 'Gastos operacionales', bold: false },
+                      { key: 'operating',    label: 'EBIT',                 bold: true, computed: true },
+                      { key: 'financial',    label: 'Res. financiero',      bold: false },
+                      { key: 'tax',          label: 'Impuesto',             bold: false },
+                      { key: 'net',          label: 'Utilidad neta',        bold: true, computed: true },
+                    ].map(({ key, label, bold, computed }) => {
+                      const d = isData[isData.length - 1]
+                      const amounts: Record<string, number> = {
+                        revenue: d.revenue, cogs: d.cogs, gross_profit: d.grossProfit,
+                        opex: d.opex, operating: d.operatingIncome,
+                        financial: d.financial, tax: d.tax, net: d.netIncome,
+                      }
+                      const pcts: Record<string, number> = {
+                        revenue: 100, cogs: d.grossProfitPct > 0 ? 100 - d.grossProfitPct : 0,
+                        gross_profit: d.grossProfitPct, opex: d.revenue > 0 ? d.opex / d.revenue * 100 : 0,
+                        operating: d.operatingPct, financial: d.revenue > 0 ? d.financial / d.revenue * 100 : 0,
+                        tax: d.revenue > 0 ? d.tax / d.revenue * 100 : 0, net: d.netPct,
+                      }
+                      const amt = amounts[key] ?? 0
+                      return (
+                        <tr key={key} style={{ background: computed ? '#F8FAFC' : undefined }}>
+                          <td style={{ fontWeight: bold ? 600 : 400, paddingLeft: computed ? 8 : 24 }}>{label}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: bold ? 600 : 400, color: amt < 0 ? '#DC2626' : 'inherit' }}>
+                            {fmtAmt(amt)}
+                          </td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-text-muted)', fontSize: 12.5 }}>
+                            {(pcts[key] ?? 0).toFixed(1)}%
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         )}
 
         {/* ── Balance General ──────────────────────────────────────────────── */}
         {tab === 'balance' && (
-          <FinancialDataPending
-            title="Balance General"
-            description="Estado de situación financiera: activos, pasivos y patrimonio neto. Muestra la posición financiera consolidada al cierre del período."
-            requiredTables={[
-              'mart.gl_accounts         — Plan de cuentas con clasificación BS/PL',
-              'mart.journal_entries     — Movimientos para saldos acumulados',
-              'mart.balance_snapshot    — Saldos de cuenta por período (opcional)',
-            ]}
-          />
+          !bsData || bsData.length === 0 ? (
+            <FinancialDataPending
+              title="Balance General"
+              description="Requiere extracción y transformación del libro diario SAP B1, más clasificación de cuentas en cfg.account_classification_rules con statement_line de balance sheet."
+              requiredTables={[
+                'mart.balance_sheet_summary — Vacía: ejecutar refresh_accounting_all()',
+                'cfg.account_classification_rules — Debe incluir current_assets, current_liabilities, equity, etc.',
+              ]}
+            />
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              {(() => {
+                const snap = bsData[0]
+                const imbalanceOk = Math.abs(snap.imbalance) < 1
+                return (
+                  <>
+                    {!imbalanceOk && (
+                      <div style={{ padding: '10px 14px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, fontSize: 13, color: '#991B1B', marginBottom: 16 }}>
+                        Desequilibrio detectado: activos − (pasivos + patrimonio) = <strong>{fmtAmt(snap.imbalance)}</strong>. Revisar clasificación de cuentas.
+                      </div>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+                      {[
+                        { label: 'Total activos',     value: fmtAmt(snap.totalAssets),      color: '#2563EB' },
+                        { label: 'Total pasivos',     value: fmtAmt(snap.totalLiabilities), color: '#DC2626' },
+                        { label: 'Patrimonio',        value: fmtAmt(snap.totalEquity),      color: '#16A34A' },
+                        { label: 'Fecha corte',       value: fmtDate(snap.snapshotDate),    color: 'inherit'  },
+                      ].map((k) => (
+                        <div key={k.label} className="db-stat-card">
+                          <span className="db-stat-label">{k.label}</span>
+                          <span className="db-stat-value" style={{ fontSize: 17, fontVariantNumeric: 'tabular-nums', color: k.color }}>
+                            {k.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="nb-table-scroll">
+                      <table className="db-table" style={{ fontSize: 13 }}>
+                        <thead>
+                          <tr><th>Categoría</th><th>Subcategoría</th><th style={{ textAlign: 'right' }}>Monto</th></tr>
+                        </thead>
+                        <tbody>
+                          {snap.entries.map((e, i) => {
+                            const catLabels: Record<string, string> = {
+                              current_assets: 'Activo circulante', non_current_assets: 'Activo fijo',
+                              current_liabilities: 'Pasivo circulante', non_current_liabilities: 'Pasivo largo plazo',
+                              equity: 'Patrimonio', unclassified: 'Sin clasificar',
+                            }
+                            return (
+                              <tr key={i}>
+                                <td style={{ fontWeight: 500 }}>{catLabels[e.category] ?? e.category}</td>
+                                <td style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{e.subCategory || '—'}</td>
+                                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: e.amount < 0 ? '#DC2626' : 'inherit' }}>
+                                  {fmtAmt(e.amount)}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          )
         )}
 
         {/* ── EBITDA / Rentabilidad ────────────────────────────────────────── */}
         {tab === 'ebitda' && (
-          <FinancialDataPending
-            title="EBITDA / Rentabilidad"
-            description="Análisis de rentabilidad operacional: EBITDA, margen bruto, margen operacional, margen neto y evolución trimestral."
-            requiredTables={[
-              'mart.gl_accounts         — Cuentas de resultado clasificadas',
-              'mart.journal_entries     — Base para cálculo de márgenes',
-              'mart.cost_centers        — Centros de costo (opcional, OPRC)',
-            ]}
-          />
+          !ebData || ebData.length === 0 ? (
+            <FinancialDataPending
+              title="EBITDA / Rentabilidad"
+              description="Requiere extracción del libro diario SAP B1 y clasificación de cuentas de resultado en cfg.account_classification_rules (revenue, cogs, opex, financial, tax)."
+              requiredTables={[
+                'mart.ebitda_summary — Vacía: ejecutar refresh_accounting_all()',
+                'cfg.account_classification_rules — Poblar con statement_line revenue/cogs/opex',
+              ]}
+            />
+          ) : (
+            <div style={{ padding: '16px 20px' }}>
+              {(() => {
+                const latest = ebData[ebData.length - 1]
+                return (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
+                      {[
+                        { label: 'Ingresos',       value: fmtAmt(latest.revenue),      sub: '' },
+                        { label: 'Margen bruto',   value: fmtAmt(latest.grossProfit),  sub: `${latest.ebitdaMargin.toFixed(1)}% EBITDA` },
+                        { label: 'EBITDA',         value: fmtAmt(latest.ebitda),       sub: `${latest.ebitdaMargin.toFixed(1)}% margen` },
+                        { label: 'Utilidad neta',  value: fmtAmt(latest.netIncome),    sub: `${latest.netMargin.toFixed(1)}% margen` },
+                      ].map((k) => (
+                        <div key={k.label} className="db-stat-card">
+                          <span className="db-stat-label">{k.label}</span>
+                          <span className="db-stat-value" style={{ fontSize: 17, fontVariantNumeric: 'tabular-nums' }}>{k.value}</span>
+                          {k.sub && <span style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>{k.sub}</span>}
+                        </div>
+                      ))}
+                    </div>
+                    {ebData.length > 1 && (
+                      <div style={{ marginBottom: 20 }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>Evolución EBITDA y Utilidad neta</p>
+                        <NbLineChart
+                          series={[
+                            { name: 'EBITDA',        data: ebData.map((d) => ({ name: `${d.periodYear}-${String(d.periodMonth).padStart(2,'0')}`, value: d.ebitda })),    color: '#2563EB' },
+                            { name: 'Utilidad neta', data: ebData.map((d) => ({ name: `${d.periodYear}-${String(d.periodMonth).padStart(2,'0')}`, value: d.netIncome })), color: '#16A34A' },
+                          ]}
+                          height={220}
+                          loading={loadingEb}
+                          valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                        />
+                      </div>
+                    )}
+                    <div className="nb-table-scroll">
+                      <table className="db-table" style={{ fontSize: 12.5 }}>
+                        <thead>
+                          <tr>
+                            <th>Período</th><th style={{ textAlign: 'right' }}>Ingresos</th>
+                            <th style={{ textAlign: 'right' }}>EBITDA</th><th style={{ textAlign: 'right' }}>% EBITDA</th>
+                            <th style={{ textAlign: 'right' }}>Ut. neta</th><th style={{ textAlign: 'right' }}>% Neto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...ebData].reverse().map((d, i) => (
+                            <tr key={i}>
+                              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{d.periodYear}/{String(d.periodMonth).padStart(2,'0')}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(d.revenue)}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: d.ebitda < 0 ? '#DC2626' : 'inherit' }}>{fmtAmt(d.ebitda)}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtPct(d.ebitdaMargin)}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: d.netIncome < 0 ? '#DC2626' : 'inherit' }}>{fmtAmt(d.netIncome)}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtPct(d.netMargin)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          )
         )}
 
         {/* ── Plan de Cuentas ──────────────────────────────────────────────── */}
         {tab === 'cuentas' && (
-          <FinancialDataPending
-            title="Plan de Cuentas"
-            description="Árbol jerárquico del plan de cuentas SAP B1 con saldos actuales, movimientos del período y clasificación por tipo (activo, pasivo, resultado)."
-            requiredTables={[
-              'mart.gl_accounts         — Maestro de cuentas (OACT)',
-              'mart.account_balances    — Saldos por cuenta y período',
-              'mart.journal_entries     — Detalle de movimientos por cuenta',
-            ]}
-          />
+          !coaData || coaData.length === 0 ? (
+            <FinancialDataPending
+              title="Plan de Cuentas"
+              description="Requiere extracción del maestro de cuentas SAP B1 (OACT). Ejecutar: dotnet run -- --object OACT --send, luego SELECT * FROM mart.refresh_accounting_all('company-id')."
+              requiredTables={[
+                'mart.gl_accounts — Vacía: ejecutar refresh_accounting_all()',
+                'mart.account_balances — Vacía: ejecutar refresh_accounting_all()',
+              ]}
+            />
+          ) : (
+            <div style={{ padding: '8px 0' }}>
+              <div style={{ padding: '8px 20px 0', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid var(--c-border)', paddingBottom: 12, marginBottom: 0 }}>
+                <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
+                  {coaData.length} cuentas — saldos acumulados (débitos − créditos)
+                </span>
+              </div>
+              <div className="nb-table-scroll">
+                <table className="db-table" style={{ fontSize: 12.5 }}>
+                  <thead>
+                    <tr>
+                      <th>Código</th><th>Nombre</th><th>Tipo</th><th>Clasificación</th>
+                      <th style={{ textAlign: 'right' }}>Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coaData.map((a) => {
+                      const stLabels: Record<string, string> = {
+                        revenue: 'Ingreso', cogs: 'Costo', opex: 'Gasto op.',
+                        current_assets: 'Act. cir.', non_current_assets: 'Act. fijo',
+                        current_liabilities: 'Pas. cir.', non_current_liabilities: 'Pas. L/P',
+                        equity: 'Patrimonio', financial: 'Financiero', tax: 'Impuesto',
+                        unclassified: '—',
+                      }
+                      const indent = (a.level ?? 0) * 12
+                      return (
+                        <tr key={a.code}>
+                          <td style={{ fontFamily: 'monospace', fontSize: 12, paddingLeft: 20 + indent }}>{a.code}</td>
+                          <td style={{ paddingLeft: indent, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {a.name ?? '—'}
+                          </td>
+                          <td style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>{a.accountType ?? '—'}</td>
+                          <td>
+                            {a.statementLine && (
+                              <span style={{ padding: '2px 7px', borderRadius: 4, backgroundColor: '#EFF6FF', color: '#1D4ED8', fontSize: 11.5, fontWeight: 500 }}>
+                                {stLabels[a.statementLine] ?? a.statementLine}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: a.balance < 0 ? '#DC2626' : 'inherit' }}>
+                            {fmtAmt(a.balance)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         )}
       </div>
     </div>

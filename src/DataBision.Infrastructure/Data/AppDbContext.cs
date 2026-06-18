@@ -15,6 +15,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     // EtlConfig excluded until Step 12 (ADF integration)
+    public DbSet<NativeBiFilterConfig> NativeBiFilterConfigs => Set<NativeBiFilterConfig>();
+    public DbSet<NativeBiItemUdfFilterConfig> NativeBiItemUdfFilterConfigs => Set<NativeBiItemUdfFilterConfig>();
+    public DbSet<NativeBiDimensionConfig> NativeBiDimensionConfigs => Set<NativeBiDimensionConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

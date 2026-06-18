@@ -16,6 +16,10 @@ import type {
   FinanceExecutive,
   FinanceArAging,
   FinanceApAging,
+  IncomeStatementPeriod,
+  BalanceSheetSnapshot,
+  EbitdaPeriod,
+  ChartOfAccountEntry,
   OperationHealth,
   OperationAlert,
   OperationDataQuality,
@@ -170,6 +174,48 @@ export async function getBiFinanceApAging(
     `/client/bi/finance/ap-aging${nbQs({ companyId: tenant, ...params })}`
   )
   return data
+}
+
+// ── Finance accounting (Sprint 13C–13E) ─────────────────────────────────────
+
+export async function getBiIncomeStatement(
+  params: { year?: number; month?: number } = {}
+): Promise<IncomeStatementPeriod[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<IncomeStatementPeriod[]>>(
+    `/client/bi/finance/income-statement${nbQs({ companyId: tenant, ...params })}`
+  )
+  return data.data
+}
+
+export async function getBiBalanceSheet(
+  snapshotDate?: string
+): Promise<BalanceSheetSnapshot[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<BalanceSheetSnapshot[]>>(
+    `/client/bi/finance/balance-sheet${nbQs({ companyId: tenant, snapshotDate })}`
+  )
+  return data.data
+}
+
+export async function getBiEbitda(
+  months = 12
+): Promise<EbitdaPeriod[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<EbitdaPeriod[]>>(
+    `/client/bi/finance/ebitda${nbQs({ companyId: tenant, months })}`
+  )
+  return data.data
+}
+
+export async function getBiChartOfAccounts(
+  postableOnly = false
+): Promise<ChartOfAccountEntry[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<ChartOfAccountEntry[]>>(
+    `/client/bi/finance/chart-of-accounts${nbQs({ companyId: tenant, postableOnly })}`
+  )
+  return data.data
 }
 
 // ── Operations process ────────────────────────────────────────────────────────

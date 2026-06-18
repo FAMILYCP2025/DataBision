@@ -158,3 +158,37 @@ export function useBiOperationsDataQuality(params: PaginationParams = {}) {
     placeholderData: keepPreviousData,
   })
 }
+
+// ── Finance accounting (Sprint 13C–13E) ─────────────────────────────────────
+
+export function useBiIncomeStatement(params: { year?: number; month?: number } = {}) {
+  return useQuery({
+    queryKey: ['pb-income-statement', params],
+    queryFn: () => pbApi.getBiIncomeStatement(params),
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useBiBalanceSheet(snapshotDate?: string) {
+  return useQuery({
+    queryKey: ['pb-balance-sheet', snapshotDate],
+    queryFn: () => pbApi.getBiBalanceSheet(snapshotDate),
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useBiEbitda(months = 12) {
+  return useQuery({
+    queryKey: ['pb-ebitda', months],
+    queryFn: () => pbApi.getBiEbitda(months),
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useBiChartOfAccounts(postableOnly = false) {
+  return useQuery({
+    queryKey: ['pb-chart-of-accounts', postableOnly],
+    queryFn: () => pbApi.getBiChartOfAccounts(postableOnly),
+    staleTime: 15 * 60_000,
+  })
+}

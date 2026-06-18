@@ -11,10 +11,16 @@ public interface IProcessDashboardService
     Task<IReadOnlyList<SalesItemGroupSummaryDto>> GetSalesItemGroupSummaryAsync(string companyId, NativeBiFilterDto? filters = null, CancellationToken ct = default);
     Task<IReadOnlyList<SalesWarehouseSummaryDto>> GetSalesWarehouseSummaryAsync(string companyId, NativeBiFilterDto? filters = null, CancellationToken ct = default);
 
-    // FINANCE
+    // FINANCE — AR/AP
     Task<IReadOnlyList<FinanceExecutiveDto>> GetFinanceExecutiveAsync(string companyId, int days, CancellationToken ct = default);
     Task<PagedResultDto<FinanceArAgingDto>> GetFinanceArAgingAsync(string companyId, PaginationOptions p, CancellationToken ct = default);
     Task<PagedResultDto<FinanceApAgingDto>> GetFinanceApAgingAsync(string companyId, PaginationOptions p, CancellationToken ct = default);
+
+    // FINANCE — ACCOUNTING (mart.* tables, Sprint 13C–13E)
+    Task<IReadOnlyList<IncomeStatementPeriodDto>> GetIncomeStatementAsync(string companyId, int? year, int? month, CancellationToken ct = default);
+    Task<IReadOnlyList<BalanceSheetSnapshotDto>>  GetBalanceSheetAsync(string companyId, string? snapshotDate, CancellationToken ct = default);
+    Task<IReadOnlyList<EbitdaPeriodDto>>          GetEbitdaAsync(string companyId, int months, CancellationToken ct = default);
+    Task<IReadOnlyList<ChartOfAccountEntryDto>>   GetChartOfAccountsAsync(string companyId, bool postableOnly, CancellationToken ct = default);
 
     // INVENTORY
     Task<PagedResultDto<InventoryRotationDto>> GetInventoryRotationAsync(string companyId, PaginationOptions p, CancellationToken ct = default);

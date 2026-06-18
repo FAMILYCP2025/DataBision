@@ -200,3 +200,71 @@ export interface SalesWarehouseSummary {
   invoiceCount: number
   skuCount: number
 }
+
+// ── Finance accounting (Sprint 13C–13E) ──────────────────────────────────────
+
+export interface IncomeStatementLine {
+  statementLine: string
+  amount: number
+  pctOfRevenue: number
+}
+
+export interface IncomeStatementPeriod {
+  periodYear: number
+  periodMonth: number
+  revenue: number
+  cogs: number
+  grossProfit: number
+  grossProfitPct: number
+  opex: number
+  operatingIncome: number
+  operatingPct: number
+  financial: number
+  tax: number
+  netIncome: number
+  netPct: number
+  lines: IncomeStatementLine[]
+}
+
+export interface BalanceSheetEntry {
+  category: string
+  subCategory: string
+  amount: number
+}
+
+export interface BalanceSheetSnapshot {
+  snapshotDate: string
+  totalAssets: number
+  totalLiabilities: number
+  totalEquity: number
+  imbalance: number
+  entries: BalanceSheetEntry[]
+}
+
+export interface EbitdaPeriod {
+  periodYear: number
+  periodMonth: number
+  revenue: number
+  cogs: number
+  grossProfit: number
+  opex: number
+  ebitda: number
+  depreciation: number
+  amortization: number
+  financialResult: number
+  taxResult: number
+  netIncome: number
+  ebitdaMargin: number
+  netMargin: number
+}
+
+export interface ChartOfAccountEntry {
+  code: string
+  name: string | null
+  fatherNum: string | null
+  level: number | null
+  accountType: string | null
+  statementLine: string | null
+  postable: boolean
+  balance: number
+}

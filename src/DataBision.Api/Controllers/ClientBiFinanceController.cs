@@ -66,4 +66,66 @@ public sealed class ClientBiFinanceController(
             new PaginationOptions(limit, offset), ct);
         return this.OkPaged(result.Data, result.Meta);
     }
+
+    // GET /api/client/bi/finance/income-statement?year=2024&month=6&months=12
+    // Returns P&L periods from mart.income_statement_summary.
+    // Empty list when MART data not yet populated — frontend shows FinancialDataPending.
+    [HttpGet("income-statement")]
+    public async Task<IActionResult> GetIncomeStatement(
+        [FromQuery] int? year   = null,
+        [FromQuery] int? month  = null,
+        CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        var result = await svc.GetIncomeStatementAsync(ctx.CompanyId!, year, month, ct);
+        return this.OkData(result);
+    }
+
+    // GET /api/client/bi/finance/balance-sheet?snapshotDate=2024-06-30
+    // Returns balance sheet snapshot from mart.balance_sheet_summary.
+    // If snapshotDate omitted, returns the most recent snapshot date.
+    [HttpGet("balance-sheet")]
+    public async Task<IActionResult> GetBalanceSheet(
+        [FromQuery] string? snapshotDate = null,
+        CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        var result = await svc.GetBalanceSheetAsync(ctx.CompanyId!, snapshotDate, ct);
+        return this.OkData(result);
+    }
+
+    // GET /api/client/bi/finance/ebitda?months=12
+    // Returns EBITDA trend from mart.ebitda_summary (last N months, oldest→newest).
+    [HttpGet("ebitda")]
+    public async Task<IActionResult> GetEbitda(
+        [FromQuery] int months = 12,
+        CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        if (months < 1 || months > 60)
+            return this.BadRequestError("invalid_months", "months must be between 1 and 60.");
+
+        var result = await svc.GetEbitdaAsync(ctx.CompanyId!, months, ct);
+        return this.OkData(result);
+    }
+
+    // GET /api/client/bi/finance/chart-of-accounts?postableOnly=false
+    // Returns chart of accounts with balances from mart.gl_accounts + mart.account_balances.
+    [HttpGet("chart-of-accounts")]
+    public async Task<IActionResult> GetChartOfAccounts(
+        [FromQuery] bool postableOnly = false,
+        CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        var result = await svc.GetChartOfAccountsAsync(ctx.CompanyId!, postableOnly, ct);
+        return this.OkData(result);
+    }
 }

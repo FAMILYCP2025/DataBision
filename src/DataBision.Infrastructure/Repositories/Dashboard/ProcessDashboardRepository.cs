@@ -691,6 +691,207 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         }).ToList();
     }
 
+    // ── FINANCE ACCOUNTING ────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<IncomeStatementPeriodDto>> GetIncomeStatementAsync(
+        string companyId, int? year, int? month, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                period_year    AS "PeriodYear",
+                period_month   AS "PeriodMonth",
+                statement_line AS "StatementLine",
+                ROUND(COALESCE(amount, 0), 4) AS "Amount"
+            FROM mart.income_statement_summary
+            WHERE company_id = @company_id
+              AND (@year  IS NULL OR period_year  = @year)
+              AND (@month IS NULL OR period_month = @month)
+            ORDER BY period_year, period_month, statement_line;
+            """;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var rows = await conn.QueryAsync<IncomeStatementRawRow>(
+            new CommandDefinition(sql, new { company_id = companyId, year, month }, cancellationToken: ct));
+
+        return rows
+            .GroupBy(r => (r.PeriodYear, r.PeriodMonth))
+            .Select(g =>
+            {
+                var rev    = g.FirstOrDefault(r => r.StatementLine == "revenue")?.Amount ?? 0;
+                var cogs   = g.FirstOrDefault(r => r.StatementLine == "cogs")?.Amount ?? 0;
+                var opex   = g.FirstOrDefault(r => r.StatementLine == "opex")?.Amount ?? 0;
+                var fin    = g.FirstOrDefault(r => r.StatementLine == "financial")?.Amount ?? 0;
+                var tax    = g.FirstOrDefault(r => r.StatementLine == "tax")?.Amount ?? 0;
+                var gp     = rev - cogs;
+                var oi     = gp - opex;
+                var ni     = oi - fin - tax;
+
+                return new IncomeStatementPeriodDto
+                {
+                    PeriodYear       = g.Key.PeriodYear,
+                    PeriodMonth      = g.Key.PeriodMonth,
+                    Revenue          = rev,
+                    Cogs             = cogs,
+                    GrossProfit      = gp,
+                    GrossProfitPct   = rev != 0 ? Math.Round(gp  / rev * 100, 2) : 0,
+                    Opex             = opex,
+                    OperatingIncome  = oi,
+                    OperatingPct     = rev != 0 ? Math.Round(oi  / rev * 100, 2) : 0,
+                    Financial        = fin,
+                    Tax              = tax,
+                    NetIncome        = ni,
+                    NetPct           = rev != 0 ? Math.Round(ni  / rev * 100, 2) : 0,
+                    Lines            = g.Select(r => new IncomeStatementLineDto
+                    {
+                        StatementLine = r.StatementLine,
+                        Amount        = r.Amount,
+                        PctOfRevenue  = rev != 0 ? Math.Round(r.Amount / rev * 100, 2) : 0,
+                    }).ToList(),
+                };
+            })
+            .OrderBy(d => d.PeriodYear).ThenBy(d => d.PeriodMonth)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<BalanceSheetSnapshotDto>> GetBalanceSheetAsync(
+        string companyId, string? snapshotDate, CancellationToken ct = default)
+    {
+        const string latestDateSql = """
+            SELECT MAX(snapshot_date) FROM mart.balance_sheet_summary WHERE company_id = @company_id;
+            """;
+        const string rowsSql = """
+            SELECT
+                snapshot_date::TEXT AS "SnapshotDate",
+                category            AS "Category",
+                sub_category        AS "SubCategory",
+                ROUND(COALESCE(amount, 0), 4) AS "Amount"
+            FROM mart.balance_sheet_summary
+            WHERE company_id   = @company_id
+              AND snapshot_date = @snapshot_date::DATE
+            ORDER BY category, sub_category;
+            """;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+
+        var effectiveDate = snapshotDate
+            ?? (await conn.QueryFirstOrDefaultAsync<string?>(
+                new CommandDefinition(latestDateSql, new { company_id = companyId }, cancellationToken: ct)));
+
+        if (effectiveDate is null) return [];
+
+        var rows = await conn.QueryAsync<BalanceSheetRawRow>(
+            new CommandDefinition(rowsSql, new { company_id = companyId, snapshot_date = effectiveDate }, cancellationToken: ct));
+
+        var list = rows.ToList();
+        if (list.Count == 0) return [];
+
+        var entries = list.Select(r => new BalanceSheetEntryDto
+        {
+            Category    = r.Category,
+            SubCategory = r.SubCategory,
+            Amount      = r.Amount,
+        }).ToList();
+
+        var totalAssets = list
+            .Where(r => r.Category is "current_assets" or "non_current_assets")
+            .Sum(r => r.Amount);
+        var totalLiab = list
+            .Where(r => r.Category is "current_liabilities" or "non_current_liabilities")
+            .Sum(r => r.Amount);
+        var totalEquity = list
+            .Where(r => r.Category == "equity")
+            .Sum(r => r.Amount);
+
+        return [new BalanceSheetSnapshotDto
+        {
+            SnapshotDate      = effectiveDate,
+            TotalAssets       = totalAssets,
+            TotalLiabilities  = totalLiab,
+            TotalEquity       = totalEquity,
+            Imbalance         = totalAssets - totalLiab - totalEquity,
+            Entries           = entries,
+        }];
+    }
+
+    public async Task<IReadOnlyList<EbitdaPeriodDto>> GetEbitdaAsync(
+        string companyId, int months, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                period_year        AS "PeriodYear",
+                period_month       AS "PeriodMonth",
+                ROUND(revenue,       4) AS "Revenue",
+                ROUND(cogs,          4) AS "Cogs",
+                ROUND(gross_profit,  4) AS "GrossProfit",
+                ROUND(opex,          4) AS "Opex",
+                ROUND(ebitda,        4) AS "Ebitda",
+                ROUND(depreciation,  4) AS "Depreciation",
+                ROUND(amortization,  4) AS "Amortization",
+                ROUND(financial_result, 4) AS "FinancialResult",
+                ROUND(tax_result,    4) AS "TaxResult",
+                ROUND(net_income,    4) AS "NetIncome"
+            FROM mart.ebitda_summary
+            WHERE company_id = @company_id
+            ORDER BY period_year DESC, period_month DESC
+            LIMIT @months;
+            """;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var rows = await conn.QueryAsync<EbitdaRawRow>(
+            new CommandDefinition(sql, new { company_id = companyId, months }, cancellationToken: ct));
+
+        return rows.Select(r => new EbitdaPeriodDto
+        {
+            PeriodYear      = r.PeriodYear,
+            PeriodMonth     = r.PeriodMonth,
+            Revenue         = r.Revenue,
+            Cogs            = r.Cogs,
+            GrossProfit     = r.GrossProfit,
+            Opex            = r.Opex,
+            Ebitda          = r.Ebitda,
+            Depreciation    = r.Depreciation,
+            Amortization    = r.Amortization,
+            FinancialResult = r.FinancialResult,
+            TaxResult       = r.TaxResult,
+            NetIncome       = r.NetIncome,
+            EbitdaMargin    = r.Revenue != 0 ? Math.Round(r.Ebitda    / r.Revenue * 100, 2) : 0,
+            NetMargin       = r.Revenue != 0 ? Math.Round(r.NetIncome / r.Revenue * 100, 2) : 0,
+        }).OrderBy(d => d.PeriodYear).ThenBy(d => d.PeriodMonth).ToList();
+    }
+
+    public async Task<IReadOnlyList<ChartOfAccountEntryDto>> GetChartOfAccountsAsync(
+        string companyId, bool postableOnly, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                ga.code             AS "Code",
+                ga.name             AS "Name",
+                ga.father_num       AS "FatherNum",
+                ga.level            AS "Level",
+                ga.account_type     AS "AccountType",
+                ga.statement_line   AS "StatementLine",
+                ga.postable         AS "Postable",
+                ROUND(COALESCE(SUM(ab.debit_sum - ab.credit_sum), 0), 4) AS "Balance"
+            FROM mart.gl_accounts ga
+            LEFT JOIN mart.account_balances ab
+                   ON ab.company_id = ga.company_id AND ab.code = ga.code
+            WHERE ga.company_id = @company_id
+              AND (@postable_only = FALSE OR ga.postable = TRUE)
+            GROUP BY ga.code, ga.name, ga.father_num, ga.level,
+                     ga.account_type, ga.statement_line, ga.postable
+            ORDER BY ga.code;
+            """;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+        var rows = await conn.QueryAsync<ChartOfAccountEntryDto>(
+            new CommandDefinition(sql, new { company_id = companyId, postable_only = postableOnly }, cancellationToken: ct));
+        return rows.ToList();
+    }
+
     // ── Private row types (Dapper mapping targets) ────────────────────────────
 
     private sealed class SalesCustomerDashboardRow
@@ -849,5 +1050,39 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         public string? SampleKey { get; init; }
         public DateTime DetectedAtUtc { get; init; }
         public bool IsResolved { get; init; }
+    }
+
+    // Accounting row types
+
+    private sealed class IncomeStatementRawRow
+    {
+        public int     PeriodYear     { get; init; }
+        public int     PeriodMonth    { get; init; }
+        public string  StatementLine  { get; init; } = "";
+        public decimal Amount         { get; init; }
+    }
+
+    private sealed class BalanceSheetRawRow
+    {
+        public string  SnapshotDate { get; init; } = "";
+        public string  Category     { get; init; } = "";
+        public string  SubCategory  { get; init; } = "";
+        public decimal Amount       { get; init; }
+    }
+
+    private sealed class EbitdaRawRow
+    {
+        public int     PeriodYear       { get; init; }
+        public int     PeriodMonth      { get; init; }
+        public decimal Revenue          { get; init; }
+        public decimal Cogs             { get; init; }
+        public decimal GrossProfit      { get; init; }
+        public decimal Opex             { get; init; }
+        public decimal Ebitda           { get; init; }
+        public decimal Depreciation     { get; init; }
+        public decimal Amortization     { get; init; }
+        public decimal FinancialResult  { get; init; }
+        public decimal TaxResult        { get; init; }
+        public decimal NetIncome        { get; init; }
     }
 }

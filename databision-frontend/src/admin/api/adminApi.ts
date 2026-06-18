@@ -155,3 +155,102 @@ export async function updateCompanyReportStatus(companyId: number, reportId: num
   const { data } = await api.patch<ApiResponse<ReportAdmin>>(`/admin/companies/${companyId}/reports/${reportId}/status`, { isActive })
   return data.data
 }
+
+// ── Native BI Advanced Config ──────────────────────────────────────────────────
+
+export interface NativeBiFilterConfig {
+  companyId: number
+  filterKey: string
+  label: string | null
+  isEnabled: boolean
+  isAdvanced: boolean
+  displayOrder: number
+  defaultValue: string | null
+}
+
+export interface UpsertNativeBiFilterConfig {
+  label?: string | null
+  isEnabled: boolean
+  isAdvanced: boolean
+  displayOrder: number
+  defaultValue?: string | null
+}
+
+export interface NativeBiItemUdfFilterConfig {
+  companyId: number
+  udfFieldName: string
+  label: string | null
+  isEnabled: boolean
+  isMultiSelect: boolean
+  displayOrder: number
+}
+
+export interface UpsertNativeBiItemUdfFilterConfig {
+  label?: string | null
+  isEnabled: boolean
+  isMultiSelect: boolean
+  displayOrder: number
+}
+
+export interface NativeBiDimensionConfig {
+  companyId: number
+  dimensionNumber: number
+  label: string | null
+  isEnabled: boolean
+}
+
+export interface UpsertNativeBiDimensionConfig {
+  label?: string | null
+  isEnabled: boolean
+}
+
+export async function getNativeBiFilters(companyId: number): Promise<NativeBiFilterConfig[]> {
+  const { data } = await api.get<ApiResponse<NativeBiFilterConfig[]>>(`/admin/companies/${companyId}/native-bi/filters`)
+  return data.data
+}
+
+export async function upsertNativeBiFilter(
+  companyId: number,
+  filterKey: string,
+  payload: UpsertNativeBiFilterConfig
+): Promise<NativeBiFilterConfig> {
+  const { data } = await api.put<ApiResponse<NativeBiFilterConfig>>(
+    `/admin/companies/${companyId}/native-bi/filters/${encodeURIComponent(filterKey)}`,
+    payload
+  )
+  return data.data
+}
+
+export async function getNativeBiItemUdfFilters(companyId: number): Promise<NativeBiItemUdfFilterConfig[]> {
+  const { data } = await api.get<ApiResponse<NativeBiItemUdfFilterConfig[]>>(`/admin/companies/${companyId}/native-bi/item-udf-filters`)
+  return data.data
+}
+
+export async function upsertNativeBiItemUdfFilter(
+  companyId: number,
+  udfFieldName: string,
+  payload: UpsertNativeBiItemUdfFilterConfig
+): Promise<NativeBiItemUdfFilterConfig> {
+  const { data } = await api.put<ApiResponse<NativeBiItemUdfFilterConfig>>(
+    `/admin/companies/${companyId}/native-bi/item-udf-filters/${encodeURIComponent(udfFieldName)}`,
+    payload
+  )
+  return data.data
+}
+
+export async function getNativeBiDimensions(companyId: number): Promise<NativeBiDimensionConfig[]> {
+  const { data } = await api.get<ApiResponse<NativeBiDimensionConfig[]>>(`/admin/companies/${companyId}/native-bi/dimensions`)
+  return data.data
+}
+
+export async function upsertNativeBiDimension(
+  companyId: number,
+  dimensionNumber: number,
+  payload: UpsertNativeBiDimensionConfig
+): Promise<NativeBiDimensionConfig> {
+  const { data } = await api.put<ApiResponse<NativeBiDimensionConfig>>(
+    `/admin/companies/${companyId}/native-bi/dimensions/${dimensionNumber}`,
+    payload
+  )
+  return data.data
+}

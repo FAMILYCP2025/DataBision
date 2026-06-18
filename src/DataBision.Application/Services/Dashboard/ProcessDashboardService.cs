@@ -128,6 +128,24 @@ public sealed class ProcessDashboardService(
         return BuildPaged(rows, limit, p.Offset);
     }
 
+    // FINANCE — ACCOUNTING
+
+    public async Task<IReadOnlyList<IncomeStatementPeriodDto>> GetIncomeStatementAsync(
+        string companyId, int? year, int? month, CancellationToken ct = default)
+        => await repo.GetIncomeStatementAsync(await MapAsync(companyId, ct), year, month, ct);
+
+    public async Task<IReadOnlyList<BalanceSheetSnapshotDto>> GetBalanceSheetAsync(
+        string companyId, string? snapshotDate, CancellationToken ct = default)
+        => await repo.GetBalanceSheetAsync(await MapAsync(companyId, ct), snapshotDate, ct);
+
+    public async Task<IReadOnlyList<EbitdaPeriodDto>> GetEbitdaAsync(
+        string companyId, int months, CancellationToken ct = default)
+        => await repo.GetEbitdaAsync(await MapAsync(companyId, ct), Math.Clamp(months, 1, 60), ct);
+
+    public async Task<IReadOnlyList<ChartOfAccountEntryDto>> GetChartOfAccountsAsync(
+        string companyId, bool postableOnly, CancellationToken ct = default)
+        => await repo.GetChartOfAccountsAsync(await MapAsync(companyId, ct), postableOnly, ct);
+
     private static PagedResultDto<T> BuildPaged<T>(IReadOnlyList<T> rows, int limit, int offset)
     {
         var hasMore = rows.Count > limit;
