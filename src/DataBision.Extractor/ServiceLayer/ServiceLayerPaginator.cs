@@ -65,7 +65,9 @@ public sealed class ServiceLayerPaginator
             pageNumber++;
 
             // Build query for this page
-            currentQuery = currentQuery ?? $"$top={pageSize}&$skip=0&{baseQuery}";
+            currentQuery = currentQuery ?? (string.IsNullOrEmpty(baseQuery)
+                ? $"$top={pageSize}&$skip=0"
+                : $"$top={pageSize}&$skip=0&{baseQuery}");
 
             var sw = Stopwatch.StartNew();
             int rowsReceived;

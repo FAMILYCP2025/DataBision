@@ -19,8 +19,8 @@ public sealed class OactExtractorJob : IExtractorJob
     public string SapObject => "OACT";
 
     private const string Endpoint      = "api/ingest/sap-b1/chart-of-accounts";
-    private const string FullSelect    = "Code,Name,FatherNum,Level,GroupMask,AccountType,Postable,Frozen,ValidFor,CashAccount,ControlAccount,Currency,FormatCode,ExternalCode";
-    private const string MinimalSelect = "Code,Name,FatherNum,Level,AccountType,Postable";
+    private const string FullSelect    = "Code,Name,GroupMask,AccountType,Postable,Frozen,ValidFor,CashAccount,ControlAccount,Currency,FormatCode,ExternalCode";
+    private const string MinimalSelect = "Code,Name,AccountType,Postable";
 
     private readonly IServiceLayerClient       _sl;
     private readonly IDataBisionIngestClient   _ingest;
@@ -86,18 +86,32 @@ public sealed class OactExtractorJob : IExtractorJob
         if (result.LastError is null)
             return (result.AllRows, FullSelect);
 
-        if (result.LastError.Contains("400", StringComparison.Ordinal)
-            || result.LastError.Contains("invalid", StringComparison.OrdinalIgnoreCase))
-        {
-            _log.LogWarning("OACT: full $select failed — retrying minimal. Error: {Err}", result.LastError);
-            var minResult = await _paginator.PaginateAsync(
-                SapObject, "ChartOfAccounts", $"$select={MinimalSelect}",
-                _options.PageSize, _options.MaxPages, ct);
-            return (minResult.AllRows, MinimalSelect);
-        }
+        if (!Is400(result.LastError))
+            return (result.AllRows, FullSelect);
 
-        return (result.AllRows, FullSelect);
+        _log.LogWarning("OACT: full $select failed — retrying minimal. Error: {Err}", result.LastError);
+        var minResult = await _paginator.PaginateAsync(
+            SapObject, "ChartOfAccounts", $"$select={MinimalSelect}",
+            _options.PageSize, _options.MaxPages, ct);
+
+        if (minResult.LastError is null)
+            return (minResult.AllRows, MinimalSelect);
+
+        if (!Is400(minResult.LastError))
+            return (minResult.AllRows, MinimalSelect);
+
+        // Third fallback: no $select — let SL return all available fields
+        _log.LogWarning("OACT: minimal $select also failed — retrying without $select. Error: {Err}", minResult.LastError);
+        var noSelectResult = await _paginator.PaginateAsync(
+            SapObject, "ChartOfAccounts", "",
+            _options.PageSize, _options.MaxPages, ct);
+        return (noSelectResult.AllRows, "no-select");
     }
+
+    private static bool Is400(string? error) =>
+        error is not null
+        && (error.Contains("400", StringComparison.Ordinal)
+            || error.Contains("invalid", StringComparison.OrdinalIgnoreCase));
 
     private async Task<ExtractionResult> SendAsync(JsonArray allRows, TimeSpan extractDuration, CancellationToken ct)
     {

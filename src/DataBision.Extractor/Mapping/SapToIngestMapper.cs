@@ -476,8 +476,8 @@ public static class SapToIngestMapper
     {
         Code            = GetStr(row, "Code"),
         Name            = GetStr(row, "Name"),
-        FatherNum       = GetStr(row, "FatherNum"),
-        Levels          = GetStr(row, "Level"),
+        FatherNum       = null,   // Father/FatherNum not exposed via $select in SL v1000290
+        Levels          = GetStrAny(row, "Levels", "Level"),
         GroupMask       = GetStr(row, "GroupMask"),
         AccountType     = GetStr(row, "AccountType"),
         Postable        = MapYesNo(GetStr(row, "Postable")),
