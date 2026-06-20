@@ -56,14 +56,37 @@ public sealed class OjdtExtractorJob : IExtractorJob
             var (filter, effectiveFrom) = await BuildFilter(ct);
             var (allEntries, usedSelect) = await PaginateWithFallback(filter, ct);
 
-            // If $expand did not deliver lines, try top-level JournalEntryLines resource
+            // If $expand did not deliver lines, run probe sequence (Sprint 17A/17B/17C)
             var hasEmbeddedLines = allEntries.Any(e => e?["JournalEntryLines"] is JsonArray);
             JsonArray? topLevelLines = null;
+
             if (!hasEmbeddedLines && allEntries.Count > 0)
             {
-                _log.LogInformation("OJDT: no embedded lines found — probing JournalEntryLines top-level resource");
-                topLevelLines = await TryFetchLinesTopLevelAsync(
-                    allEntries.Select(e => (int)(e?["JdtNum"] ?? 0)).Where(n => n > 0), ct);
+                var firstJdtNum = allEntries
+                    .Select(e => e?["JdtNum"]?.GetValue<int>() ?? 0)
+                    .FirstOrDefault(n => n > 0);
+
+                // Sprint 17A: single-record GET probe
+                if (firstJdtNum > 0)
+                {
+                    var (linesProperty, _) = await ProbeIndividualEntryAsync(firstJdtNum, ct);
+                    if (linesProperty is not null)
+                    {
+                        // Single-record exposes lines — extract all entries individually
+                        topLevelLines = await ExtractLinesViaIndividualGetAsync(allEntries, linesProperty, ct);
+                    }
+                }
+
+                // Sprint 17B: $metadata probe (logged only — does not extract lines)
+                await ProbeMetadataJournalEntryAsync(ct);
+
+                // Sprint 16D fallback: top-level JournalEntryLines collection
+                if (topLevelLines is null || topLevelLines.Count == 0)
+                {
+                    _log.LogInformation("OJDT: probing JournalEntryLines top-level resource");
+                    topLevelLines = await TryFetchLinesTopLevelAsync(
+                        allEntries.Select(e => (int)(e?["JdtNum"] ?? 0)).Where(n => n > 0), ct);
+                }
             }
 
             sw.Stop();
@@ -248,6 +271,193 @@ public sealed class OjdtExtractorJob : IExtractorJob
             WatermarkDate = MaxRefDate(allEntries),
             Error         = success ? null : hResp.Error ?? lineResult.Error
         };
+    }
+
+    /// <summary>
+    /// Sprint 17A: probes GET JournalEntries(N) to check if single-record access returns embedded lines.
+    /// Returns (linesPropertyName, singleEntry) if lines found; (null, null) otherwise.
+    /// Logs all top-level properties and any array collections detected.
+    /// </summary>
+    private async Task<(string? linesPropertyName, JsonObject? entry)> ProbeIndividualEntryAsync(
+        int jdtNum, CancellationToken ct)
+    {
+        try
+        {
+            _log.LogInformation("OJDT-PROBE-17A: GET JournalEntries({JdtNum}) — probing for embedded lines", jdtNum);
+            var entry = await _sl.GetObjectAsync($"JournalEntries({jdtNum})", ct);
+
+            if (entry is null)
+            {
+                _log.LogWarning("OJDT-PROBE-17A: GET JournalEntries({JdtNum}) — null/error response", jdtNum);
+                return (null, null);
+            }
+
+            var allKeys = entry.Select(kv => kv.Key).ToList();
+            _log.LogInformation("OJDT-PROBE-17A: GET JournalEntries({JdtNum}) returned {Count} properties: [{Keys}]",
+                jdtNum, allKeys.Count, string.Join(", ", allKeys));
+
+            // Check known navigation property names first
+            foreach (var candidate in new[] { "JournalEntryLines", "Lines", "DocumentLines", "TransactionLines", "Rows" })
+            {
+                if (entry[candidate] is JsonArray arr)
+                {
+                    _log.LogInformation(
+                        "OJDT-PROBE-17A: FOUND '{Prop}' — {N} lines in GET JournalEntries({JdtNum}). Single-record GET EXPOSES LINES.",
+                        candidate, arr.Count, jdtNum);
+                    return (candidate, entry);
+                }
+            }
+
+            // Log any other array properties (unknown candidates)
+            var otherArrays = entry
+                .Where(kv => kv.Value is JsonArray)
+                .Select(kv => $"{kv.Key}[{((JsonArray)kv.Value!).Count}]")
+                .ToList();
+
+            if (otherArrays.Count > 0)
+                _log.LogInformation("OJDT-PROBE-17A: Other array properties: {Arrays}", string.Join(", ", otherArrays));
+            else
+                _log.LogWarning(
+                    "OJDT-PROBE-17A: GET JournalEntries({JdtNum}) has NO array properties — single-record GET does not expose JDT1 lines",
+                    jdtNum);
+
+            return (null, null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("OJDT-PROBE-17A: GET JournalEntries({JdtNum}) exception — {Msg}", jdtNum, ex.Message);
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Sprint 17B: fetches SAP SL $metadata and extracts the JournalEntry EntityType definition.
+    /// Logs navigation properties and scalar properties. Does NOT affect extraction — diagnostics only.
+    /// </summary>
+    private async Task ProbeMetadataJournalEntryAsync(CancellationToken ct)
+    {
+        try
+        {
+            _log.LogInformation("OJDT-PROBE-17B: fetching $metadata to inspect JournalEntry entity definition");
+            var raw = await _sl.GetRawStringAsync("$metadata", ct);
+
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                _log.LogWarning("OJDT-PROBE-17B: $metadata returned empty response");
+                return;
+            }
+
+            _log.LogInformation("OJDT-PROBE-17B: $metadata received ({Len} chars)", raw.Length);
+
+            // Find JournalEntry EntityType block
+            var startIdx = raw.IndexOf("Name=\"JournalEntry\"", StringComparison.OrdinalIgnoreCase);
+            if (startIdx < 0)
+            {
+                // Try alternate capitalization
+                startIdx = raw.IndexOf("JournalEntry", StringComparison.OrdinalIgnoreCase);
+                if (startIdx < 0)
+                {
+                    _log.LogWarning("OJDT-PROBE-17B: 'JournalEntry' not found in $metadata");
+                    return;
+                }
+            }
+
+            // Extract EntityType block
+            var blockStart = raw.LastIndexOf('<', startIdx);
+            var blockEnd   = raw.IndexOf("</EntityType>", startIdx, StringComparison.OrdinalIgnoreCase);
+            var entityXml  = blockEnd > 0
+                ? raw[blockStart..(blockEnd + "</EntityType>".Length)]
+                : raw[blockStart..Math.Min(blockStart + 8000, raw.Length)];
+
+            _log.LogInformation("OJDT-PROBE-17B: JournalEntry EntityType block ({Len} chars):\n{Xml}",
+                entityXml.Length, entityXml.Length > 4000 ? entityXml[..4000] + "\n...[truncated]" : entityXml);
+
+            // Extract NavigationProperty names
+            var navMatches = System.Text.RegularExpressions.Regex.Matches(
+                entityXml, @"NavigationProperty[^>]*Name=""([^""]+)""",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (navMatches.Count > 0)
+            {
+                var navNames = navMatches.Cast<System.Text.RegularExpressions.Match>()
+                    .Select(m => m.Groups[1].Value)
+                    .ToList();
+                _log.LogInformation("OJDT-PROBE-17B: NavigationProperties found: [{Names}]",
+                    string.Join(", ", navNames));
+            }
+            else
+            {
+                _log.LogWarning("OJDT-PROBE-17B: No NavigationProperty elements found for JournalEntry in $metadata");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("OJDT-PROBE-17B: $metadata probe failed — {Msg}", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Sprint 17C: extracts JDT1 lines by calling GET JournalEntries(N) for every header.
+    /// Used when single-record probe confirmed lines are accessible.
+    /// Adds JdtNum to each line node so SendAsync can correlate to headers.
+    /// </summary>
+    private async Task<JsonArray> ExtractLinesViaIndividualGetAsync(
+        JsonArray allEntries, string linesPropertyName, CancellationToken ct)
+    {
+        var allLines        = new JsonArray();
+        var firstLineLogged = false;
+        _log.LogInformation("OJDT-17C: extracting lines via individual GET ({N} entries, property='{Prop}')",
+            allEntries.Count, linesPropertyName);
+
+        foreach (var entry in allEntries)
+        {
+            if (entry is null) continue;
+            var jdtNum = entry["JdtNum"]?.GetValue<int>() ?? 0;
+            if (jdtNum == 0) continue;
+
+            try
+            {
+                var fullEntry = await _sl.GetObjectAsync($"JournalEntries({jdtNum})", ct);
+                if (fullEntry is null)
+                {
+                    _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) returned null — skipping", jdtNum);
+                    continue;
+                }
+
+                if (fullEntry[linesPropertyName] is not JsonArray lineArr)
+                {
+                    _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) missing '{Prop}' — skipping", jdtNum, linesPropertyName);
+                    continue;
+                }
+
+                _log.LogDebug("OJDT-17C: JournalEntries({JdtNum}) — {N} lines", jdtNum, lineArr.Count);
+
+                if (!firstLineLogged && lineArr.Count > 0 && lineArr[0] is JsonObject firstLine)
+                {
+                    var lineKeys = firstLine.Select(kv => kv.Key).ToList();
+                    _log.LogInformation("OJDT-17C: JournalEntryLine field names (first line of JournalEntries({JdtNum})): [{Keys}]",
+                        jdtNum, string.Join(", ", lineKeys));
+                    firstLineLogged = true;
+                }
+
+                foreach (var line in lineArr)
+                {
+                    if (line is null) continue;
+                    // Clone line and inject JdtNum so SendAsync can correlate
+                    var lineClone = line.DeepClone();
+                    if (lineClone is JsonObject lineObj)
+                        lineObj["JdtNum"] = jdtNum;
+                    allLines.Add(lineClone);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) failed — {Msg}", jdtNum, ex.Message);
+            }
+        }
+
+        _log.LogInformation("OJDT-17C: extracted {Total} lines via individual GET", allLines.Count);
+        return allLines;
     }
 
     /// <summary>

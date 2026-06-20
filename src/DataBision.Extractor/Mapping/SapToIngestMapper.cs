@@ -194,6 +194,20 @@ public static class SapToIngestMapper
         catch { return 0; }
     }
 
+    private static int GetIntAny(JsonNode? node, params string[] fields)
+    {
+        foreach (var f in fields)
+        {
+            try
+            {
+                var v = node?[f];
+                if (v is not null) return v.GetValue<int>();
+            }
+            catch { /* try next */ }
+        }
+        return 0;
+    }
+
     private static int? GetIntNullable(JsonNode? node, string field)
     {
         try { return node?[field]?.GetValue<int>(); }
@@ -523,7 +537,7 @@ public static class SapToIngestMapper
     public static SapJdt1Row MapJdt1Row(int transId, JsonNode line, MappingContext ctx) => new()
     {
         TransId         = transId,
-        LineId          = GetInt(line, "LineId"),
+        LineId          = GetIntAny(line, "Line_ID", "LineId", "LineNum"),
         Account         = GetStrAny(line, "AccountCode", "Account"),
         Debit           = GetDec(line, "Debit"),
         Credit          = GetDec(line, "Credit"),

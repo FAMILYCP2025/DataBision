@@ -245,6 +245,56 @@ public sealed class ServiceLayerClient : IServiceLayerClient, IDisposable
         return new ServiceLayerPage([], null);
     }
 
+    public async Task<JsonObject?> GetObjectAsync(string entityWithKey, CancellationToken ct = default)
+    {
+        if (_session is null || _session.IsExpired)
+            throw new InvalidOperationException("Not logged in. Call LoginAsync first.");
+
+        if (_session.IsNearExpiry)
+        {
+            _log.LogInformation("Session near expiry — renewing before request.");
+            await LoginAsync(ct);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, entityWithKey);
+        request.Headers.Add("Cookie", _session.Cookie);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var response = await _http.SendAsync(request, ct);
+        sw.Stop();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _log.LogWarning("GET {Entity} failed. HTTP {Code}: {Body}",
+                entityWithKey, (int)response.StatusCode,
+                body.Length > 500 ? body[..500] + "..." : body);
+            return null;
+        }
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        _log.LogDebug("GET {Entity} (single) completed in {Ms} ms", entityWithKey, sw.ElapsedMilliseconds);
+        return JsonNode.Parse(json) as JsonObject;
+    }
+
+    public async Task<string> GetRawStringAsync(string path, CancellationToken ct = default)
+    {
+        if (_session is null || _session.IsExpired)
+            throw new InvalidOperationException("Not logged in. Call LoginAsync first.");
+
+        if (_session.IsNearExpiry)
+        {
+            _log.LogInformation("Session near expiry — renewing before request.");
+            await LoginAsync(ct);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Add("Cookie", _session.Cookie);
+
+        using var response = await _http.SendAsync(request, ct);
+        return await response.Content.ReadAsStringAsync(ct);
+    }
+
     public void Dispose()
     {
         _http.Dispose();
