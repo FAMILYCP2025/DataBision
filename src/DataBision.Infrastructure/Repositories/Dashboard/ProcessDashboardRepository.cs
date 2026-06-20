@@ -942,12 +942,12 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
             new CommandDefinition(
                 """
                 SELECT COUNT(*)::INT
-                FROM stg.sap_jdt1 j
+                FROM stg.journal_entry_line j
                 WHERE j.company_id = @company_id
                   AND NOT EXISTS (
-                      SELECT 1 FROM stg.sap_ojdt o
+                      SELECT 1 FROM stg.journal_entry o
                       WHERE o.company_id = j.company_id
-                        AND o."TransId"  = j."TransId"
+                        AND o.trans_id   = j.trans_id
                   )
                 """,
                 new { company_id = companyId }, cancellationToken: ct));
@@ -1022,7 +1022,7 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
                 Severity    = orphanLines > 100 ? "warning" : "info",
                 IssueType   = "orphan_lines",
                 Title       = $"{orphanLines} líneas de diario huérfanas",
-                Description = "Líneas en stg.sap_jdt1 sin cabecera en stg.sap_ojdt. Puede indicar extracción incompleta.",
+                Description = "Líneas en stg.journal_entry_line sin cabecera en stg.journal_entry. Puede indicar extracción incompleta.",
                 Count       = orphanLines,
             });
         }
@@ -1108,11 +1108,11 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         var rawJdt1 = await Count(conn,
             "SELECT COUNT(*)::INT FROM raw.sap_jdt1   WHERE company_id = @company_id", companyId, ct);
         var stgOact = await Count(conn,
-            "SELECT COUNT(*)::INT FROM stg.sap_oact   WHERE company_id = @company_id", companyId, ct);
+            "SELECT COUNT(*)::INT FROM stg.gl_account        WHERE company_id = @company_id", companyId, ct);
         var stgOjdt = await Count(conn,
-            "SELECT COUNT(*)::INT FROM stg.sap_ojdt   WHERE company_id = @company_id", companyId, ct);
+            "SELECT COUNT(*)::INT FROM stg.journal_entry     WHERE company_id = @company_id", companyId, ct);
         var stgJdt1 = await Count(conn,
-            "SELECT COUNT(*)::INT FROM stg.sap_jdt1   WHERE company_id = @company_id", companyId, ct);
+            "SELECT COUNT(*)::INT FROM stg.journal_entry_line WHERE company_id = @company_id", companyId, ct);
         var martGl = await Count(conn,
             "SELECT COUNT(*)::INT FROM mart.gl_accounts WHERE company_id = @company_id", companyId, ct);
         var martIs = await Count(conn,
