@@ -20,6 +20,7 @@ import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
 import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 import { NbStackedBarChart, NbAreaChart, NbLineChart } from '../components/charts'
 import NativeBiFinanceReadinessPanel from '../components/nativebi/NativeBiFinanceReadinessPanel'
+import { downloadCsv } from '../utils/csvExport'
 
 function fmtAmt(n: number) {
   return n.toLocaleString('es-CL', { maximumFractionDigits: 0 })
@@ -832,9 +833,28 @@ export default function FinanceDashboardPage() {
                 </div>
               )}
               {/* P&L detail table for latest period */}
-              <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
-                Detalle — {isData[isData.length - 1].periodYear}/{String(isData[isData.length - 1].periodMonth).padStart(2,'0')}
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)', margin: 0 }}>
+                  Detalle — {isData[isData.length - 1].periodYear}/{String(isData[isData.length - 1].periodMonth).padStart(2,'0')}
+                </p>
+                <button
+                  className="db-btn db-btn--ghost db-btn--sm"
+                  onClick={() => downloadCsv(`estado-resultados-${isData[isData.length-1].periodYear}-${String(isData[isData.length-1].periodMonth).padStart(2,'0')}.csv`,
+                    isData.flatMap(d => [
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'Ingresos', Monto: d.revenue },
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'Costo de ventas', Monto: d.cogs },
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'Utilidad bruta', Monto: d.grossProfit },
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'Gastos operacionales', Monto: d.opex },
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'EBIT', Monto: d.operatingIncome },
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'Resultado financiero', Monto: d.financial },
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'Impuesto', Monto: d.tax },
+                      { Año: d.periodYear, Mes: d.periodMonth, Línea: 'Utilidad neta', Monto: d.netIncome },
+                    ])
+                  )}
+                >
+                  Exportar CSV
+                </button>
+              </div>
               <div className="nb-table-scroll">
                 <table className="db-table" style={{ fontSize: 13 }}>
                   <thead>
@@ -921,6 +941,20 @@ export default function FinanceDashboardPage() {
                         </div>
                       ))}
                     </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                      <button
+                        className="db-btn db-btn--ghost db-btn--sm"
+                        onClick={() => downloadCsv(`balance-general-${snap.snapshotDate}.csv`, [
+                          ...snap.entries.map(e => ({ Fecha: snap.snapshotDate, Categoría: e.category, Subcategoría: e.subCategory || '', Monto: e.amount })),
+                          { Fecha: snap.snapshotDate, Categoría: 'TOTAL Activos', Subcategoría: '', Monto: snap.totalAssets },
+                          { Fecha: snap.snapshotDate, Categoría: 'TOTAL Pasivos', Subcategoría: '', Monto: snap.totalLiabilities },
+                          { Fecha: snap.snapshotDate, Categoría: 'Patrimonio', Subcategoría: '', Monto: snap.totalEquity },
+                          { Fecha: snap.snapshotDate, Categoría: 'Desequilibrio', Subcategoría: '', Monto: snap.imbalance },
+                        ])}
+                      >
+                        Exportar CSV
+                      </button>
+                    </div>
                     <div className="nb-table-scroll">
                       <table className="db-table" style={{ fontSize: 13 }}>
                         <thead>
@@ -998,6 +1032,22 @@ export default function FinanceDashboardPage() {
                         />
                       </div>
                     )}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                      <button
+                        className="db-btn db-btn--ghost db-btn--sm"
+                        onClick={() => downloadCsv('ebitda.csv', ebData.map(d => ({
+                          Año: d.periodYear, Mes: d.periodMonth,
+                          Ingresos: d.revenue, 'Costo Ventas': d.cogs,
+                          'Utilidad Bruta': d.grossProfit, OPEX: d.opex,
+                          EBITDA: d.ebitda, Depreciación: d.depreciation,
+                          Amortización: d.amortization, 'Resultado Financiero': d.financialResult,
+                          Impuesto: d.taxResult, 'Utilidad Neta': d.netIncome,
+                          'Margen EBITDA%': d.ebitdaMargin, 'Margen Neto%': d.netMargin,
+                        })))}
+                      >
+                        Exportar CSV
+                      </button>
+                    </div>
                     <div className="nb-table-scroll">
                       <table className="db-table" style={{ fontSize: 12.5 }}>
                         <thead>
@@ -1041,10 +1091,19 @@ export default function FinanceDashboardPage() {
             />
           ) : (
             <div style={{ padding: '8px 0' }}>
-              <div style={{ padding: '8px 20px 0', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid var(--c-border)', paddingBottom: 12, marginBottom: 0 }}>
+              <div style={{ padding: '8px 20px 0', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid var(--c-border)', paddingBottom: 12, marginBottom: 0, justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>
                   {coaData.length} cuentas — saldos acumulados (débitos − créditos)
                 </span>
+                <button
+                  className="db-btn db-btn--ghost db-btn--sm"
+                  onClick={() => downloadCsv('plan-de-cuentas.csv', coaData.map(a => ({
+                    Código: a.code, Nombre: a.name ?? '', Tipo: a.accountType ?? '',
+                    Clasificación: a.statementLine ?? '', Saldo: a.balance, Posteable: a.postable,
+                  })))}
+                >
+                  Exportar CSV
+                </button>
               </div>
               <div className="nb-table-scroll">
                 <table className="db-table" style={{ fontSize: 12.5 }}>

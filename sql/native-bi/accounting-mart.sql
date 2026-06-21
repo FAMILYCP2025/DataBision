@@ -282,6 +282,7 @@ $func$;
 CREATE OR REPLACE FUNCTION mart.refresh_income_statement(p_company_id TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $func$
 BEGIN
+    DELETE FROM mart.income_statement_summary WHERE company_id = p_company_id;
     INSERT INTO mart.income_statement_summary (
         company_id, period_year, period_month, statement_line, amount, refreshed_at
     )
@@ -317,6 +318,7 @@ $func$;
 CREATE OR REPLACE FUNCTION mart.refresh_balance_sheet(p_company_id TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $func$
 BEGIN
+    DELETE FROM mart.balance_sheet_summary WHERE company_id = p_company_id;
     INSERT INTO mart.balance_sheet_summary (
         company_id, snapshot_date, category, sub_category, amount, refreshed_at
     )
@@ -355,6 +357,7 @@ $func$;
 CREATE OR REPLACE FUNCTION mart.refresh_ebitda(p_company_id TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $func$
 BEGIN
+    DELETE FROM mart.ebitda_summary WHERE company_id = p_company_id;
     INSERT INTO mart.ebitda_summary (
         company_id, period_year, period_month,
         revenue, cogs, gross_profit, opex, ebitda,

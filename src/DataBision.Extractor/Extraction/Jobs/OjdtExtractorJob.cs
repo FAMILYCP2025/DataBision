@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using DataBision.Application.DTOs.Ingest.Rows;
@@ -397,67 +398,100 @@ public sealed class OjdtExtractorJob : IExtractorJob
     }
 
     /// <summary>
-    /// Sprint 17C: extracts JDT1 lines by calling GET JournalEntries(N) for every header.
-    /// Used when single-record probe confirmed lines are accessible.
-    /// Adds JdtNum to each line node so SendAsync can correlate to headers.
+    /// Sprint 17C/20C: extracts JDT1 lines by calling GET JournalEntries(N) for every header.
+    /// Sprint 20C: concurrent fetches controlled by Extractor:JournalEntryLineFetchConcurrency (default 3).
     /// </summary>
     private async Task<JsonArray> ExtractLinesViaIndividualGetAsync(
         JsonArray allEntries, string linesPropertyName, CancellationToken ct)
     {
-        var allLines        = new JsonArray();
-        var firstLineLogged = false;
-        _log.LogInformation("OJDT-17C: extracting lines via individual GET ({N} entries, property='{Prop}')",
-            allEntries.Count, linesPropertyName);
+        var concurrency = _options.JournalEntryLineFetchConcurrency;
+        var sem         = new SemaphoreSlim(concurrency, concurrency);
+        var sw          = Stopwatch.StartNew();
+        var bag         = new ConcurrentBag<(int index, JsonNode line)>();
+        var firstLogged = 0; // CAS flag
+        var successCount = 0;
+        var failCount    = 0;
 
-        foreach (var entry in allEntries)
-        {
-            if (entry is null) continue;
-            var jdtNum = entry["JdtNum"]?.GetValue<int>() ?? 0;
-            if (jdtNum == 0) continue;
+        _log.LogInformation(
+            "OJDT-17C: extracting lines via individual GET ({N} entries, property='{Prop}', concurrency={C})",
+            allEntries.Count, linesPropertyName, concurrency);
 
-            try
+        var tasks = allEntries
+            .Select((entry, idx) => (entry, idx))
+            .Where(t => t.entry is not null)
+            .Select(async t =>
             {
-                var fullEntry = await _sl.GetObjectAsync($"JournalEntries({jdtNum})", ct);
-                if (fullEntry is null)
+                var (entry, idx) = t;
+                var jdtNum = entry!["JdtNum"]?.GetValue<int>() ?? 0;
+                if (jdtNum == 0) return;
+
+                await sem.WaitAsync(ct);
+                var getStart = sw.ElapsedMilliseconds;
+                try
                 {
-                    _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) returned null — skipping", jdtNum);
-                    continue;
-                }
+                    var fullEntry = await _sl.GetObjectAsync($"JournalEntries({jdtNum})", ct);
+                    if (fullEntry is null)
+                    {
+                        _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) returned null — skipping", jdtNum);
+                        Interlocked.Increment(ref failCount);
+                        return;
+                    }
 
-                if (fullEntry[linesPropertyName] is not JsonArray lineArr)
+                    if (fullEntry[linesPropertyName] is not JsonArray lineArr)
+                    {
+                        _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) missing '{Prop}' — skipping", jdtNum, linesPropertyName);
+                        Interlocked.Increment(ref failCount);
+                        return;
+                    }
+
+                    _log.LogDebug("OJDT-17C: JournalEntries({JdtNum}) — {N} lines in {Ms}ms",
+                        jdtNum, lineArr.Count, sw.ElapsedMilliseconds - getStart);
+
+                    if (Interlocked.CompareExchange(ref firstLogged, 1, 0) == 0
+                        && lineArr.Count > 0 && lineArr[0] is JsonObject firstLine)
+                    {
+                        var lineKeys = firstLine.Select(kv => kv.Key).ToList();
+                        _log.LogInformation(
+                            "OJDT-17C: JournalEntryLine field names (first line of JournalEntries({JdtNum})): [{Keys}]",
+                            jdtNum, string.Join(", ", lineKeys));
+                    }
+
+                    foreach (var line in lineArr)
+                    {
+                        if (line is null) continue;
+                        var lineClone = line.DeepClone();
+                        if (lineClone is JsonObject lineObj)
+                            lineObj["JdtNum"] = jdtNum;
+                        bag.Add((idx, lineClone));
+                    }
+                    Interlocked.Increment(ref successCount);
+                }
+                catch (Exception ex)
                 {
-                    _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) missing '{Prop}' — skipping", jdtNum, linesPropertyName);
-                    continue;
+                    _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) failed — {Msg}", jdtNum, ex.Message);
+                    Interlocked.Increment(ref failCount);
                 }
-
-                _log.LogDebug("OJDT-17C: JournalEntries({JdtNum}) — {N} lines", jdtNum, lineArr.Count);
-
-                if (!firstLineLogged && lineArr.Count > 0 && lineArr[0] is JsonObject firstLine)
+                finally
                 {
-                    var lineKeys = firstLine.Select(kv => kv.Key).ToList();
-                    _log.LogInformation("OJDT-17C: JournalEntryLine field names (first line of JournalEntries({JdtNum})): [{Keys}]",
-                        jdtNum, string.Join(", ", lineKeys));
-                    firstLineLogged = true;
+                    sem.Release();
                 }
+            })
+            .ToList();
 
-                foreach (var line in lineArr)
-                {
-                    if (line is null) continue;
-                    // Clone line and inject JdtNum so SendAsync can correlate
-                    var lineClone = line.DeepClone();
-                    if (lineClone is JsonObject lineObj)
-                        lineObj["JdtNum"] = jdtNum;
-                    allLines.Add(lineClone);
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning("OJDT-17C: GET JournalEntries({JdtNum}) failed — {Msg}", jdtNum, ex.Message);
-            }
-        }
+        await Task.WhenAll(tasks);
+        sw.Stop();
 
-        _log.LogInformation("OJDT-17C: extracted {Total} lines via individual GET", allLines.Count);
-        return allLines;
+        var totalMs   = sw.ElapsedMilliseconds;
+        var entryCount = allEntries.Count;
+        var avgMs      = entryCount > 0 ? totalMs / entryCount : 0;
+        _log.LogInformation(
+            "OJDT-17C: extracted {Lines} lines from {Ok}/{Total} entries ({Fail} failed) in {TotalMs}ms (~{AvgMs}ms/GET, concurrency={C})",
+            bag.Count, successCount, entryCount, failCount, totalMs, avgMs, concurrency);
+
+        var result = new JsonArray();
+        foreach (var (_, line) in bag.OrderBy(x => x.index))
+            result.Add(line);
+        return result;
     }
 
     /// <summary>

@@ -39,6 +39,15 @@ public sealed class ExtractorOptions
     /// <summary>Optional cap on cycles for testing. Null = unlimited.</summary>
     public int? MaxCycles { get; init; } = null;
 
+    // ── Accounting ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Max concurrent SAP Service Layer GET requests when fetching individual
+    /// JournalEntries(N) for JDT1 line extraction. Default 3.
+    /// Increase for faster extraction; decrease if SL returns 429/session errors.
+    /// </summary>
+    public int JournalEntryLineFetchConcurrency { get; init; } = 3;
+
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(TenantId))
