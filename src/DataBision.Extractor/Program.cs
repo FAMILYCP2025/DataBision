@@ -51,21 +51,22 @@ if (args.Contains("--service"))
                 {
                     extOptions = new ExtractorOptions
                     {
-                        TenantId                         = extOptions.TenantId,
-                        CompanyId                        = extOptions.CompanyId,
-                        Mode                             = extOptions.Mode,
-                        PageSize                         = extOptions.PageSize,
-                        MaxPages                         = extOptions.MaxPages,
-                        LookbackMinutes                  = extOptions.LookbackMinutes,
-                        Objects                          = extOptions.Objects,
-                        SendEnabled                      = extOptions.SendEnabled,
-                        IntervalMinutes                  = extOptions.IntervalMinutes,
-                        MaxCycles                        = extOptions.MaxCycles,
-                        JournalEntryLineFetchConcurrency = svcResolved.Value.FetchConcurrency,
-                        ProfileName                      = extOptions.ProfileName,
-                        ConnectionProfileId              = extOptions.ConnectionProfileId,
-                        RunMartRefreshAfterExtraction    = extOptions.RunMartRefreshAfterExtraction,
-                        MartRefreshCompanyId             = extOptions.MartRefreshCompanyId,
+                        TenantId                             = extOptions.TenantId,
+                        CompanyId                            = extOptions.CompanyId,
+                        Mode                                 = extOptions.Mode,
+                        PageSize                             = extOptions.PageSize,
+                        MaxPages                             = extOptions.MaxPages,
+                        LookbackMinutes                      = extOptions.LookbackMinutes,
+                        Objects                              = extOptions.Objects,
+                        SendEnabled                          = extOptions.SendEnabled,
+                        IntervalMinutes                      = extOptions.IntervalMinutes,
+                        MaxCycles                            = extOptions.MaxCycles,
+                        JournalEntryLineFetchConcurrency     = svcResolved.Value.FetchConcurrency,
+                        ProfileName                          = extOptions.ProfileName,
+                        ConnectionProfileId                  = extOptions.ConnectionProfileId,
+                        RunMartRefreshAfterExtraction        = extOptions.RunMartRefreshAfterExtraction,
+                        RunProcessMartRefreshAfterExtraction = extOptions.RunProcessMartRefreshAfterExtraction,
+                        MartRefreshCompanyId                 = extOptions.MartRefreshCompanyId,
                     };
                 }
             }
@@ -175,16 +176,22 @@ var extOptions = config.GetSection(ExtractorOptions.Section).Get<ExtractorOption
     {
         extOptions = new ExtractorOptions
         {
-            TenantId        = extOptions.TenantId,
-            CompanyId       = extOptions.CompanyId,
-            Mode            = extOptions.Mode,
-            PageSize        = cliPg ?? extOptions.PageSize,
-            MaxPages        = cliMp ?? extOptions.MaxPages,
-            LookbackMinutes = extOptions.LookbackMinutes,
-            Objects         = extOptions.Objects,
-            SendEnabled     = extOptions.SendEnabled,
-            IntervalMinutes = extOptions.IntervalMinutes,
-            MaxCycles       = extOptions.MaxCycles,
+            TenantId                             = extOptions.TenantId,
+            CompanyId                            = extOptions.CompanyId,
+            Mode                                 = extOptions.Mode,
+            PageSize                             = cliPg ?? extOptions.PageSize,
+            MaxPages                             = cliMp ?? extOptions.MaxPages,
+            LookbackMinutes                      = extOptions.LookbackMinutes,
+            Objects                              = extOptions.Objects,
+            SendEnabled                          = extOptions.SendEnabled,
+            IntervalMinutes                      = extOptions.IntervalMinutes,
+            MaxCycles                            = extOptions.MaxCycles,
+            JournalEntryLineFetchConcurrency     = extOptions.JournalEntryLineFetchConcurrency,
+            ProfileName                          = extOptions.ProfileName,
+            ConnectionProfileId                  = extOptions.ConnectionProfileId,
+            RunMartRefreshAfterExtraction        = extOptions.RunMartRefreshAfterExtraction,
+            RunProcessMartRefreshAfterExtraction = extOptions.RunProcessMartRefreshAfterExtraction,
+            MartRefreshCompanyId                 = extOptions.MartRefreshCompanyId,
         };
     }
 }
@@ -234,21 +241,22 @@ if (profileNameArg is not null || profileIdArg is not null)
     {
         extOptions = new ExtractorOptions
         {
-            TenantId                         = extOptions.TenantId,
-            CompanyId                        = extOptions.CompanyId,
-            Mode                             = extOptions.Mode,
-            PageSize                         = extOptions.PageSize,
-            MaxPages                         = extOptions.MaxPages,
-            LookbackMinutes                  = extOptions.LookbackMinutes,
-            Objects                          = extOptions.Objects,
-            SendEnabled                      = extOptions.SendEnabled,
-            IntervalMinutes                  = extOptions.IntervalMinutes,
-            MaxCycles                        = extOptions.MaxCycles,
-            JournalEntryLineFetchConcurrency = resolved.Value.FetchConcurrency,
-            ProfileName                      = extOptions.ProfileName,
-            ConnectionProfileId              = extOptions.ConnectionProfileId,
-            RunMartRefreshAfterExtraction    = extOptions.RunMartRefreshAfterExtraction,
-            MartRefreshCompanyId             = extOptions.MartRefreshCompanyId,
+            TenantId                             = extOptions.TenantId,
+            CompanyId                            = extOptions.CompanyId,
+            Mode                                 = extOptions.Mode,
+            PageSize                             = extOptions.PageSize,
+            MaxPages                             = extOptions.MaxPages,
+            LookbackMinutes                      = extOptions.LookbackMinutes,
+            Objects                              = extOptions.Objects,
+            SendEnabled                          = extOptions.SendEnabled,
+            IntervalMinutes                      = extOptions.IntervalMinutes,
+            MaxCycles                            = extOptions.MaxCycles,
+            JournalEntryLineFetchConcurrency     = resolved.Value.FetchConcurrency,
+            ProfileName                          = extOptions.ProfileName,
+            ConnectionProfileId                  = extOptions.ConnectionProfileId,
+            RunMartRefreshAfterExtraction        = extOptions.RunMartRefreshAfterExtraction,
+            RunProcessMartRefreshAfterExtraction = extOptions.RunProcessMartRefreshAfterExtraction,
+            MartRefreshCompanyId                 = extOptions.MartRefreshCompanyId,
         };
         Log.Information("JournalEntryLineFetchConcurrency set to {Conc} from profile.", resolved.Value.FetchConcurrency);
     }
