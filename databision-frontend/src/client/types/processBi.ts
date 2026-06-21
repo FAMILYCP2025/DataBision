@@ -309,6 +309,33 @@ export interface FinanceReconciliation {
   isBalanced: boolean
 }
 
+// ── Finance refresh status (Sprint 21D) ──────────────────────────────────────
+
+export interface ExtractionRunSummary {
+  startedAt: string
+  finishedAt: string | null
+  status: string
+  rowsExtracted: number
+  lastError: string | null
+}
+
+export interface TransformRunSummary {
+  startedAt: string
+  finishedAt: string | null
+  status: string
+  objectsRefreshed: number
+  lastError: string | null
+}
+
+export interface FinanceRefreshStatus {
+  lastOactExtraction: ExtractionRunSummary | null
+  lastOjdtExtraction: ExtractionRunSummary | null
+  lastMartRefresh: TransformRunSummary | null
+  lastDataRefreshedAt: string | null
+  overallStatus: 'ok' | 'warning' | 'error' | 'never_run'
+  statusMessage: string
+}
+
 export interface FinanceValidationSummary {
   healthScore: number
   healthStatus: 'ok' | 'warning' | 'critical'

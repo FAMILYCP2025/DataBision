@@ -154,6 +154,10 @@ public sealed class ProcessDashboardService(
         string companyId, CancellationToken ct = default)
         => await repo.GetFinanceReadinessAsync(await MapAsync(companyId, ct), ct);
 
+    public async Task<FinanceRefreshStatusDto> GetFinanceRefreshStatusAsync(
+        string companyId, CancellationToken ct = default)
+        => await repo.GetFinanceRefreshStatusAsync(await MapAsync(companyId, ct), ct);
+
     private static PagedResultDto<T> BuildPaged<T>(IReadOnlyList<T> rows, int limit, int offset)
     {
         var hasMore = rows.Count > limit;

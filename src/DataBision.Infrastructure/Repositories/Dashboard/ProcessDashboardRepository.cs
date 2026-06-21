@@ -1161,6 +1161,145 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
         };
     }
 
+    // ── FINANCE REFRESH STATUS (Sprint 21D) ──────────────────────────────────
+
+    public async Task<FinanceRefreshStatusDto> GetFinanceRefreshStatusAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(ct);
+
+        const string lastRunSql = """
+            SELECT
+                sap_object       AS "SapObject",
+                started_at_utc   AS "StartedAtUtc",
+                finished_at_utc  AS "FinishedAtUtc",
+                status           AS "Status",
+                rows_extracted   AS "RowsExtracted",
+                last_error       AS "LastError"
+            FROM ops.extractor_run
+            WHERE company_id = @company_id
+              AND sap_object = @sap_object
+            ORDER BY started_at_utc DESC
+            LIMIT 1;
+            """;
+
+        const string lastTransformSql = """
+            SELECT
+                started_at_utc    AS "StartedAtUtc",
+                finished_at_utc   AS "FinishedAtUtc",
+                status            AS "Status",
+                objects_refreshed AS "ObjectsRefreshed",
+                last_error        AS "LastError"
+            FROM ops.transform_run
+            WHERE company_id = @company_id
+              AND transform_type = 'MART'
+            ORDER BY started_at_utc DESC
+            LIMIT 1;
+            """;
+
+        const string lastMartRefreshSql = """
+            SELECT GREATEST(
+                (SELECT MAX(refreshed_at) FROM mart.income_statement_summary WHERE company_id = @company_id),
+                (SELECT MAX(refreshed_at) FROM mart.balance_sheet_summary    WHERE company_id = @company_id),
+                (SELECT MAX(refreshed_at) FROM mart.ebitda_summary            WHERE company_id = @company_id)
+            ) AS last_refreshed_at;
+            """;
+
+        var oactRow = await conn.QueryFirstOrDefaultAsync<ExtractionRunRow>(
+            new CommandDefinition(lastRunSql, new { company_id = companyId, sap_object = "OACT" }, cancellationToken: ct));
+        var ojdtRow = await conn.QueryFirstOrDefaultAsync<ExtractionRunRow>(
+            new CommandDefinition(lastRunSql, new { company_id = companyId, sap_object = "OJDT" }, cancellationToken: ct));
+        var transformRow = await conn.QueryFirstOrDefaultAsync<TransformRunRow>(
+            new CommandDefinition(lastTransformSql, new { company_id = companyId }, cancellationToken: ct));
+        var lastRefreshed = await conn.QueryFirstOrDefaultAsync<DateTime?>(
+            new CommandDefinition(lastMartRefreshSql, new { company_id = companyId }, cancellationToken: ct));
+
+        var oact    = oactRow    is null ? null : MapExtraction(oactRow);
+        var ojdt    = ojdtRow    is null ? null : MapExtraction(ojdtRow);
+        var transform = transformRow is null ? null : MapTransform(transformRow);
+
+        var overallStatus = DetermineOverallStatus(oact, ojdt, transform, lastRefreshed);
+        var statusMessage = BuildStatusMessage(overallStatus, lastRefreshed);
+
+        return new FinanceRefreshStatusDto
+        {
+            LastOactExtraction  = oact,
+            LastOjdtExtraction  = ojdt,
+            LastMartRefresh     = transform,
+            LastDataRefreshedAt = lastRefreshed.HasValue ? new DateTimeOffset(lastRefreshed.Value, TimeSpan.Zero) : null,
+            OverallStatus       = overallStatus,
+            StatusMessage       = statusMessage,
+        };
+    }
+
+    private static ExtractionRunSummary MapExtraction(ExtractionRunRow r) => new()
+    {
+        StartedAt     = new DateTimeOffset(r.StartedAtUtc, TimeSpan.Zero),
+        FinishedAt    = r.FinishedAtUtc.HasValue ? new DateTimeOffset(r.FinishedAtUtc.Value, TimeSpan.Zero) : null,
+        Status        = r.Status,
+        RowsExtracted = r.RowsExtracted,
+        LastError     = r.LastError,
+    };
+
+    private static TransformRunSummary MapTransform(TransformRunRow r) => new()
+    {
+        StartedAt        = new DateTimeOffset(r.StartedAtUtc, TimeSpan.Zero),
+        FinishedAt       = r.FinishedAtUtc.HasValue ? new DateTimeOffset(r.FinishedAtUtc.Value, TimeSpan.Zero) : null,
+        Status           = r.Status,
+        ObjectsRefreshed = r.ObjectsRefreshed,
+        LastError        = r.LastError,
+    };
+
+    private static string DetermineOverallStatus(
+        ExtractionRunSummary? oact, ExtractionRunSummary? ojdt,
+        TransformRunSummary? transform, DateTime? lastRefreshed)
+    {
+        if (oact is null && ojdt is null) return "never_run";
+        if (oact?.Status == "ERROR" || ojdt?.Status == "ERROR" || transform?.Status == "ERROR") return "error";
+        if (lastRefreshed is null) return "warning";
+        var stale = (DateTime.UtcNow - lastRefreshed.Value).TotalHours > 48;
+        return stale ? "warning" : "ok";
+    }
+
+    private static string BuildStatusMessage(string overallStatus, DateTime? lastRefreshed) => overallStatus switch
+    {
+        "never_run" => "Sin ejecuciones registradas. Ejecutar extractor para comenzar.",
+        "error"     => "Última ejecución con errores. Revisar logs del extractor.",
+        "warning" when lastRefreshed is null => "Datos en RAW pero MART no refrescado. Ejecutar refresh_accounting_all.",
+        "warning"   => $"Datos desactualizados. Último refresh hace {(int)(DateTime.UtcNow - lastRefreshed!.Value).TotalHours}h.",
+        "ok"        => lastRefreshed.HasValue
+                        ? $"Actualizado hace {FormatAge(DateTime.UtcNow - lastRefreshed.Value)}."
+                        : "OK",
+        _           => string.Empty,
+    };
+
+    private static string FormatAge(TimeSpan age)
+    {
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes} min";
+        if (age.TotalHours   < 24) return $"{(int)age.TotalHours} h";
+        return $"{(int)age.TotalDays} día(s)";
+    }
+
+    private sealed class ExtractionRunRow
+    {
+        public string    SapObject     { get; init; } = "";
+        public DateTime  StartedAtUtc  { get; init; }
+        public DateTime? FinishedAtUtc { get; init; }
+        public string    Status        { get; init; } = "";
+        public int       RowsExtracted { get; init; }
+        public string?   LastError     { get; init; }
+    }
+
+    private sealed class TransformRunRow
+    {
+        public DateTime  StartedAtUtc    { get; init; }
+        public DateTime? FinishedAtUtc   { get; init; }
+        public string    Status          { get; init; } = "";
+        public int       ObjectsRefreshed { get; init; }
+        public string?   LastError       { get; init; }
+    }
+
     // ── Private row types (Dapper mapping targets) ────────────────────────────
 
     private sealed class SalesCustomerDashboardRow

@@ -152,4 +152,17 @@ public sealed class ClientBiFinanceController(
         var result = await svc.GetFinanceReadinessAsync(ctx.CompanyId!, ct);
         return this.OkData(result);
     }
+
+    // GET /api/client/bi/finance/refresh-status
+    // Returns last OACT/OJDT extraction run and last MART transform run timestamps and status.
+    // Intended for the dashboard refresh-log widget — read-only, no refresh trigger.
+    [HttpGet("refresh-status")]
+    public async Task<IActionResult> GetRefreshStatus(CancellationToken ct = default)
+    {
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+
+        var result = await svc.GetFinanceRefreshStatusAsync(ctx.CompanyId!, ct);
+        return this.OkData(result);
+    }
 }

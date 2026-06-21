@@ -42,4 +42,7 @@ public interface IProcessDashboardService
 
     // FINANCE — READINESS (Sprint 14E)
     Task<FinanceReadinessDto> GetFinanceReadinessAsync(string companyId, CancellationToken ct = default);
+
+    // FINANCE — REFRESH STATUS (Sprint 21D)
+    Task<FinanceRefreshStatusDto> GetFinanceRefreshStatusAsync(string companyId, CancellationToken ct = default);
 }

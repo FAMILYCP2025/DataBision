@@ -13,9 +13,10 @@ import {
   useBiEbitda,
   useBiChartOfAccounts,
   useBiFinanceValidations,
+  useBiFinanceRefreshStatus,
 } from '../hooks/useProcessBi'
 import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
-import type { FinanceArAging, FinanceApAging } from '../types/processBi'
+import type { FinanceArAging, FinanceApAging, FinanceRefreshStatus } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
 import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
 import { NbStackedBarChart, NbAreaChart, NbLineChart } from '../components/charts'
@@ -172,6 +173,116 @@ function FinancialDataPending({
   )
 }
 
+// ── Refresh status widget ─────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  ok:        { label: 'Actualizado', color: '#16A34A', bg: '#F0FDF4' },
+  warning:   { label: 'Advertencia', color: '#D97706', bg: '#FFFBEB' },
+  error:     { label: 'Error',       color: '#DC2626', bg: '#FEF2F2' },
+  never_run: { label: 'Sin datos',   color: '#64748B', bg: '#F8FAFC' },
+}
+
+function fmtTs(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('es-PE', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function FinanceRefreshStatusWidget({ status }: { status: FinanceRefreshStatus | null }) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (!status) return null
+
+  const cfg = STATUS_CONFIG[status.overallStatus] ?? STATUS_CONFIG.never_run
+
+  return (
+    <div style={{
+      border: `1px solid ${cfg.color}33`,
+      borderRadius: 8,
+      background: cfg.bg,
+      padding: '10px 14px',
+      marginBottom: 16,
+      fontSize: 13,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+            background: cfg.color, flexShrink: 0,
+          }} />
+          <span style={{ fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
+          <span style={{ color: 'var(--c-text-muted)' }}>{status.statusMessage}</span>
+        </div>
+        {(status.lastDataRefreshedAt ?? status.lastMartRefresh?.finishedAt) && (
+          <span style={{ color: 'var(--c-text-muted)', fontSize: 12 }}>
+            Últ. refresh: {fmtTs(status.lastDataRefreshedAt ?? status.lastMartRefresh?.finishedAt ?? null)}
+          </span>
+        )}
+        <button
+          onClick={() => setExpanded(e => !e)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 12, color: 'var(--c-text-muted)', padding: '2px 6px',
+            borderRadius: 4, textDecoration: 'underline',
+          }}
+        >
+          {expanded ? 'Ocultar detalle' : 'Ver detalle'}
+        </button>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+          {[
+            { label: 'OACT (Plan de Cuentas)', run: status.lastOactExtraction },
+            { label: 'OJDT (Libro Diario)',    run: status.lastOjdtExtraction },
+          ].map(({ label, run }) => (
+            <div key={label} style={{
+              background: '#fff', border: '1px solid #E2E8F0',
+              borderRadius: 6, padding: '8px 12px', fontSize: 12,
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--c-text)' }}>{label}</div>
+              {run ? (
+                <>
+                  <div style={{ color: run.status === 'ERROR' ? '#DC2626' : '#16A34A' }}>
+                    {run.status} · {run.rowsExtracted} filas
+                  </div>
+                  <div style={{ color: 'var(--c-text-muted)', marginTop: 2 }}>{fmtTs(run.finishedAt ?? run.startedAt)}</div>
+                  {run.lastError && <div style={{ color: '#DC2626', marginTop: 2, wordBreak: 'break-word' }}>{run.lastError}</div>}
+                </>
+              ) : (
+                <div style={{ color: 'var(--c-text-muted)' }}>Sin ejecuciones</div>
+              )}
+            </div>
+          ))}
+          <div style={{
+            background: '#fff', border: '1px solid #E2E8F0',
+            borderRadius: 6, padding: '8px 12px', fontSize: 12,
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--c-text)' }}>MART (refresh_accounting_all)</div>
+            {status.lastMartRefresh ? (
+              <>
+                <div style={{ color: status.lastMartRefresh.status === 'ERROR' ? '#DC2626' : '#16A34A' }}>
+                  {status.lastMartRefresh.status} · {status.lastMartRefresh.objectsRefreshed} pasos
+                </div>
+                <div style={{ color: 'var(--c-text-muted)', marginTop: 2 }}>
+                  {fmtTs(status.lastMartRefresh.finishedAt ?? status.lastMartRefresh.startedAt)}
+                </div>
+                {status.lastMartRefresh.lastError && (
+                  <div style={{ color: '#DC2626', marginTop: 2, wordBreak: 'break-word' }}>{status.lastMartRefresh.lastError}</div>
+                )}
+              </>
+            ) : (
+              <div style={{ color: 'var(--c-text-muted)' }}>Sin ejecuciones</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FinanceDashboardPage() {
   const { filters, setFilter, resetFilter, resetAll, hasActiveFilters } = useNativeBiFilters('finance')
   const [tab, setTab] = useState<Tab>('resumen')
@@ -190,6 +301,7 @@ export default function FinanceDashboardPage() {
   const { data: ebData,  isLoading: loadingEb  } = useBiEbitda(24)
   const { data: coaData } = useBiChartOfAccounts(false)
   const { data: valData, isLoading: loadingVal, isError: valError } = useBiFinanceValidations()
+  const { data: refreshStatus } = useBiFinanceRefreshStatus()
 
   const latest      = execData && execData.length > 0 ? execData[execData.length - 1] : null
   const totalArOv   = execData?.reduce((s, d) => s + d.arOverdue, 0) ?? 0
@@ -487,6 +599,9 @@ export default function FinanceDashboardPage() {
                   Posición financiera neta, riesgo de cartera y tendencia de flujo
                 </p>
               </div>
+
+              {/* Refresh status widget */}
+              <FinanceRefreshStatusWidget status={refreshStatus ?? null} />
 
               {/* Readiness panel — only visible when MART data is incomplete */}
               <NativeBiFinanceReadinessPanel />

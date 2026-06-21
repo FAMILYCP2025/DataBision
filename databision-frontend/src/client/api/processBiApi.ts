@@ -21,6 +21,7 @@ import type {
   EbitdaPeriod,
   ChartOfAccountEntry,
   FinanceReadiness,
+  FinanceRefreshStatus,
   FinanceValidationSummary,
   OperationHealth,
   OperationAlert,
@@ -224,6 +225,14 @@ export async function getBiFinanceReadiness(): Promise<FinanceReadiness> {
   const tenant = await getTenant()
   const { data } = await api.get<NbApiResponse<FinanceReadiness>>(
     `/client/bi/finance/readiness${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+export async function getBiFinanceRefreshStatus(): Promise<FinanceRefreshStatus> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<FinanceRefreshStatus>>(
+    `/client/bi/finance/refresh-status${nbQs({ companyId: tenant })}`
   )
   return data.data
 }

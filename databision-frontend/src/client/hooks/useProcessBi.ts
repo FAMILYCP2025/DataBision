@@ -210,3 +210,12 @@ export function useBiFinanceValidations() {
     retry: false,
   })
 }
+
+export function useBiFinanceRefreshStatus() {
+  return useQuery({
+    queryKey: ['pb-finance-refresh-status'],
+    queryFn: () => pbApi.getBiFinanceRefreshStatus(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+}
