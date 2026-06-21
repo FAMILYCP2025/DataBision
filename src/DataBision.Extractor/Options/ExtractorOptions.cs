@@ -48,6 +48,30 @@ public sealed class ExtractorOptions
     /// </summary>
     public int JournalEntryLineFetchConcurrency { get; init; } = 3;
 
+    // ── Connection profile (Sprint 22C) ───────────────────────────────────────
+    // When set, the extractor will (in a future sprint) load SL credentials from
+    // the DataBision API instead of appsettings. Currently parsed but not resolved.
+
+    /// <summary>Name of the NativeBiConnectionProfile to load at startup (e.g. "produccion").</summary>
+    public string? ProfileName { get; init; } = null;
+
+    /// <summary>ID of the NativeBiConnectionProfile to load at startup.</summary>
+    public int? ConnectionProfileId { get; init; } = null;
+
+    // ── Post-extraction transform ─────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, runs refresh_accounting_all after each extraction cycle completes.
+    /// Requires Staging:ConnectionString to be set. Default false.
+    /// </summary>
+    public bool RunMartRefreshAfterExtraction { get; init; } = false;
+
+    /// <summary>
+    /// Company ID to use for MART refresh after extraction.
+    /// Defaults to Extractor:CompanyId if not set.
+    /// </summary>
+    public string? MartRefreshCompanyId { get; init; } = null;
+
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(TenantId))

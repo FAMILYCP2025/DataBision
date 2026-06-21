@@ -85,6 +85,17 @@ if (args.Contains("--service"))
                 svcOpsLogger,
                 sp.GetRequiredService<ServiceLayerPaginator>()));
             services.AddSingleton<ExtractorScheduler>();
+
+            // Optional: MART refresh after extraction cycle
+            if (!string.IsNullOrWhiteSpace(svcStagingOpts.ConnectionString))
+            {
+                services.AddSingleton<ITransformationRunner>(sp =>
+                    new TransformationRunner(
+                        svcStagingOpts.ConnectionString,
+                        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<TransformationRunner>>(),
+                        svcOpsLogger));
+            }
+
             services.AddHostedService<ExtractorWorkerService>();
         })
         .Build();
@@ -226,6 +237,11 @@ if (args.Contains("--help") || args.Contains("-h"))
           --validate-ops [--company C]   Query ops.extractor_run and ops.transform_run summary
           --service                      Run as Windows Service (uses Extractor.SendEnabled from config)
 
+        Connection profile (Sprint 22 — requires DataBision API):
+          --profile <name>               Load SAP SL credentials from NativeBiConnectionProfile by name
+          --profile-id <id>              Load SAP SL credentials from NativeBiConnectionProfile by ID
+          NOTE: Profile resolution from API is not yet implemented. Set credentials in appsettings for now.
+
         Examples:
           dotnet run -- --validate
           dotnet run -- --validate-staging
@@ -256,6 +272,23 @@ bool isDryRun   = args.Contains("--dry-run");
 bool isSend     = args.Contains("--send");
 bool isRunOnce  = args.Contains("--run-once");
 bool isSchedule = args.Contains("--schedule");
+
+// Connection profile args (Sprint 22C — resolution from API not yet implemented)
+string? profileNameArg = null;
+var profileNameIdx = Array.IndexOf(args, "--profile");
+if (profileNameIdx >= 0 && profileNameIdx + 1 < args.Length)
+    profileNameArg = args[profileNameIdx + 1];
+
+int? profileIdArg = null;
+var profileIdIdx = Array.IndexOf(args, "--profile-id");
+if (profileIdIdx >= 0 && profileIdIdx + 1 < args.Length && int.TryParse(args[profileIdIdx + 1], out var parsedProfileId))
+    profileIdArg = parsedProfileId;
+
+if (profileNameArg is not null || profileIdArg is not null)
+{
+    log.LogWarning("--profile / --profile-id are parsed but profile resolution from DataBision API is not yet implemented. " +
+                   "Credentials are still loaded from appsettings. This will be wired in Sprint 22B+.");
+}
 
 string? objectArg = null;
 var objIdx = Array.IndexOf(args, "--object");

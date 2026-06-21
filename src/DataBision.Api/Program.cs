@@ -117,6 +117,8 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IModuleService, ModuleService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<INativeBiAdminConfigService, NativeBiAdminConfigService>();
+builder.Services.AddScoped<INativeBiConnectionProfileService, NativeBiConnectionProfileService>();
+builder.Services.AddScoped<INativeBiSapConnectionTester, NativeBiSapConnectionTester>();
 
 // Seeder
 builder.Services.AddScoped<DatabaseSeeder>();

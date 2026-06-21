@@ -18,6 +18,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NativeBiFilterConfig> NativeBiFilterConfigs => Set<NativeBiFilterConfig>();
     public DbSet<NativeBiItemUdfFilterConfig> NativeBiItemUdfFilterConfigs => Set<NativeBiItemUdfFilterConfig>();
     public DbSet<NativeBiDimensionConfig> NativeBiDimensionConfigs => Set<NativeBiDimensionConfig>();
+    public DbSet<NativeBiConnectionProfile> NativeBiConnectionProfiles => Set<NativeBiConnectionProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -1,6 +1,7 @@
 using DataBision.Extractor.Options;
 using DataBision.Extractor.Scheduling;
 using DataBision.Extractor.ServiceLayer;
+using DataBision.Extractor.Transformations;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -9,17 +10,30 @@ namespace DataBision.Extractor.Service;
 /// <summary>
 /// BackgroundService that drives the scheduled extraction loop when running as a Windows Service.
 /// Reutilizes ExtractorScheduler — login/logout are managed per cycle here, not inside the scheduler.
+/// If ExtractorOptions.RunMartRefreshAfterExtraction is true, runs MART refresh after each successful cycle.
 /// </summary>
 public sealed class ExtractorWorkerService(
     ExtractorScheduler scheduler,
     IServiceLayerClient slClient,
     ExtractorOptions options,
-    ILogger<ExtractorWorkerService> log) : BackgroundService
+    ILogger<ExtractorWorkerService> log,
+    ITransformationRunner? transformRunner = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        log.LogInformation("ExtractorWorkerService started. Objects={Obj}, Interval={Min}min, Send={Send}",
-            string.Join(", ", options.Objects), options.IntervalMinutes, options.SendEnabled);
+        var martCompanyId = !string.IsNullOrWhiteSpace(options.MartRefreshCompanyId)
+            ? options.MartRefreshCompanyId
+            : options.CompanyId;
+
+        log.LogInformation("ExtractorWorkerService started. Objects={Obj}, Interval={Min}min, Send={Send}, MartRefreshAfterExtraction={Mart}",
+            string.Join(", ", options.Objects), options.IntervalMinutes, options.SendEnabled,
+            options.RunMartRefreshAfterExtraction);
+
+        if (options.RunMartRefreshAfterExtraction && transformRunner is null)
+        {
+            log.LogWarning("RunMartRefreshAfterExtraction=true but no ITransformationRunner injected " +
+                           "(Staging:ConnectionString not set?). MART refresh will be skipped.");
+        }
 
         int cycleCount = 0;
 
@@ -35,6 +49,8 @@ public sealed class ExtractorWorkerService(
             log.LogInformation("=== Worker cycle {N} starting at {Time} ===",
                 cycleCount, DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC"));
 
+            bool extractionSucceeded = false;
+
             try
             {
                 await slClient.LoginAsync(stoppingToken);
@@ -42,6 +58,7 @@ public sealed class ExtractorWorkerService(
                 {
                     var summaries = await scheduler.RunCycleAsync(options.SendEnabled, stoppingToken);
                     scheduler.LogCycleSummary(cycleCount, summaries);
+                    extractionSucceeded = summaries.All(s => s.Success);
                 }
                 finally
                 {
@@ -57,6 +74,25 @@ public sealed class ExtractorWorkerService(
             {
                 log.LogError(ex, "Worker cycle {N} failed — waiting for next cycle. Error: {Msg}",
                     cycleCount, ex.Message);
+            }
+
+            // MART refresh after successful extraction
+            if (extractionSucceeded && options.RunMartRefreshAfterExtraction && transformRunner is not null)
+            {
+                log.LogInformation("=== MART refresh after cycle {N} — company={CompanyId} ===",
+                    cycleCount, martCompanyId);
+                try
+                {
+                    using var martCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    martCts.CancelAfter(TimeSpan.FromMinutes(10));
+                    var martResults = await transformRunner.RefreshMartAsync(martCompanyId, martCts.Token);
+                    log.LogInformation("=== MART refresh done — {Count} object(s) refreshed ===", martResults.Count);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "MART refresh after cycle {N} failed — {Msg}. Extraction data is intact.",
+                        cycleCount, ex.Message);
+                }
             }
 
             if (stoppingToken.IsCancellationRequested) break;
