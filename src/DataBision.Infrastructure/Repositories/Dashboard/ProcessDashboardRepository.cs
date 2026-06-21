@@ -725,7 +725,7 @@ public sealed class ProcessDashboardRepository(string connectionString) : IProce
                 var tax    = g.FirstOrDefault(r => r.StatementLine == "tax")?.Amount ?? 0;
                 var gp     = rev - cogs;
                 var oi     = gp - opex;
-                var ni     = oi - fin - tax;
+                var ni     = oi + fin - tax;
 
                 return new IncomeStatementPeriodDto
                 {
