@@ -10,6 +10,7 @@ namespace DataBision.Infrastructure.Repositories;
 
 public sealed class NativeBiConnectionProfileService(
     AppDbContext db,
+    ISecretRefResolver secretRefResolver,
     INativeBiSapConnectionTester tester,
     ILogger<NativeBiConnectionProfileService> log) : INativeBiConnectionProfileService
 {
@@ -137,11 +138,68 @@ public sealed class NativeBiConnectionProfileService(
         return await tester.TestAsync(entity, ct);
     }
 
+    public async Task<(ResolveNativeBiConnectionProfileResponse? result, string? error)> ResolveForExtractorAsync(
+        string analyticsCompanyId,
+        string? profileName,
+        int? profileId,
+        CancellationToken ct = default)
+    {
+        var company = await db.Companies
+            .FirstOrDefaultAsync(c => c.AnalyticsCompanyId == analyticsCompanyId, ct);
+        if (company is null) return (null, "company_not_found");
+
+        NativeBiConnectionProfile? profile;
+        if (profileId.HasValue)
+        {
+            profile = await db.NativeBiConnectionProfiles
+                .FirstOrDefaultAsync(p => p.CompanyId == company.Id && p.Id == profileId.Value, ct);
+        }
+        else if (!string.IsNullOrWhiteSpace(profileName))
+        {
+            profile = await db.NativeBiConnectionProfiles
+                .FirstOrDefaultAsync(p => p.CompanyId == company.Id && p.ProfileName == profileName, ct);
+        }
+        else
+        {
+            profile = await db.NativeBiConnectionProfiles
+                .Where(p => p.CompanyId == company.Id && p.IsActive)
+                .OrderBy(p => p.Id)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        if (profile is null) return (null, "profile_not_found");
+        if (!profile.IsActive) return (null, "profile_inactive");
+
+        string sapPassword;
+        try
+        {
+            sapPassword = secretRefResolver.Resolve(profile.SecretRef);
+        }
+        catch (Exception ex)
+        {
+            log.LogError("SecretRef resolution failed for profile {ProfileId}: {Message}", profile.Id, ex.Message);
+            return (null, "secret_resolution_failed");
+        }
+
+        return (new ResolveNativeBiConnectionProfileResponse
+        {
+            ProfileId           = profile.Id,
+            ProfileName         = profile.ProfileName,
+            ServiceLayerBaseUrl = profile.ServiceLayerBaseUrl,
+            CompanyDb           = profile.CompanyDb,
+            SapUserName         = profile.SapUserName,
+            SapPassword         = sapPassword,
+            IgnoreSslErrors     = profile.IgnoreSslErrors,
+            TimeoutSeconds      = profile.TimeoutSeconds,
+            FetchConcurrency    = profile.FetchConcurrency,
+        }, null);
+    }
+
     private Task<NativeBiConnectionProfile?> FindAsync(int companyId, int profileId, CancellationToken ct)
         => db.NativeBiConnectionProfiles
             .FirstOrDefaultAsync(p => p.CompanyId == companyId && p.Id == profileId, ct);
 
-    private static NativeBiConnectionProfileDto ToDto(NativeBiConnectionProfile p) =>
+    private NativeBiConnectionProfileDto ToDto(NativeBiConnectionProfile p) =>
         new()
         {
             Id                      = p.Id,
@@ -151,7 +209,7 @@ public sealed class NativeBiConnectionProfileService(
             ServiceLayerBaseUrl     = p.ServiceLayerBaseUrl,
             CompanyDb               = p.CompanyDb,
             SapUserName             = p.SapUserName,
-            SecretRefHint           = SecretRefResolver.ToHint(p.SecretRef),
+            SecretRefHint           = secretRefResolver.ToHint(p.SecretRef),
             IsActive                = p.IsActive,
             IgnoreSslErrors         = p.IgnoreSslErrors,
             TimeoutSeconds          = p.TimeoutSeconds,

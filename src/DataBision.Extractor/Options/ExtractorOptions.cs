@@ -67,6 +67,12 @@ public sealed class ExtractorOptions
     public bool RunMartRefreshAfterExtraction { get; init; } = false;
 
     /// <summary>
+    /// When true, also runs process-dashboard MART refresh after a successful finance MART refresh.
+    /// Only runs if RunMartRefreshAfterExtraction=true and the finance refresh succeeds. Default false.
+    /// </summary>
+    public bool RunProcessMartRefreshAfterExtraction { get; init; } = false;
+
+    /// <summary>
     /// Company ID to use for MART refresh after extraction.
     /// Defaults to Extractor:CompanyId if not set.
     /// </summary>

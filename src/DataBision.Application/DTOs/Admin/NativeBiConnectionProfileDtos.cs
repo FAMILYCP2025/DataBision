@@ -63,3 +63,20 @@ public sealed class TestCapabilities
     public bool ChartOfAccountsOk { get; init; }
     public bool JournalEntriesOk  { get; init; }
 }
+
+/// <summary>
+/// Returned by the internal resolve endpoint to the extractor.
+/// Contains the resolved SAP password — only served over HTTPS to API-key-authenticated callers.
+/// </summary>
+public sealed class ResolveNativeBiConnectionProfileResponse
+{
+    public int    ProfileId           { get; init; }
+    public string ProfileName         { get; init; } = string.Empty;
+    public string ServiceLayerBaseUrl { get; init; } = string.Empty;
+    public string CompanyDb           { get; init; } = string.Empty;
+    public string SapUserName         { get; init; } = string.Empty;
+    public string SapPassword         { get; init; } = string.Empty;
+    public bool   IgnoreSslErrors     { get; init; }
+    public int    TimeoutSeconds      { get; init; }
+    public int    FetchConcurrency    { get; init; }
+}

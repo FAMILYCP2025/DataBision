@@ -1,6 +1,6 @@
 # Native BI Finance — Checklist Primer Piloto Real
 
-**Sprint:** 22F  
+**Sprint:** 23F (actualizado desde 22F)  
 **Fecha:** 2026-06-21  
 **Uso:** Operativo — completar en orden antes y durante el piloto
 
@@ -17,18 +17,22 @@
 - [ ] `cfg.account_classification_rules` poblado (o copiado desde empresa demo)
 - [ ] MART functions de finance presentes (`refresh_accounting_all`)
 
-### Perfil de conexión SAP
-- [ ] NativeBiConnectionProfile creado en Admin (`GET /api/admin/companies/{id}/native-bi/connection-profiles`)
-- [ ] `SecretRef` = `env:DATABISION_SAP_PASSWORD_{SLUG}` configurado en servidor del extractor
-- [ ] Test de conexión ejecutado y exitoso (`POST .../test`)
-- [ ] Resultado test-connection guardado (captura de pantalla o log)
+### Perfil de conexión SAP (Sprint 23 — flujo nuevo)
+- [ ] `AnalyticsCompanyId` configurado en Admin → Empresa (requerido para resolución de perfil)
+- [ ] Variable de entorno `SAP_PASSWORD_{SLUG}` configurada en el **servidor de la API**
+- [ ] NativeBiConnectionProfile creado desde Admin UI → pestaña Native BI → **+ Nuevo perfil**
+  - `SecretRef` = `env:SAP_PASSWORD_{SLUG}` (apunta a la variable en el servidor de la API)
+- [ ] Test de conexión desde Admin UI → botón **Test** → resultado ✓ OK
+- [ ] Resultado del test guardado (captura de pantalla)
 
 ### Extractor
-- [ ] Extractor desplegado en servidor con acceso a SAP Service Layer del cliente
-- [ ] `appsettings.Development.json` (o variables de entorno) configurado con credenciales SAP
-- [ ] `--dry-run` ejecutado y retorna "configuration OK"
-- [ ] `--validate` ejecutado y login SAP exitoso
-- [ ] `--validate-staging` ejecutado y Supabase accessible
+- [ ] Extractor desplegado en servidor con acceso de red a SAP Service Layer del cliente
+- [ ] `DataBisionApi:BaseUrl` y `DataBisionApi:ApiKey` configurados en el servidor del extractor
+- [ ] `Extractor:CompanyId` = analytics company ID de la empresa (ej. `company-client-001`)
+- [ ] `--dry-run --profile produccion` ejecutado y retorna "Profile resolved: ... DB=..."
+- [ ] `--validate` ejecutado con las credenciales resueltas (login SAP exitoso)
+- [ ] `--validate-staging` ejecutado y Supabase accesible
+- [ ] **Rollback documentado:** si el resolve falla, usar appsettings con credenciales directas
 
 ### Acceso SAP
 - [ ] Usuario SAP dedicado para DataBision creado (solo lectura: OACT, OJDT, ChartOfAccounts, JournalEntries)
@@ -52,7 +56,7 @@
 ## FASE 2 — Primera extracción (Día 1)
 
 ### OACT (Chart of Accounts)
-- [ ] `dotnet DataBision.Extractor.exe --object OACT --send`
+- [ ] `dotnet DataBision.Extractor.exe --profile produccion --object OACT --send`
 - [ ] Verificar en Supabase: `SELECT COUNT(*) FROM raw.oact WHERE company_id = '...'`
 - [ ] Verificar en MART: `SELECT COUNT(*) FROM mart.gl_accounts WHERE company_id = '...'`
 - [ ] Cuentas sin clasificar: `SELECT * FROM mart.gl_accounts WHERE classification = 'unclassified'`

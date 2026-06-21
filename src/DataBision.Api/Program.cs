@@ -49,6 +49,9 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IModuleRepository, ModuleRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 
+// ApiKeyAuthFilter: needed for ingest endpoints AND internal extractor endpoints (does not require staging)
+builder.Services.AddScoped<ApiKeyAuthFilter>();
+
 // Staging database — optional, guarded by connection string presence (PostgreSQL/Supabase in Sprint 1)
 var stagingConnectionString = builder.Configuration.GetConnectionString("StagingConnection");
 if (!string.IsNullOrWhiteSpace(stagingConnectionString))
@@ -62,7 +65,6 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
     builder.Services.AddScoped<IIngestCheckpointRepository>(_ =>
         new IngestCheckpointRepository(stagingConnectionString));
     builder.Services.AddScoped<IIngestService, IngestService>();
-    builder.Services.AddScoped<ApiKeyAuthFilter>();
 
     // Native BI — Dashboard, Sales, Sync endpoints (read from mart.* / stg.* / ctl.*)
     builder.Services.AddScoped<IDashboardRepository>(_ =>
@@ -117,6 +119,7 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IModuleService, ModuleService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<INativeBiAdminConfigService, NativeBiAdminConfigService>();
+builder.Services.AddSingleton<ISecretRefResolver, DefaultSecretRefResolver>();
 builder.Services.AddScoped<INativeBiConnectionProfileService, NativeBiConnectionProfileService>();
 builder.Services.AddScoped<INativeBiSapConnectionTester, NativeBiSapConnectionTester>();
 

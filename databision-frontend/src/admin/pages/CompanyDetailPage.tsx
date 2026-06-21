@@ -9,9 +9,14 @@ import {
   getAccountClassificationRules, createAccountClassificationRule,
   updateAccountClassificationRule, deleteAccountClassificationRule,
   getAccountClassificationTemplate,
+  getNativeBiConnectionProfiles, createNativeBiConnectionProfile,
+  updateNativeBiConnectionProfile, deleteNativeBiConnectionProfile,
+  testNativeBiConnectionProfile,
   STATEMENT_LINES,
   type NativeBiFilterConfig, type NativeBiItemUdfFilterConfig, type NativeBiDimensionConfig,
   type AccountClassificationRule, type AccountClassificationTemplateSuggestion,
+  type NativeBiConnectionProfile, type CreateNativeBiConnectionProfilePayload,
+  type UpdateNativeBiConnectionProfilePayload, type TestNativeBiConnectionResult,
 } from '../api/adminApi'
 import { statusBadge } from '../components/Badge'
 import { format } from 'date-fns'
@@ -364,6 +369,9 @@ function NativeBiConfigTab({ companyId }: { companyId: number }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+      {/* ── Connection Profiles ──────────────────────────────────────────────── */}
+      <NativeBiConnectionProfilesSection companyId={companyId} />
 
       {/* ── Filters ─────────────────────────────────────────────────────────── */}
       <div className="db-card">
@@ -792,6 +800,334 @@ function AccountClassificationSection({ companyId }: { companyId: number }) {
           <button className="db-btn db-btn--ghost db-btn--sm" style={{ marginTop: '12px' }} onClick={() => setShowTemplate(false)}>
             Cerrar sugerencias
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Native BI Connection Profiles Section ────────────────────────────────────
+
+const BLANK_CREATE: CreateNativeBiConnectionProfilePayload = {
+  profileName: '', environmentName: 'Production', serviceLayerBaseUrl: '',
+  companyDb: '', sapUserName: '', secretRef: '',
+  isActive: true, ignoreSslErrors: false, timeoutSeconds: 60, fetchConcurrency: 3,
+}
+
+function NativeBiConnectionProfilesSection({ companyId }: { companyId: number }) {
+  const qc = useQueryClient()
+  const { data: profiles = [], isLoading } = useQuery({
+    queryKey: ['nb-profiles', companyId],
+    queryFn: () => getNativeBiConnectionProfiles(companyId),
+  })
+
+  const [showAdd, setShowAdd]         = React.useState(false)
+  const [form, setForm]               = React.useState<CreateNativeBiConnectionProfilePayload>(BLANK_CREATE)
+  const [addError, setAddError]       = React.useState<string | null>(null)
+  const [editingId, setEditingId]     = React.useState<number | null>(null)
+  const [editForm, setEditForm]       = React.useState<UpdateNativeBiConnectionProfilePayload | null>(null)
+  const [editError, setEditError]     = React.useState<string | null>(null)
+  const [testResults, setTestResults] = React.useState<Record<number, TestNativeBiConnectionResult>>({})
+  const [testingId, setTestingId]     = React.useState<number | null>(null)
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['nb-profiles', companyId] })
+
+  const addMutation = useMutation({
+    mutationFn: () => createNativeBiConnectionProfile(companyId, form),
+    onSuccess: () => { invalidate(); setForm(BLANK_CREATE); setShowAdd(false); setAddError(null) },
+    onError: (err: unknown) => {
+      const ax = err as { response?: { data?: { message?: string } } }
+      setAddError(ax?.response?.data?.message ?? 'Error al crear el perfil.')
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: UpdateNativeBiConnectionProfilePayload }) =>
+      updateNativeBiConnectionProfile(companyId, id, payload),
+    onSuccess: () => { invalidate(); setEditingId(null); setEditForm(null); setEditError(null) },
+    onError: (err: unknown) => {
+      const ax = err as { response?: { data?: { message?: string } } }
+      setEditError(ax?.response?.data?.message ?? 'Error al actualizar el perfil.')
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteNativeBiConnectionProfile(companyId, id),
+    onSuccess: () => invalidate(),
+  })
+
+  const handleTest = async (p: NativeBiConnectionProfile) => {
+    setTestingId(p.id)
+    try {
+      const result = await testNativeBiConnectionProfile(companyId, p.id)
+      setTestResults(prev => ({ ...prev, [p.id]: result }))
+    } catch {
+      setTestResults(prev => ({
+        ...prev,
+        [p.id]: {
+          success: false, latencyMs: 0,
+          checkedAt: new Date().toISOString(),
+          serviceLayerBaseUrlMasked: '', companyDb: p.companyDb,
+          message: 'Error al conectar con la API.',
+          capabilities: { loginOk: false, chartOfAccountsOk: false, journalEntriesOk: false },
+        }
+      }))
+    } finally {
+      setTestingId(null)
+    }
+  }
+
+  const startEdit = (p: NativeBiConnectionProfile) => {
+    setEditingId(p.id)
+    setEditError(null)
+    setEditForm({
+      profileName: p.profileName, environmentName: p.environmentName,
+      serviceLayerBaseUrl: p.serviceLayerBaseUrl, companyDb: p.companyDb,
+      sapUserName: p.sapUserName, secretRef: '',
+      isActive: p.isActive, ignoreSslErrors: p.ignoreSslErrors,
+      timeoutSeconds: p.timeoutSeconds, fetchConcurrency: p.fetchConcurrency,
+    })
+  }
+
+  const setF = (k: keyof CreateNativeBiConnectionProfilePayload, v: string | number | boolean) =>
+    setForm(prev => ({ ...prev, [k]: v }))
+
+  const setEF = (k: keyof UpdateNativeBiConnectionProfilePayload, v: string | number | boolean | undefined) =>
+    setEditForm(prev => prev ? ({ ...prev, [k]: v }) : prev)
+
+  return (
+    <div className="db-card">
+      <div className="db-card-header">
+        <h2 className="db-card-title">Perfiles de conexión SAP Service Layer</h2>
+        <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => { setShowAdd(s => !s); setAddError(null) }}>
+          {showAdd ? 'Cancelar' : '+ Nuevo perfil'}
+        </button>
+      </div>
+
+      <div className="db-alert db-alert--warning" style={{ margin: '0 16px 12px', fontSize: '12px' }}>
+        <strong>Seguridad:</strong> El campo <code>SecretRef</code> debe ser <code>env:NOMBRE_VARIABLE</code>.
+        La variable de entorno debe estar configurada en el servidor donde corre la API (no el extractor).
+        El password SAP nunca se muestra en esta UI.
+      </div>
+
+      <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', padding: '0 16px 12px' }}>
+        Los perfiles son usados por el extractor con <code>--profile &lt;nombre&gt;</code> para cargar credenciales SAP sin appsettings.
+      </p>
+
+      {isLoading ? (
+        <div style={{ padding: '16px' }}><span className="db-spinner" /></div>
+      ) : profiles.length > 0 ? (
+        <table className="db-table" style={{ marginBottom: editingId ? 0 : '16px' }}>
+          <thead>
+            <tr>
+              <th>Perfil</th>
+              <th>Entorno</th>
+              <th>SL URL</th>
+              <th>CompanyDB</th>
+              <th>Usuario SAP</th>
+              <th>SecretRef</th>
+              <th>Concurrencia</th>
+              <th>Activo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {profiles.map(p => (
+              <React.Fragment key={p.id}>
+                <tr>
+                  <td><code className="db-code">{p.profileName}</code></td>
+                  <td>{p.environmentName}</td>
+                  <td style={{ fontSize: '12px', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.serviceLayerBaseUrl}>{p.serviceLayerBaseUrl}</td>
+                  <td><code className="db-code">{p.companyDb}</code></td>
+                  <td>{p.sapUserName}</td>
+                  <td><code className="db-code" style={{ fontSize: '11px' }}>{p.secretRefHint}</code></td>
+                  <td style={{ textAlign: 'center' }}>{p.fetchConcurrency}</td>
+                  <td>
+                    <span className={`db-badge ${p.isActive ? 'db-badge--success' : 'db-badge--muted'}`}>
+                      {p.isActive ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        className="db-btn db-btn--ghost db-btn--sm"
+                        onClick={() => handleTest(p)}
+                        disabled={testingId === p.id}
+                      >
+                        {testingId === p.id ? '…' : 'Test'}
+                      </button>
+                      <button
+                        className="db-btn db-btn--ghost db-btn--sm"
+                        onClick={() => editingId === p.id ? setEditingId(null) : startEdit(p)}
+                      >
+                        {editingId === p.id ? 'Cerrar' : 'Editar'}
+                      </button>
+                      <button
+                        className="db-btn db-btn--ghost db-btn--sm"
+                        style={{ color: 'var(--color-error)' }}
+                        onClick={() => { if (window.confirm(`¿Eliminar perfil "${p.profileName}"?`)) deleteMutation.mutate(p.id) }}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                {/* Test result row */}
+                {testResults[p.id] && (
+                  <tr>
+                    <td colSpan={9} style={{ backgroundColor: testResults[p.id].success ? 'rgba(22,163,74,0.06)' : 'rgba(220,38,38,0.06)', padding: '10px 16px' }}>
+                      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <span className={`db-badge ${testResults[p.id].success ? 'db-badge--success' : 'db-badge--error'}`}>
+                          {testResults[p.id].success ? '✓ OK' : '✗ FAIL'}
+                        </span>
+                        <span style={{ fontSize: '12px' }}>{testResults[p.id].latencyMs}ms</span>
+                        <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                          Login: {testResults[p.id].capabilities.loginOk ? '✓' : '✗'} &nbsp;
+                          CoA: {testResults[p.id].capabilities.chartOfAccountsOk ? '✓' : '✗'} &nbsp;
+                          JE: {testResults[p.id].capabilities.journalEntriesOk ? '✓' : '✗'}
+                        </span>
+                        <span style={{ fontSize: '12px', flex: 1 }}>{testResults[p.id].message}</span>
+                        <button className="db-btn db-btn--ghost db-btn--sm" style={{ fontSize: '11px' }}
+                          onClick={() => setTestResults(prev => { const n = { ...prev }; delete n[p.id]; return n })}>
+                          ×
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
+                {/* Inline edit row */}
+                {editingId === p.id && editForm && (
+                  <tr>
+                    <td colSpan={9} style={{ padding: '16px', backgroundColor: 'var(--color-surface)', borderTop: '1px solid var(--color-border)' }}>
+                      <form onSubmit={e => { e.preventDefault(); updateMutation.mutate({ id: p.id, payload: editForm }) }}>
+                        <div className="db-form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                          <div className="db-field">
+                            <label className="db-label">Nombre del perfil *</label>
+                            <input className="db-input" value={editForm.profileName} onChange={e => setEF('profileName', e.target.value)} required />
+                          </div>
+                          <div className="db-field">
+                            <label className="db-label">Entorno</label>
+                            <select className="db-select" value={editForm.environmentName} onChange={e => setEF('environmentName', e.target.value)}>
+                              <option>Production</option><option>Staging</option><option>Development</option>
+                            </select>
+                          </div>
+                          <div className="db-field">
+                            <label className="db-label">SL Base URL *</label>
+                            <input className="db-input" value={editForm.serviceLayerBaseUrl} onChange={e => setEF('serviceLayerBaseUrl', e.target.value)} required />
+                          </div>
+                          <div className="db-field">
+                            <label className="db-label">CompanyDB *</label>
+                            <input className="db-input" value={editForm.companyDb} onChange={e => setEF('companyDb', e.target.value)} required />
+                          </div>
+                          <div className="db-field">
+                            <label className="db-label">Usuario SAP *</label>
+                            <input className="db-input" value={editForm.sapUserName} onChange={e => setEF('sapUserName', e.target.value)} required />
+                          </div>
+                          <div className="db-field">
+                            <label className="db-label">SecretRef (vacío = mantener)</label>
+                            <input className="db-input" value={editForm.secretRef ?? ''} onChange={e => setEF('secretRef', e.target.value || undefined)} placeholder={`Actual: ${p.secretRefHint}`} />
+                          </div>
+                          <div className="db-field">
+                            <label className="db-label">Timeout (seg)</label>
+                            <input className="db-input" type="number" min={10} max={300} value={editForm.timeoutSeconds} onChange={e => setEF('timeoutSeconds', Number(e.target.value))} />
+                          </div>
+                          <div className="db-field">
+                            <label className="db-label">Concurrencia OJDT</label>
+                            <input className="db-input" type="number" min={1} max={10} value={editForm.fetchConcurrency} onChange={e => setEF('fetchConcurrency', Number(e.target.value))} />
+                          </div>
+                          <div className="db-field" style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', paddingBottom: '4px' }}>
+                            <label style={{ display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer', fontSize: '13px' }}>
+                              <input type="checkbox" checked={editForm.isActive} onChange={e => setEF('isActive', e.target.checked)} />
+                              Activo
+                            </label>
+                            <label style={{ display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer', fontSize: '13px' }}>
+                              <input type="checkbox" checked={editForm.ignoreSslErrors} onChange={e => setEF('ignoreSslErrors', e.target.checked)} />
+                              Ignorar SSL
+                            </label>
+                          </div>
+                        </div>
+                        {editError && <div className="db-alert db-alert--error" style={{ marginTop: '8px' }}>{editError}</div>}
+                        <div className="db-form-actions" style={{ marginTop: '12px' }}>
+                          <button type="button" className="db-btn db-btn--ghost" onClick={() => setEditingId(null)}>Cancelar</button>
+                          <button type="submit" className="db-btn db-btn--primary" disabled={updateMutation.isPending}>
+                            {updateMutation.isPending ? <><span className="db-spinner db-spinner--sm" /> Guardando…</> : 'Guardar cambios'}
+                          </button>
+                        </div>
+                      </form>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p style={{ padding: '0 16px 16px', color: 'var(--color-text-muted)', fontSize: '13px' }}>
+          No hay perfiles de conexión. Crea uno para usar <code>--profile</code> en el extractor.
+        </p>
+      )}
+
+      {/* Add form */}
+      {showAdd && (
+        <div style={{ borderTop: profiles.length > 0 ? '1px solid var(--color-border)' : 'none', padding: '16px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>Nuevo perfil de conexión</h3>
+          <form onSubmit={e => { e.preventDefault(); addMutation.mutate() }}>
+            <div className="db-form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+              <div className="db-field">
+                <label className="db-label">Nombre del perfil *</label>
+                <input className="db-input" value={form.profileName} onChange={e => setF('profileName', e.target.value)} placeholder="ej. produccion" required />
+              </div>
+              <div className="db-field">
+                <label className="db-label">Entorno</label>
+                <select className="db-select" value={form.environmentName} onChange={e => setF('environmentName', e.target.value)}>
+                  <option>Production</option><option>Staging</option><option>Development</option>
+                </select>
+              </div>
+              <div className="db-field">
+                <label className="db-label">SL Base URL *</label>
+                <input className="db-input" value={form.serviceLayerBaseUrl} onChange={e => setF('serviceLayerBaseUrl', e.target.value)} placeholder="https://sap-host:50000/b1s/v1" required />
+              </div>
+              <div className="db-field">
+                <label className="db-label">CompanyDB *</label>
+                <input className="db-input" value={form.companyDb} onChange={e => setF('companyDb', e.target.value)} placeholder="CLIENT_PRD" required />
+              </div>
+              <div className="db-field">
+                <label className="db-label">Usuario SAP *</label>
+                <input className="db-input" value={form.sapUserName} onChange={e => setF('sapUserName', e.target.value)} placeholder="databision_ro" required />
+              </div>
+              <div className="db-field">
+                <label className="db-label">SecretRef * <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>(env:VAR)</span></label>
+                <input className="db-input" value={form.secretRef} onChange={e => setF('secretRef', e.target.value)} placeholder="env:SAP_PASSWORD_CLIENT" required />
+              </div>
+              <div className="db-field">
+                <label className="db-label">Timeout (seg)</label>
+                <input className="db-input" type="number" min={10} max={300} value={form.timeoutSeconds} onChange={e => setF('timeoutSeconds', Number(e.target.value))} />
+              </div>
+              <div className="db-field">
+                <label className="db-label">Concurrencia OJDT</label>
+                <input className="db-input" type="number" min={1} max={10} value={form.fetchConcurrency} onChange={e => setF('fetchConcurrency', Number(e.target.value))} />
+              </div>
+              <div className="db-field" style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', paddingBottom: '4px' }}>
+                <label style={{ display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer', fontSize: '13px' }}>
+                  <input type="checkbox" checked={form.isActive} onChange={e => setF('isActive', e.target.checked)} />
+                  Activo
+                </label>
+                <label style={{ display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer', fontSize: '13px' }}>
+                  <input type="checkbox" checked={form.ignoreSslErrors} onChange={e => setF('ignoreSslErrors', e.target.checked)} />
+                  Ignorar SSL
+                </label>
+              </div>
+            </div>
+            {addError && <div className="db-alert db-alert--error" style={{ marginTop: '8px' }}>{addError}</div>}
+            <div className="db-form-actions" style={{ marginTop: '12px' }}>
+              <button type="button" className="db-btn db-btn--ghost" onClick={() => { setShowAdd(false); setAddError(null) }}>Cancelar</button>
+              <button type="submit" className="db-btn db-btn--primary" disabled={addMutation.isPending || !form.profileName.trim() || !form.secretRef.trim()}>
+                {addMutation.isPending ? <><span className="db-spinner db-spinner--sm" /> Creando…</> : 'Crear perfil'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

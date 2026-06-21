@@ -29,6 +29,47 @@ if (args.Contains("--service"))
             var apiOptions = ctx.Configuration.GetSection(DataBisionApiOptions.Section)
                                  .Get<DataBisionApiOptions>() ?? new DataBisionApiOptions();
 
+            // Profile resolution for --service mode: if ProfileName or ConnectionProfileId is set,
+            // override slOptions with credentials from the DataBision API (synchronous call at startup).
+            if (!string.IsNullOrWhiteSpace(extOptions.ProfileName) || extOptions.ConnectionProfileId.HasValue)
+            {
+                var svcProfileLogger = Microsoft.Extensions.Logging.LoggerFactory
+                    .Create(b => b.AddSerilog())
+                    .CreateLogger<ApiConnectionProfileResolver>();
+                using var svcResolver = new ApiConnectionProfileResolver(apiOptions, svcProfileLogger);
+                var svcResolved = svcResolver.ResolveAsync(
+                    extOptions.CompanyId, extOptions.ProfileName, extOptions.ConnectionProfileId)
+                    .GetAwaiter().GetResult();
+                if (svcResolved is null)
+                    throw new InvalidOperationException(
+                        $"Failed to resolve SAP connection profile '{extOptions.ProfileName ?? extOptions.ConnectionProfileId?.ToString()}' " +
+                        $"for company '{extOptions.CompanyId}' from DataBision API. " +
+                        "Check BaseUrl, ApiKey, and profile configuration. Service cannot start.");
+                slOptions = svcResolved.Value.SlOptions;
+                if (svcResolved.Value.FetchConcurrency > 0 &&
+                    svcResolved.Value.FetchConcurrency != extOptions.JournalEntryLineFetchConcurrency)
+                {
+                    extOptions = new ExtractorOptions
+                    {
+                        TenantId                         = extOptions.TenantId,
+                        CompanyId                        = extOptions.CompanyId,
+                        Mode                             = extOptions.Mode,
+                        PageSize                         = extOptions.PageSize,
+                        MaxPages                         = extOptions.MaxPages,
+                        LookbackMinutes                  = extOptions.LookbackMinutes,
+                        Objects                          = extOptions.Objects,
+                        SendEnabled                      = extOptions.SendEnabled,
+                        IntervalMinutes                  = extOptions.IntervalMinutes,
+                        MaxCycles                        = extOptions.MaxCycles,
+                        JournalEntryLineFetchConcurrency = svcResolved.Value.FetchConcurrency,
+                        ProfileName                      = extOptions.ProfileName,
+                        ConnectionProfileId              = extOptions.ConnectionProfileId,
+                        RunMartRefreshAfterExtraction    = extOptions.RunMartRefreshAfterExtraction,
+                        MartRefreshCompanyId             = extOptions.MartRefreshCompanyId,
+                    };
+                }
+            }
+
             var svcStagingOpts = ctx.Configuration.GetSection(StagingOptions.Section).Get<StagingOptions>() ?? new StagingOptions();
             IOperationsLogger? svcOpsLogger = null;
             if (!string.IsNullOrWhiteSpace(svcStagingOpts.ConnectionString))
@@ -148,6 +189,71 @@ var extOptions = config.GetSection(ExtractorOptions.Section).Get<ExtractorOption
     }
 }
 
+// Connection profile resolution — parsed before DI so slOptions is correct when services are registered
+string? profileNameArg = null;
+int?    profileIdArg   = null;
+{
+    var profileNameIdx = Array.IndexOf(args, "--profile");
+    if (profileNameIdx >= 0 && profileNameIdx + 1 < args.Length)
+        profileNameArg = args[profileNameIdx + 1];
+
+    var profileIdIdx = Array.IndexOf(args, "--profile-id");
+    if (profileIdIdx >= 0 && profileIdIdx + 1 < args.Length && int.TryParse(args[profileIdIdx + 1], out var parsedPid))
+        profileIdArg = parsedPid;
+}
+
+if (profileNameArg is not null || profileIdArg is not null)
+{
+    // Validate API options before making the HTTP call
+    if (string.IsNullOrWhiteSpace(apiOptions.BaseUrl) || string.IsNullOrWhiteSpace(apiOptions.ApiKey))
+    {
+        Log.Error("DataBision API (DataBisionApi:BaseUrl / DataBisionApi:ApiKey) must be configured to use --profile.");
+        return 2;
+    }
+
+    var resolverLogger = LoggerFactory.Create(b => b.AddSerilog(Log.Logger))
+        .CreateLogger<ApiConnectionProfileResolver>();
+    using var resolver = new ApiConnectionProfileResolver(apiOptions, resolverLogger);
+    using var resolveCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+    var resolved = await resolver.ResolveAsync(extOptions.CompanyId, profileNameArg, profileIdArg, resolveCts.Token);
+    if (resolved is null)
+    {
+        Log.Error("Failed to resolve connection profile '{Profile}' for company '{Company}'. " +
+                  "Check DataBision API connectivity, ApiKey, and profile configuration.",
+            profileNameArg ?? profileIdArg?.ToString(), extOptions.CompanyId);
+        return 2;
+    }
+
+    slOptions = resolved.Value.SlOptions;
+    Log.Information("SAP credentials loaded from profile. DB={Db}", slOptions.CompanyDB);
+
+    // Apply FetchConcurrency from profile if provided (overrides appsettings value)
+    if (resolved.Value.FetchConcurrency > 0 &&
+        resolved.Value.FetchConcurrency != extOptions.JournalEntryLineFetchConcurrency)
+    {
+        extOptions = new ExtractorOptions
+        {
+            TenantId                         = extOptions.TenantId,
+            CompanyId                        = extOptions.CompanyId,
+            Mode                             = extOptions.Mode,
+            PageSize                         = extOptions.PageSize,
+            MaxPages                         = extOptions.MaxPages,
+            LookbackMinutes                  = extOptions.LookbackMinutes,
+            Objects                          = extOptions.Objects,
+            SendEnabled                      = extOptions.SendEnabled,
+            IntervalMinutes                  = extOptions.IntervalMinutes,
+            MaxCycles                        = extOptions.MaxCycles,
+            JournalEntryLineFetchConcurrency = resolved.Value.FetchConcurrency,
+            ProfileName                      = extOptions.ProfileName,
+            ConnectionProfileId              = extOptions.ConnectionProfileId,
+            RunMartRefreshAfterExtraction    = extOptions.RunMartRefreshAfterExtraction,
+            MartRefreshCompanyId             = extOptions.MartRefreshCompanyId,
+        };
+        Log.Information("JournalEntryLineFetchConcurrency set to {Conc} from profile.", resolved.Value.FetchConcurrency);
+    }
+}
+
 // Resolve OPS logger before DI build so it can be injected into ExtractorRunner
 var stagingOptsEarly = config.GetSection(StagingOptions.Section).Get<StagingOptions>() ?? new StagingOptions();
 IOperationsLogger? opsLogger = null;
@@ -237,10 +343,11 @@ if (args.Contains("--help") || args.Contains("-h"))
           --validate-ops [--company C]   Query ops.extractor_run and ops.transform_run summary
           --service                      Run as Windows Service (uses Extractor.SendEnabled from config)
 
-        Connection profile (Sprint 22 — requires DataBision API):
+        Connection profile (Sprint 23 — requires DataBision API + configured profile):
           --profile <name>               Load SAP SL credentials from NativeBiConnectionProfile by name
           --profile-id <id>              Load SAP SL credentials from NativeBiConnectionProfile by ID
-          NOTE: Profile resolution from API is not yet implemented. Set credentials in appsettings for now.
+          NOTE: Requires DataBisionApi:BaseUrl + DataBisionApi:ApiKey in config. Profile is resolved at startup.
+                Fallback: omit --profile to use SapServiceLayer credentials from appsettings.
 
         Examples:
           dotnet run -- --validate
@@ -272,23 +379,6 @@ bool isDryRun   = args.Contains("--dry-run");
 bool isSend     = args.Contains("--send");
 bool isRunOnce  = args.Contains("--run-once");
 bool isSchedule = args.Contains("--schedule");
-
-// Connection profile args (Sprint 22C — resolution from API not yet implemented)
-string? profileNameArg = null;
-var profileNameIdx = Array.IndexOf(args, "--profile");
-if (profileNameIdx >= 0 && profileNameIdx + 1 < args.Length)
-    profileNameArg = args[profileNameIdx + 1];
-
-int? profileIdArg = null;
-var profileIdIdx = Array.IndexOf(args, "--profile-id");
-if (profileIdIdx >= 0 && profileIdIdx + 1 < args.Length && int.TryParse(args[profileIdIdx + 1], out var parsedProfileId))
-    profileIdArg = parsedProfileId;
-
-if (profileNameArg is not null || profileIdArg is not null)
-{
-    log.LogWarning("--profile / --profile-id are parsed but profile resolution from DataBision API is not yet implemented. " +
-                   "Credentials are still loaded from appsettings. This will be wired in Sprint 22B+.");
-}
 
 string? objectArg = null;
 var objIdx = Array.IndexOf(args, "--object");

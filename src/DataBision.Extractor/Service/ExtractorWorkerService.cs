@@ -25,13 +25,15 @@ public sealed class ExtractorWorkerService(
             ? options.MartRefreshCompanyId
             : options.CompanyId;
 
-        log.LogInformation("ExtractorWorkerService started. Objects={Obj}, Interval={Min}min, Send={Send}, MartRefreshAfterExtraction={Mart}",
+        log.LogInformation(
+            "ExtractorWorkerService started. Objects={Obj}, Interval={Min}min, Send={Send}, " +
+            "MartRefreshAfterExtraction={Mart}, ProcessMartRefresh={Proc}",
             string.Join(", ", options.Objects), options.IntervalMinutes, options.SendEnabled,
-            options.RunMartRefreshAfterExtraction);
+            options.RunMartRefreshAfterExtraction, options.RunProcessMartRefreshAfterExtraction);
 
-        if (options.RunMartRefreshAfterExtraction && transformRunner is null)
+        if ((options.RunMartRefreshAfterExtraction || options.RunProcessMartRefreshAfterExtraction) && transformRunner is null)
         {
-            log.LogWarning("RunMartRefreshAfterExtraction=true but no ITransformationRunner injected " +
+            log.LogWarning("RunMartRefreshAfterExtraction/RunProcessMartRefreshAfterExtraction=true but no ITransformationRunner injected " +
                            "(Staging:ConnectionString not set?). MART refresh will be skipped.");
         }
 
@@ -76,21 +78,42 @@ public sealed class ExtractorWorkerService(
                     cycleCount, ex.Message);
             }
 
-            // MART refresh after successful extraction
+            // Finance MART refresh after successful extraction
+            bool martRefreshSucceeded = false;
             if (extractionSucceeded && options.RunMartRefreshAfterExtraction && transformRunner is not null)
             {
-                log.LogInformation("=== MART refresh after cycle {N} — company={CompanyId} ===",
+                log.LogInformation("=== Finance MART refresh after cycle {N} — company={CompanyId} ===",
                     cycleCount, martCompanyId);
                 try
                 {
                     using var martCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                     martCts.CancelAfter(TimeSpan.FromMinutes(10));
                     var martResults = await transformRunner.RefreshMartAsync(martCompanyId, martCts.Token);
-                    log.LogInformation("=== MART refresh done — {Count} object(s) refreshed ===", martResults.Count);
+                    log.LogInformation("=== Finance MART refresh done — {Count} object(s) refreshed ===", martResults.Count);
+                    martRefreshSucceeded = true;
                 }
                 catch (Exception ex)
                 {
-                    log.LogError(ex, "MART refresh after cycle {N} failed — {Msg}. Extraction data is intact.",
+                    log.LogError(ex, "Finance MART refresh after cycle {N} failed — {Msg}. Extraction data is intact.",
+                        cycleCount, ex.Message);
+                }
+            }
+
+            // Process-dashboard MART refresh (only if finance MART succeeded)
+            if (martRefreshSucceeded && options.RunProcessMartRefreshAfterExtraction && transformRunner is not null)
+            {
+                log.LogInformation("=== Process MART refresh after cycle {N} — company={CompanyId} ===",
+                    cycleCount, martCompanyId);
+                try
+                {
+                    using var procCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    procCts.CancelAfter(TimeSpan.FromMinutes(10));
+                    var procResults = await transformRunner.RefreshProcessMartAsync(martCompanyId, procCts.Token);
+                    log.LogInformation("=== Process MART refresh done — {Count} object(s) refreshed ===", procResults.Count);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "Process MART refresh after cycle {N} failed — {Msg}. Finance MART data is intact.",
                         cycleCount, ex.Message);
                 }
             }

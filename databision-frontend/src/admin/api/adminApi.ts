@@ -332,3 +332,106 @@ export async function getAccountClassificationTemplate(companyId: number): Promi
   )
   return data.data
 }
+
+// ── Native BI Connection Profiles ─────────────────────────────────────────────
+
+export interface NativeBiConnectionProfile {
+  id: number
+  companyId: number
+  profileName: string
+  environmentName: string
+  serviceLayerBaseUrl: string
+  companyDb: string
+  sapUserName: string
+  secretRefHint: string
+  isActive: boolean
+  ignoreSslErrors: boolean
+  timeoutSeconds: number
+  fetchConcurrency: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateNativeBiConnectionProfilePayload {
+  profileName: string
+  environmentName: string
+  serviceLayerBaseUrl: string
+  companyDb: string
+  sapUserName: string
+  secretRef: string
+  isActive: boolean
+  ignoreSslErrors: boolean
+  timeoutSeconds: number
+  fetchConcurrency: number
+}
+
+export interface UpdateNativeBiConnectionProfilePayload {
+  profileName: string
+  environmentName: string
+  serviceLayerBaseUrl: string
+  companyDb: string
+  sapUserName: string
+  secretRef?: string
+  isActive: boolean
+  ignoreSslErrors: boolean
+  timeoutSeconds: number
+  fetchConcurrency: number
+}
+
+export interface TestNativeBiConnectionResult {
+  success: boolean
+  latencyMs: number
+  checkedAt: string
+  serviceLayerBaseUrlMasked: string
+  companyDb: string
+  message: string
+  capabilities: {
+    loginOk: boolean
+    chartOfAccountsOk: boolean
+    journalEntriesOk: boolean
+  }
+}
+
+export async function getNativeBiConnectionProfiles(companyId: number): Promise<NativeBiConnectionProfile[]> {
+  const { data } = await api.get<ApiResponse<NativeBiConnectionProfile[]>>(
+    `/admin/companies/${companyId}/native-bi/connection-profiles`
+  )
+  return data.data
+}
+
+export async function createNativeBiConnectionProfile(
+  companyId: number,
+  payload: CreateNativeBiConnectionProfilePayload
+): Promise<NativeBiConnectionProfile> {
+  const { data } = await api.post<ApiResponse<NativeBiConnectionProfile>>(
+    `/admin/companies/${companyId}/native-bi/connection-profiles`,
+    payload
+  )
+  return data.data
+}
+
+export async function updateNativeBiConnectionProfile(
+  companyId: number,
+  profileId: number,
+  payload: UpdateNativeBiConnectionProfilePayload
+): Promise<NativeBiConnectionProfile> {
+  const { data } = await api.put<ApiResponse<NativeBiConnectionProfile>>(
+    `/admin/companies/${companyId}/native-bi/connection-profiles/${profileId}`,
+    payload
+  )
+  return data.data
+}
+
+export async function deleteNativeBiConnectionProfile(companyId: number, profileId: number): Promise<void> {
+  await api.delete(`/admin/companies/${companyId}/native-bi/connection-profiles/${profileId}`)
+}
+
+export async function testNativeBiConnectionProfile(
+  companyId: number,
+  profileId: number
+): Promise<TestNativeBiConnectionResult> {
+  const { data } = await api.post<ApiResponse<TestNativeBiConnectionResult>>(
+    `/admin/companies/${companyId}/native-bi/connection-profiles/${profileId}/test`
+  )
+  return data.data
+}

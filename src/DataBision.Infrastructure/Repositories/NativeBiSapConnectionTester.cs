@@ -6,7 +6,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DataBision.Application.DTOs.Admin;
 using DataBision.Application.Interfaces;
-using DataBision.Application.Services;
 using DataBision.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -21,6 +20,7 @@ namespace DataBision.Infrastructure.Repositories;
 /// Never logs B1SESSION, password, or cookie values.
 /// </summary>
 public sealed class NativeBiSapConnectionTester(
+    ISecretRefResolver secretRefResolver,
     ILogger<NativeBiSapConnectionTester> log) : INativeBiSapConnectionTester
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
@@ -34,7 +34,7 @@ public sealed class NativeBiSapConnectionTester(
         string password;
         try
         {
-            password = SecretRefResolver.Resolve(profile.SecretRef);
+            password = secretRefResolver.Resolve(profile.SecretRef);
         }
         catch (Exception ex)
         {
