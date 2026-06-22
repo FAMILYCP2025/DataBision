@@ -1,164 +1,132 @@
-# OJDT TST Extraction Results — Sprint 16D/16E
+# Native BI TST — Sprint 25 Execution Results
 
-**Date:** 2026-06-18  
-**Environment:** SAP B1 TST — CompanyDB: CLTSTKSDEPOR  
-**Service Layer:** https://161.153.200.53:50000/b1s/v1  
-**SL Version:** 1000290  
-**CompanyId:** company-dev-001  
-**Endpoints called:**  
-- `POST api/ingest/sap-b1/journal-entries` (OJDT headers)  
-- `POST api/ingest/sap-b1/journal-entry-lines` (JDT1 lines — not sent, 0 rows)
+**Fecha ejecución:** 2026-06-21  
+**Ambiente:** DEV local → SAP TST (CLTSTKSDEPOR)  
+**Empresa:** ksdepor / AnalyticsCompanyId: company-dev-001  
+**SL Version:** 1000290
 
 ---
 
-## Extraction Summary
+## 25A — API + Perfil de Conexión
 
-### OJDT Headers
-
-| Metric | Value |
+| Check | Resultado |
 |---|---|
-| SL Entity | `JournalEntries` |
-| SAP Object | `OJDT` |
-| Fallback level used | Level 4 — MinimalSelect, no `$expand` |
-| Pages fetched | 1 |
-| Rows extracted | 20 |
-| Rows inserted | 20 |
-| Rows updated | 0 |
-| Rows skipped | 0 |
-| Duration | ~20 s |
+| SAP_PASSWORD_KSDEPOR | SET (len=12) — User scope |
+| API health | HTTP 200 `{"status":"ok"}` |
+| ksdepor en AppDB | Id=2, AnalyticsCompanyId=company-dev-001 |
+| NativeBiConnectionProfile 'tst' | Id=1, CompanyId=2, SecretRef=env:SAP_PASSWORD_KSDEPOR, Active=1 |
+| Resolve endpoint | HTTP 200 — profileId=1, companyDb=CLTSTKSDEPOR, user=dgoto, passwordLen=12 |
 
-### JDT1 Lines
+**Fix:** demo company tenía AnalyticsCompanyId=company-dev-001 duplicado → limpiado a NULL.
 
-| Metric | Value |
+---
+
+## 25D — Dry-Run
+
+| Check | Resultado |
 |---|---|
-| SL Entity | `JournalEntryLines` / embedded in `JournalEntries` |
-| SAP Object | `JDT1` |
-| Result | **0 rows — blocked by SL v1000290** |
+| Profile resolved | ✅ id=1 name=tst db=CLTSTKSDEPOR concurrency=3 |
+| Password en logs | ✅ `[set]` — NO impreso |
+| DRY-RUN configuration OK | ✅ |
+| Exit code | 0 |
 
 ---
 
-## Fallback Chain Detail — OJDT Headers
+## 25E — Extracción OACT
 
-SL v1000290 rejected all `$expand` and several `$select` fields for `JournalEntries`:
-
-| Attempt | Query | Result |
-|---|---|---|
-| 1 — FullSelect + `$expand=JournalEntryLines` | `$select=JdtNum,ReferenceDate,DueDate,TaxDate,Memo,TransactionCode,BaseRef,Ref1,CreatedBy&$expand=JournalEntryLines` | HTTP 400: invalid navigation property 'JournalEntryLines' |
-| 2 — FullSelect + `$expand=Lines` | Same select + `$expand=Lines` | HTTP 400: invalid navigation property 'Lines' |
-| 3 — FullSelect, no expand | `$select=JdtNum,ReferenceDate,DueDate,TaxDate,Memo,TransactionCode,BaseRef,Ref1,CreatedBy` | HTTP 400: Property 'BaseRef' invalid |
-| 4 — MinimalSelect, no expand | `$select=JdtNum,ReferenceDate,Memo` | **200 OK — 20 rows** |
-| 5 — No `$select` | (fallback, not reached) | — |
-
-Fields confirmed invalid in SL v1000290 for `JournalEntries`:
-- Navigation: `JournalEntryLines`, `Lines` (both `$expand` targets rejected)
-- Select fields: `BaseRef`, `DueDate`, `TaxDate`, `TransactionCode`, `Ref1`, `CreatedBy`
-
----
-
-## JDT1 Lines — Blocked
-
-All three approaches to retrieve line-level data failed:
-
-| Approach | Result |
+| Métrica | Valor |
 |---|---|
-| `$expand=JournalEntryLines` on list query | HTTP 400: invalid navigation property |
-| `$expand=Lines` on list query | HTTP 400: invalid navigation property |
-| `GET /b1s/v1/JournalEntryLines` (top-level entity) | HTTP 400: "Unrecognized resource path." |
-
-**Conclusion:** SL v1000290 does not expose JDT1 lines through any standard OData mechanism available to this company's Service Layer installation. This is a version limitation, not a configuration issue.
+| SAP Login | ✅ Successful. SL Version=1000290 |
+| Strategy | no-select (GroupMask, Postable inválidos en SL 1000290) |
+| Cuentas extraídas | 20 |
+| inserted/updated/skipped | 0 / 0 / 20 (ya existían) |
+| SAP Logout | ✅ HTTP 204 |
 
 ---
 
-## Supabase Validation (raw.sap_ojdt)
+## 25E — Extracción OJDT + JDT1
 
-**Query date:** 2026-06-18
+| Métrica | Valor |
+|---|---|
+| $expand fallbacks | JournalEntryLines ❌, Lines ❌, full-select ❌ |
+| Strategy final | Minimal select sin $expand |
+| Entradas OJDT extraídas | 20 |
+| PROBE-17A | ✅ FOUND 'JournalEntryLines' — 3 lines en GET JournalEntries(39) |
+| Estrategia líneas | individual GET, property='JournalEntryLines', concurrency=3 |
+| Líneas JDT1 extraídas | 68 (avg 3.4/entrada, 0 failed GETs) |
+| inserted/updated/skipped OJDT | 0 / 0 / 20 |
+| inserted/updated/skipped JDT1 | 0 / 0 / 68 |
+| SAP Logout | ✅ HTTP 204 |
 
+---
+
+## 25F — MART Refresh
+
+**mart.refresh_all** (6 objects / 6515ms):
+sales_daily=39, sales_monthly=6, customer_sales=21, item_sales=11, salesperson_sales=4, sales_kpi_summary=1
+
+**mart.refresh_all processes** (12 objects / 3325ms):
+sales_customer=18, sales_item=11, sales_fulfillment=28, finance_ar_aging=18, finance_ap_aging=0,
+finance_executive_daily=3, inventory_rotation=41, inventory_stock=0, inventory_warehouse=12,
+purchase_executive=17, purchase_supplier=18, purchase_receiving=10
+
+---
+
+## 25F — Finance Readiness
+
+```json
+{
+  "rawOactCount": 20, "rawOjdtCount": 50, "rawJdt1Count": 122,
+  "stgOactCount": 20, "stgOjdtCount": 50, "stgJdt1Count": 122,
+  "martGlAccounts": 55, "martIncomeStatement": 5,
+  "martBalanceSheet": 6, "martEbitda": 2,
+  "classificationRules": 84, "unclassifiedPostable": 0,
+  "readinessStatus": "ready",
+  "blockingReasons": [], "warnings": []
+}
 ```
-COUNT raw.sap_ojdt: 20 rows
-Missing JdtNum: 0
+
+## 25F — Finance Validations
+
+```json
+{
+  "healthScore": 100, "healthStatus": "ok",
+  "criticalIssues": 0, "warningIssues": 0, "infoIssues": 0,
+  "lastPeriodValidated": "2026-02",
+  "balanceImbalance": 0, "unclassifiedAccounts": 0, "orphanJournalLines": 0,
+  "issues": [],
+  "reconciliation": { "isBalanced": true, "imbalance": 0 }
+}
 ```
 
-### Date Range
+## 25F — Dashboard Endpoints (7/7 HTTP 200)
 
-| Oldest RefDate | Newest RefDate | Distinct TransTypes |
+| Endpoint | HTTP | Detalle |
 |---|---|---|
-| 2026-01-01 | 2026-01-22 | 0 (NULL — field not in MinimalSelect) |
+| `/api/client/bi/finance/readiness` | **200** | readinessStatus=ready |
+| `/api/client/bi/finance/income-statement` | **200** | 2 períodos |
+| `/api/client/bi/finance/balance-sheet` | **200** | 1 snapshot |
+| `/api/client/bi/finance/ebitda` | **200** | 2 períodos |
+| `/api/client/bi/finance/chart-of-accounts` | **200** | 55 cuentas |
+| `/api/client/bi/finance/validations` | **200** | healthScore=100 |
+| `/api/client/bi/finance/refresh-status` | **200** | overallStatus=ok |
 
-### Top-10 OJDT headers (most recent)
-
-| TransId | JdtNum | RefDate | Memo |
-|---|---|---|---|
-| 19 | 19 | 2026-01-22 | Precio de entrega 260100001 |
-| 18 | 18 | 2026-01-22 | Pedido de entrada de mercancías - PP99999999994 |
-| 13 | 13 | 2026-01-22 | Basado en Pedido de entrada de mercancías CS-0001-260110003 |
-| 12 | 12 | 2026-01-22 | Fact.proveedores - P20100016843 |
-| 11 | 11 | 2026-01-22 | Basado en Pedido de entrada de mercancías 09-0012-2544 |
-| 8 | 8 | 2026-01-22 | Pedido de entrada de mercancías - P20100016843 |
-| 9 | 9 | 2026-01-22 | d |
-| 41 | 41 | 2026-01-15 | Fact.proveedores - P20100049181 |
-| 40 | 40 | 2026-01-15 | Fact.proveedores - P20100049181 |
-| 14 | 14 | 2026-01-15 | Fact.proveedores - PP99999999994 |
-
-### raw.sap_jdt1
-
-```
-COUNT: 0 rows
-```
+**Score: 7/7 HTTP 200** ✅
 
 ---
 
-## Known Limitations
+## Decisión: GO ✅
 
-- **TransType is NULL:** `TransactionCode` field was rejected by SL; field is empty in all 20 rows. Cannot classify journal entry types (purchase, sale, transfer, etc.).
-- **No line-level data:** Debit/Credit amounts per account are unavailable. The accounting MART (`mart.refresh_accounting_all`) cannot produce meaningful results without JDT1.
-- **Memo only:** The only useful contextual field extracted is `Memo` (free-text). Pattern matching on Memo for classification is fragile and not recommended for production.
+| Criterio GO | Cumplido |
+|---|---|
+| Resolve profile OK | ✅ |
+| Dry-run profile OK | ✅ |
+| raw.sap_oact > 0 | ✅ (20) |
+| raw.sap_ojdt > 0 | ✅ (50) |
+| mart.income_statement_summary > 0 | ✅ (5) |
+| mart.balance_sheet_summary > 0 | ✅ (6) |
+| mart.ebitda_summary > 0 | ✅ (2) |
+| Endpoints ≥ 5/7 HTTP 200 | ✅ (7/7) |
+| Sin secretos en logs | ✅ |
 
----
-
-## Impact on Finance MART
-
-| Feature | Status | Reason |
-|---|---|---|
-| Balance Sheet | BLOCKED | Requires JDT1 debit/credit per account |
-| Income Statement | BLOCKED | Requires JDT1 debit/credit per account |
-| EBITDA | BLOCKED | Requires JDT1 debit/credit per account |
-| Chart of Accounts browser | AVAILABLE | Uses raw.sap_oact only |
-| Account classification | AVAILABLE | Uses raw.sap_oact + FormatCode |
-
-**Decision: Do NOT execute `mart.refresh_accounting_all('company-dev-001')` until JDT1 is populated.**
-
----
-
-## Recommended Next Steps to Resolve JDT1
-
-### Option 1 — Single-record GET (highest priority, try first)
-
-`GET /b1s/v1/JournalEntries(N)` (single record by key) may return embedded lines by default in some SL configurations, even when list `$expand` is rejected. Test with a known JdtNum:
-
-```
-GET https://host:50000/b1s/v1/JournalEntries(1)
-```
-
-If the response includes a `JournalEntryLines` or `Lines` array, implement a loop extractor that fetches entries one by one. Expensive but functional.
-
-### Option 2 — HANA CrossJoin / $batch
-
-`POST /b1s/v1/$batch` with individual requests per JdtNum. Avoids `$expand` entirely. Each sub-request returns a single entry; check if it includes lines by default.
-
-### Option 3 — Direct HANA SQL via XS Engine or ODBC
-
-If the customer grants direct HANA ODBC access, query `JDT1` table directly:
-```sql
-SELECT T0."TransId", T0."Line_ID", T0."Account", T0."Debit", T0."Credit"
-FROM CLTSTKSDEPOR.JDT1 T0
-WHERE T0."TransId" IN (SELECT "TransId" FROM CLTSTKSDEPOR.OJDT WHERE "RefDate" >= ...)
-```
-This bypasses SL entirely. Requires DB-level credentials and network access to HANA port (30015 or 30040).
-
-### Option 4 — SAP B1 Service Layer upgrade
-
-SL v1000290 corresponds to SAP B1 10.0 FP29 or earlier. Upgrading to 10.0 FP40+ or SAP B1 version 10.0 should restore `$expand` support on `JournalEntries`. Coordinate with SAP partner.
-
-### Option 5 — Query Service (SL alternative)
-
-`POST /b1s/v1/SQLQueries` may allow raw SQL execution if the SL security profile permits it. Less standard but available in some installations.
+**→ GO: Flujo completo TST validado. Native BI Finance operativo sobre CLTSTKSDEPOR.**

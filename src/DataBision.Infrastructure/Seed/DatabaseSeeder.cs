@@ -14,7 +14,9 @@ public class DatabaseSeeder(AppDbContext db, ILogger<DatabaseSeeder> logger, ICo
         await SeedModulesAsync();
         await SeedSuperAdminAsync();
         await SeedDemoCompanyAsync();
+        await SeedKsdeporCompanyAsync();
         await SeedAnalyticsCompanyIdsAsync();
+        await SeedKsdeporTstConnectionProfileAsync();
     }
 
     // ── Modules ───────────────────────────────────────────────────────────────
@@ -154,6 +156,66 @@ public class DatabaseSeeder(AppDbContext db, ILogger<DatabaseSeeder> logger, ICo
         logger.LogInformation(
             "Demo company seeded: company={Slug}, admin={AdminEmail}, viewer={ViewerEmail}, reports={Count}",
             company.Slug, admin.Email, viewer.Email, reports.Count);
+    }
+
+    // ── ksdepor dev company (dev only) ────────────────────────────────────────
+
+    private async Task SeedKsdeporCompanyAsync()
+    {
+        const string analyticsId = "company-dev-001";
+
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.Slug == "ksdepor");
+        if (company is null)
+        {
+            db.Companies.Add(new Company
+            {
+                Name              = "KS Depor",
+                Slug              = "ksdepor",
+                Status            = CompanyStatus.Active,
+                AnalyticsCompanyId = analyticsId
+            });
+            await db.SaveChangesAsync();
+            logger.LogInformation("ksdepor company seeded with AnalyticsCompanyId={Id}.", analyticsId);
+            return;
+        }
+
+        if (company.AnalyticsCompanyId != analyticsId)
+        {
+            company.AnalyticsCompanyId = analyticsId;
+            await db.SaveChangesAsync();
+            logger.LogInformation("ksdepor AnalyticsCompanyId updated to {Id}.", analyticsId);
+        }
+    }
+
+    private async Task SeedKsdeporTstConnectionProfileAsync()
+    {
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.Slug == "ksdepor");
+        if (company is null) return;
+
+        bool exists = await db.NativeBiConnectionProfiles
+            .AnyAsync(p => p.CompanyId == company.Id && p.ProfileName == "tst");
+        if (exists) return;
+
+        var now = DateTime.UtcNow;
+        db.NativeBiConnectionProfiles.Add(new NativeBiConnectionProfile
+        {
+            CompanyId           = company.Id,
+            ProfileName         = "tst",
+            EnvironmentName     = "TST",
+            ServiceLayerBaseUrl = "https://161.153.200.53:50000/b1s/v1",
+            CompanyDb           = "CLTSTKSDEPOR",
+            SapUserName         = "dgoto",
+            SecretRef           = "env:SAP_PASSWORD_KSDEPOR",
+            IsActive            = true,
+            IgnoreSslErrors     = true,
+            TimeoutSeconds      = 60,
+            FetchConcurrency    = 3,
+            CreatedAt           = now,
+            UpdatedAt           = now
+        });
+
+        await db.SaveChangesAsync();
+        logger.LogInformation("NativeBiConnectionProfile 'tst' seeded for ksdepor.");
     }
 
     // ── Analytics Company ID back-fill (dev only) ─────────────────────────────
