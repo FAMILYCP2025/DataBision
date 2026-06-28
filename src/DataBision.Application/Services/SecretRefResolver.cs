@@ -31,6 +31,13 @@ public static class SecretRefResolver
             var value = secretRef["local-dev-only:".Length..];
             if (string.IsNullOrEmpty(value))
                 throw new InvalidOperationException("SecretRef 'local-dev-only:' scheme requires a value after the colon.");
+
+            var envName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+            if (string.Equals(envName, "Production", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "SecretRef scheme 'local-dev-only:' is not allowed in Production environments. " +
+                    "Use 'env:VARIABLE_NAME' instead.");
+
             return value;
         }
 

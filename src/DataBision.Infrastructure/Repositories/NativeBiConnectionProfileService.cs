@@ -170,6 +170,19 @@ public sealed class NativeBiConnectionProfileService(
         if (profile is null) return (null, "profile_not_found");
         if (!profile.IsActive) return (null, "profile_inactive");
 
+        if (profile.IgnoreSslErrors)
+        {
+            var envName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+            if (string.Equals(envName, "Production", StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogError(
+                    "SECURITY BLOCK: Profile {ProfileId} for company '{CompanyId}' has IgnoreSslErrors=true " +
+                    "but ASPNETCORE_ENVIRONMENT=Production. Credential resolution refused.",
+                    profile.Id, company.Id);
+                return (null, "ignore_ssl_blocked_in_production");
+            }
+        }
+
         string sapPassword;
         try
         {

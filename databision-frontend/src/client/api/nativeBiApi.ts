@@ -17,6 +17,26 @@ import type {
   NativeBiTableCounts,
   PaginationParams,
   DateRangeParams,
+  SalesMartKpiSummary,
+  SalesPeriodKpi,
+  TopCustomerMart,
+  TopItemMart,
+  TopSalespersonMart,
+  OpenSalesOrderMart,
+  PurchaseMartKpiSummary,
+  PurchasePeriodKpi,
+  TopSupplierMart,
+  TopPurchaseItemMart,
+  OpenPurchaseOrderMart,
+  InventoryMartKpiSummary,
+  InventorySnapshotItem,
+  InventoryMovementKpi,
+  SlowMovingItem,
+  WarehouseStock,
+  FinanceMartSummary,
+  ArAgingRow,
+  ApAgingRow,
+  FinancePeriodKpi,
 } from '../types/nativeBi'
 import type { FilterOption } from '../types/nativeBiFilters'
 
@@ -239,5 +259,173 @@ export interface BiClientFilterConfig {
 
 export async function getBiFilterConfig(): Promise<BiClientFilterConfig> {
   const { data } = await api.get<{ data: BiClientFilterConfig }>('/client/bi/filter-config')
+  return data.data
+}
+
+// ── Sprint 3 — Sales MART ─────────────────────────────────────────────────────
+
+export async function getSalesMartKpi(): Promise<SalesMartKpiSummary> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<SalesMartKpiSummary>>(
+    `/client/bi/sales/mart/kpi${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+export async function getSalesMartByPeriod(months = 12): Promise<SalesPeriodKpi[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<SalesPeriodKpi[]>>(
+    `/client/bi/sales/mart/by-period${nbQs({ companyId: tenant, months })}`
+  )
+  return data.data
+}
+
+export async function getSalesMartTopCustomers(limit = 10): Promise<TopCustomerMart[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<TopCustomerMart[]>>(
+    `/client/bi/sales/mart/top-customers${nbQs({ companyId: tenant, limit })}`
+  )
+  return data.data
+}
+
+export async function getSalesMartTopItems(limit = 10): Promise<TopItemMart[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<TopItemMart[]>>(
+    `/client/bi/sales/mart/top-items${nbQs({ companyId: tenant, limit })}`
+  )
+  return data.data
+}
+
+export async function getSalesMartTopSalespersons(): Promise<TopSalespersonMart[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<TopSalespersonMart[]>>(
+    `/client/bi/sales/mart/top-salespersons${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+export async function getSalesMartOpenOrders(overdueOnly = false): Promise<OpenSalesOrderMart[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<OpenSalesOrderMart[]>>(
+    `/client/bi/sales/mart/open-orders${nbQs({ companyId: tenant, overdueOnly })}`
+  )
+  return data.data
+}
+
+// ── Sprint 4 — Purchase MART API ─────────────────────────────────────────────
+
+export async function getPurchaseMartKpi(): Promise<PurchaseMartKpiSummary> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<PurchaseMartKpiSummary>>(
+    `/client/bi/purchase/mart/kpi${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+export async function getPurchaseMartByPeriod(months = 12): Promise<PurchasePeriodKpi[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<PurchasePeriodKpi[]>>(
+    `/client/bi/purchase/mart/by-period${nbQs({ companyId: tenant, months })}`
+  )
+  return data.data
+}
+
+export async function getPurchaseMartTopSuppliers(limit = 10): Promise<TopSupplierMart[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<TopSupplierMart[]>>(
+    `/client/bi/purchase/mart/top-suppliers${nbQs({ companyId: tenant, limit })}`
+  )
+  return data.data
+}
+
+export async function getPurchaseMartTopItems(limit = 10): Promise<TopPurchaseItemMart[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<TopPurchaseItemMart[]>>(
+    `/client/bi/purchase/mart/top-items${nbQs({ companyId: tenant, limit })}`
+  )
+  return data.data
+}
+
+export async function getPurchaseMartOpenOrders(overdueOnly = false): Promise<OpenPurchaseOrderMart[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<OpenPurchaseOrderMart[]>>(
+    `/client/bi/purchase/mart/open-orders${nbQs({ companyId: tenant, overdueOnly })}`
+  )
+  return data.data
+}
+
+// ── Sprint 5 — Inventory MART API ────────────────────────────────────────────
+
+export async function getInventoryMartKpi(): Promise<InventoryMartKpiSummary> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<InventoryMartKpiSummary>>(
+    `/client/bi/inventory/mart/kpi${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+export async function getInventoryMartSnapshot(limit = 50): Promise<InventorySnapshotItem[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<InventorySnapshotItem[]>>(
+    `/client/bi/inventory/mart/snapshot${nbQs({ companyId: tenant, limit })}`
+  )
+  return data.data
+}
+
+export async function getInventoryMartMovement(months = 12): Promise<InventoryMovementKpi[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<InventoryMovementKpi[]>>(
+    `/client/bi/inventory/mart/movement${nbQs({ companyId: tenant, months })}`
+  )
+  return data.data
+}
+
+export async function getInventoryMartSlowMoving(minDays = 90): Promise<SlowMovingItem[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<SlowMovingItem[]>>(
+    `/client/bi/inventory/mart/slow-moving${nbQs({ companyId: tenant, minDays })}`
+  )
+  return data.data
+}
+
+export async function getInventoryMartWarehouses(): Promise<WarehouseStock[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<WarehouseStock[]>>(
+    `/client/bi/inventory/mart/warehouses${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+// ── Sprint 6 — Finance MART API ───────────────────────────────────────────────
+
+export async function getFinanceMartSummary(): Promise<FinanceMartSummary> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<FinanceMartSummary>>(
+    `/client/bi/finance/mart/summary${nbQs({ companyId: tenant })}`
+  )
+  return data.data
+}
+
+export async function getFinanceMartArAging(limit = 50): Promise<ArAgingRow[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<ArAgingRow[]>>(
+    `/client/bi/finance/mart/ar-aging${nbQs({ companyId: tenant, limit })}`
+  )
+  return data.data
+}
+
+export async function getFinanceMartApAging(limit = 50): Promise<ApAgingRow[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<ApAgingRow[]>>(
+    `/client/bi/finance/mart/ap-aging${nbQs({ companyId: tenant, limit })}`
+  )
+  return data.data
+}
+
+export async function getFinanceMartPeriodKpi(months = 12): Promise<FinancePeriodKpi[]> {
+  const tenant = await getTenant()
+  const { data } = await api.get<NbApiResponse<FinancePeriodKpi[]>>(
+    `/client/bi/finance/mart/period-kpi${nbQs({ companyId: tenant, months })}`
+  )
   return data.data
 }

@@ -78,6 +78,16 @@ public sealed class ApiConnectionProfileResolver : IConnectionProfileResolver, I
                 return null;
             }
 
+            if (IsIgnoreSslBlockedInProduction(ignoreSsl))
+            {
+                _log.LogError(
+                    "SECURITY BLOCK: Profile '{Name}' (id={Id}) has IgnoreSslErrors=true " +
+                    "but ASPNETCORE_ENVIRONMENT=Production. Credential load refused. " +
+                    "Disable IgnoreSslErrors on the profile or run in a DEV/TST environment.",
+                    profileNameR, profileIdR);
+                return null;
+            }
+
             _log.LogInformation("Profile resolved: id={Id} name={Name} db={Db} concurrency={Conc}",
                 profileIdR, profileNameR, companyDb, fetchConc);
 
@@ -101,4 +111,11 @@ public sealed class ApiConnectionProfileResolver : IConnectionProfileResolver, I
     }
 
     public void Dispose() => _http.Dispose();
+
+    public static bool IsIgnoreSslBlockedInProduction(bool ignoreSsl)
+    {
+        if (!ignoreSsl) return false;
+        var envName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+        return string.Equals(envName, "Production", StringComparison.OrdinalIgnoreCase);
+    }
 }

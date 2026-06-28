@@ -61,6 +61,21 @@ run_extractor() {
     "$EXE" "$@"
 }
 
+# ── Lock ──────────────────────────────────────────────────────────────────────
+
+LOCK_DIR="$EXTRACTOR_PATH/locks"
+LOCK_FILE="$LOCK_DIR/finance-refresh.lock"
+
+mkdir -p "$LOCK_DIR"
+
+if [ -f "$LOCK_FILE" ]; then
+    log "WRN" "Lock file exists: $LOCK_FILE. Previous run still active or crashed. Exiting."
+    exit 1
+fi
+
+touch "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+
 # ── Validate ──────────────────────────────────────────────────────────────────
 
 log "INF" "=== DataBision Finance Refresh START ==="

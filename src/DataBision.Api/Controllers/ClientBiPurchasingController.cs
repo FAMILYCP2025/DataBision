@@ -3,12 +3,14 @@ using DataBision.Application.DTOs.Dashboard;
 using DataBision.Application.Interfaces.Dashboard;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DataBision.Api.Controllers;
 
 [ApiController]
 [Route("api/client/bi/purchasing")]
 [AllowAnonymous]
+[EnableRateLimiting("api")]
 public sealed class ClientBiPurchasingController(
     IProcessDashboardService svc,
     IConfiguration config) : ControllerBase

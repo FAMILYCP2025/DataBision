@@ -7,6 +7,7 @@ import TopCustomersTable from '../components/nativebi/TopCustomersTable'
 import SyncStatusWidget from '../components/nativebi/SyncStatusWidget'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbErrorState, NbEmptyState } from '../components/nativebi/NativeBiState'
+import { NativeBiOnboardingBanner } from '../components/nativebi/NativeBiInfoBanner'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import type { OperationAlert } from '../types/processBi'
 import type { NbPagedMeta, PaginationParams } from '../types/nativeBi'
@@ -177,6 +178,8 @@ export default function NativeBiDashboardPage() {
         <NbErrorState message="Error al cargar el resumen. Intenta recargar la página." />
       )}
 
+      <NativeBiOnboardingBanner visible={!loadingSummary && !errorSummary && !summary} />
+
       <div className="db-card">
         <TabBar tab={tab} setTab={setTab} alertCount={alertCount} />
 
@@ -218,6 +221,11 @@ export default function NativeBiDashboardPage() {
               </div>
               {loadingChart ? (
                 <div className="cp-skeleton" style={{ height: 90, borderRadius: 4 }} />
+              ) : !salesDaily || salesDaily.length === 0 ? (
+                <NbEmptyState
+                  message="No hay facturas sincronizadas aún. Ejecuta --object OINV --send"
+                  icon="chart"
+                />
               ) : (
                 <SalesBarChart data={salesDaily ?? []} height={90} />
               )}
@@ -235,7 +243,7 @@ export default function NativeBiDashboardPage() {
               <div className="cp-skeleton" style={{ height: 160, borderRadius: 4 }} />
             ) : !salesDaily || salesDaily.length === 0 ? (
               <NbEmptyState
-                message="Sin datos de tendencia disponibles. Disponible al completar carga histórica."
+                message="No hay facturas sincronizadas aún. Ejecuta --object OINV --send"
                 icon="chart"
               />
             ) : (
@@ -283,7 +291,16 @@ export default function NativeBiDashboardPage() {
                 Top clientes por ventas netas
               </div>
             </div>
-            <TopCustomersTable />
+            {!loadingSummary && !errorSummary && summary && summary.activeCustomers === 0 ? (
+              <div style={{ padding: '0 20px 20px' }}>
+                <NbEmptyState
+                  message="No hay clientes sincronizados. Ejecuta --object OCRD --send"
+                  icon="chart"
+                />
+              </div>
+            ) : (
+              <TopCustomersTable />
+            )}
           </div>
         )}
 

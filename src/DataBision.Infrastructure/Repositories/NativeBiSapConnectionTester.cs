@@ -42,6 +42,20 @@ public sealed class NativeBiSapConnectionTester(
             return Fail(sw, checkedAt, profile, $"SecretRef error: {ex.Message}");
         }
 
+        if (profile.IgnoreSslErrors)
+        {
+            var envName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+            if (string.Equals(envName, "Production", StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogError(
+                    "SECURITY BLOCK: Profile {Id} has IgnoreSslErrors=true but ASPNETCORE_ENVIRONMENT=Production. " +
+                    "TestConnection refused.", profile.Id);
+                return Fail(sw, checkedAt, profile,
+                    "Conexión rechazada: IgnoreSslErrors=true no está permitido en entornos Production. " +
+                    "Desactive IgnoreSslErrors en el perfil o use un ambiente DEV/TST.");
+            }
+        }
+
         var handler = new HttpClientHandler { UseCookies = false };
         if (profile.IgnoreSslErrors)
             handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;

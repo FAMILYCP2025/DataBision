@@ -44,8 +44,34 @@ public sealed class SecretRefResolverTests
     [Fact]
     public void Resolve_LocalDevOnlyScheme_ReturnsValue()
     {
-        var result = SecretRefResolver.Resolve("local-dev-only:my-dev-password");
-        result.Should().Be("my-dev-password");
+        var original = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+        try
+        {
+            var result = SecretRefResolver.Resolve("local-dev-only:my-dev-password");
+            result.Should().Be("my-dev-password");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", original);
+        }
+    }
+
+    [Fact]
+    public void Resolve_LocalDevOnlyScheme_BlockedWhenAspnetcoreEnvironmentIsProduction()
+    {
+        var original = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Production");
+        try
+        {
+            var act = () => SecretRefResolver.Resolve("local-dev-only:my-dev-password");
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage("*local-dev-only*Production*");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", original);
+        }
     }
 
     [Fact]

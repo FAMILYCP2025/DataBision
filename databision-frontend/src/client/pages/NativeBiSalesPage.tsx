@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -12,6 +12,8 @@ import {
   useSalesCustomers,
   useSalesItems,
   useSalesSalespersons,
+  useSalesMartKpi,
+  useSalesMartOpenOrders,
 } from '../hooks/useNativeBiSales'
 import { useBiSalesFulfillment, useBiSalesItemGroupSummary, useBiSalesWarehouseSummary } from '../hooks/useProcessBi'
 import { useNativeBiFilters } from '../hooks/useNativeBiFilters'
@@ -22,6 +24,7 @@ import type {
   SalespersonSales,
   NbPagedMeta,
   PaginationParams,
+  OpenSalesOrderMart,
 } from '../types/nativeBi'
 import type { SalesFulfillment, SalesWarehouseSummary } from '../types/processBi'
 import type { NativeBiFilterDefinition } from '../types/nativeBiFilters'
@@ -69,7 +72,7 @@ function semaforo(value: number, total: number): { text: string; color: string }
   return { text: 'Bajo', color: '#94A3B8' }
 }
 
-type Tab = 'resumen' | 'tendencia' | 'grupos' | 'almacenes' | 'customers' | 'items' | 'salespersons' | 'fulfillment'
+type Tab = 'resumen' | 'tendencia' | 'grupos' | 'almacenes' | 'customers' | 'items' | 'salespersons' | 'fulfillment' | 'pipeline'
 
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
@@ -78,7 +81,7 @@ function initPag(sortBy: string): PaginationParams {
   return { limit: LIMIT, offset: 0, sortBy, sortDir: 'desc' }
 }
 
-function TabButton({ label, active, onClick }: { id?: string; label: string; active: boolean; onClick: () => void }) {
+function TabButton({ label, active, onClick }: { id?: string; label: ReactNode; active: boolean; onClick: () => void }) {
   return (
     <button
       role="tab"
@@ -105,7 +108,7 @@ function TabButton({ label, active, onClick }: { id?: string; label: string; act
   )
 }
 
-function StatCard({ label, value, sub, loading }: { label: string; value: React.ReactNode; sub?: string; loading?: boolean }) {
+function StatCard({ label, value, sub, loading }: { label: string; value: ReactNode; sub?: string; loading?: boolean }) {
   return (
     <div className="db-stat-card">
       <span className="db-stat-label">{label}</span>
@@ -122,9 +125,10 @@ function StatCard({ label, value, sub, loading }: { label: string; value: React.
 export default function NativeBiSalesPage() {
   const { filters, setFilter, resetFilter, resetAll, hasActiveFilters } = useNativeBiFilters('sales', defaultDates())
   const [tab, setTab] = useState<Tab>('resumen')
-  const [custP, setCustP] = useState<PaginationParams>(initPag('netSalesAmount'))
-  const [itemP, setItemP] = useState<PaginationParams>(initPag('grossSalesAmount'))
-  const [spP, setSpP]     = useState<PaginationParams>(initPag('netSalesAmount'))
+  const [custP, setCustP]     = useState<PaginationParams>(initPag('netSalesAmount'))
+  const [itemP, setItemP]     = useState<PaginationParams>(initPag('grossSalesAmount'))
+  const [spP, setSpP]         = useState<PaginationParams>(initPag('netSalesAmount'))
+  const [overdueOnly, setOverdueOnly] = useState(false)
 
   const { data: spOpts, isLoading: spOptsLoading } = useSalespersonOptions()
   const { data: igOpts, isLoading: igOptsLoading } = useItemGroupOptions()
@@ -152,6 +156,8 @@ export default function NativeBiSalesPage() {
   const { data: itemData, isLoading: loadingItems }    = useSalesItems(itemP)
   const { data: spData, isLoading: loadingSp }         = useSalesSalespersons(spP)
   const { data: fulfillData, isLoading: loadingFulfill } = useBiSalesFulfillment(30)
+  const { data: martKpi,    isLoading: loadingMartKpi } = useSalesMartKpi()
+  const { data: openOrders, isLoading: loadingOrders }  = useSalesMartOpenOrders(overdueOnly)
   const { data: whSales, isLoading: loadingWhSales } = useBiSalesWarehouseSummary({
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
@@ -430,7 +436,79 @@ export default function NativeBiSalesPage() {
     },
   ]
 
-  const tabs: { id: Tab; label: string }[] = [
+  const pipelineCols: ColumnDef<OpenSalesOrderMart>[] = [
+    {
+      key: 'docNum',
+      label: '# Pedido',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{r.docNum}</span>,
+    },
+    {
+      key: 'customer',
+      label: 'Cliente',
+      render: (r) => (
+        <div>
+          <div style={{ fontWeight: 500 }}>{r.cardName ?? r.cardCode}</div>
+          {r.cardName && <div style={{ fontSize: 11.5, color: 'var(--c-text-faint)' }}>{r.cardCode}</div>}
+        </div>
+      ),
+    },
+    {
+      key: 'salesPerson',
+      label: 'Vendedor',
+      render: (r) => <span>{r.salesPersonName ?? '—'}</span>,
+    },
+    {
+      key: 'docDate',
+      label: 'Fecha',
+      render: (r) => fmtDate(r.docDate),
+    },
+    {
+      key: 'docDueDate',
+      label: 'Vencimiento',
+      render: (r) => (
+        <span style={{ color: r.isOverdue ? '#DC2626' : 'inherit' }}>
+          {fmtDate(r.docDueDate)}
+        </span>
+      ),
+    },
+    {
+      key: 'daysOpen',
+      label: 'Días abierto',
+      align: 'right',
+      render: (r) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: (r.daysOpen ?? 0) > 30 ? '#D97706' : 'inherit' }}>
+          {r.daysOpen ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'openAmount',
+      label: 'Monto abierto',
+      align: 'right',
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(r.openAmount)}</span>,
+    },
+    {
+      key: 'isOverdue',
+      label: 'Estado',
+      render: (r) => (
+        <span style={{
+          display: 'inline-block',
+          padding: '2px 8px',
+          borderRadius: 4,
+          fontSize: 11.5,
+          fontWeight: 600,
+          color: '#fff',
+          backgroundColor: r.isOverdue ? '#DC2626' : '#16A34A',
+        }}>
+          {r.isOverdue ? 'Vencido' : 'Vigente'}
+        </span>
+      ),
+    },
+  ]
+
+  const overdueCount = openOrders?.filter((o) => o.isOverdue).length ?? 0
+
+  const tabs: { id: Tab; label: ReactNode }[] = [
     { id: 'resumen',      label: 'Resumen' },
     { id: 'tendencia',    label: 'Tendencia' },
     { id: 'grupos',       label: 'Por Grupo' },
@@ -439,6 +517,31 @@ export default function NativeBiSalesPage() {
     { id: 'items',        label: 'Productos' },
     { id: 'salespersons', label: 'Vendedores' },
     { id: 'fulfillment',  label: 'Fulfillment' },
+    {
+      id: 'pipeline',
+      label: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Pipeline
+          {overdueCount > 0 && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: 18,
+              height: 18,
+              padding: '0 5px',
+              borderRadius: 9,
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#fff',
+              backgroundColor: '#DC2626',
+            }}>
+              {overdueCount}
+            </span>
+          )}
+        </span>
+      ),
+    },
   ]
 
   return (
@@ -515,6 +618,38 @@ export default function NativeBiSalesPage() {
                 loading={loadingOv || loadingCust}
               />
             </div>
+
+            {/* MART KPI block — LTM aggregated (Sprint 3) */}
+            {(martKpi || loadingMartKpi) && (
+              <div style={{ marginBottom: 24, padding: '14px 16px', background: 'var(--c-surface-alt, #F8FAFC)', borderRadius: 8, border: '1px solid var(--c-border)' }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  KPIs últimos 12 meses (MART)
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                  <StatCard
+                    label="Crecimiento YoY"
+                    value={martKpi ? `${martKpi.growthPct >= 0 ? '+' : ''}${martKpi.growthPct.toFixed(1)}%` : '—'}
+                    loading={loadingMartKpi}
+                  />
+                  <StatCard
+                    label="Tasa devolución"
+                    value={martKpi ? `${martKpi.returnRatePct.toFixed(1)}%` : '—'}
+                    loading={loadingMartKpi}
+                  />
+                  <StatCard
+                    label="Pipeline abierto"
+                    value={martKpi ? fmtAmt(martKpi.openOrdersAmount) : '—'}
+                    sub={martKpi ? `${martKpi.openOrdersCount} pedidos · ${martKpi.overdueOrdersCount} vencidos` : undefined}
+                    loading={loadingMartKpi}
+                  />
+                  <StatCard
+                    label="Clientes activos LTM"
+                    value={martKpi?.activeCustomersLtm ?? '—'}
+                    loading={loadingMartKpi}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Rankings row */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
@@ -865,6 +1000,72 @@ export default function NativeBiSalesPage() {
               isLoading={loadingSp}
               rowKey={(r) => r.salesPersonCode}
             />
+          </>
+        )}
+
+        {/* ── Pipeline (Sprint 3 MART) ────────────────────────────────────── */}
+        {tab === 'pipeline' && (
+          <>
+            {/* KPI header */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, padding: '16px 20px 0' }}>
+              <StatCard
+                label="Pedidos abiertos"
+                value={openOrders?.length ?? '—'}
+                loading={loadingOrders}
+              />
+              <StatCard
+                label="Monto total abierto"
+                value={openOrders ? fmtAmt(openOrders.reduce((s, o) => s + o.openAmount, 0)) : '—'}
+                loading={loadingOrders}
+              />
+              <StatCard
+                label="Vencidos"
+                value={overdueCount > 0 ? overdueCount : (loadingOrders ? '—' : '0')}
+                loading={loadingOrders}
+              />
+              <StatCard
+                label="Monto vencido"
+                value={openOrders ? fmtAmt(openOrders.filter((o) => o.isOverdue).reduce((s, o) => s + o.openAmount, 0)) : '—'}
+                loading={loadingOrders}
+              />
+            </div>
+
+            {/* Overdue toggle */}
+            <div style={{ padding: '12px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 13, color: 'var(--c-text-muted)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={overdueOnly}
+                  onChange={(e) => setOverdueOnly(e.target.checked)}
+                  style={{ accentColor: 'var(--brand-primary, #2563EB)', width: 14, height: 14, cursor: 'pointer' }}
+                />
+                Mostrar solo vencidos
+              </label>
+            </div>
+            <div style={{ height: 1, background: 'var(--c-border)', margin: '12px 0 0' }} />
+
+            {loadingOrders ? (
+              <div style={{ padding: 24 }}>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="cp-skeleton" style={{ height: 44, marginBottom: 4 }} />
+                ))}
+              </div>
+            ) : !openOrders || openOrders.length === 0 ? (
+              <NbEmptyState
+                message={overdueOnly ? 'No hay pedidos vencidos en este momento.' : 'No hay pedidos abiertos. El MART se actualiza tras cada sincronización.'}
+                icon="chart"
+              />
+            ) : (
+              <SortableTable
+                data={openOrders}
+                columns={pipelineCols}
+                meta={{ limit: openOrders.length, offset: 0, count: openOrders.length, hasMore: false }}
+                isLoading={false}
+                rowKey={(r) => String(r.docNum)}
+                onPageChange={() => {}}
+                onSortChange={() => {}}
+              />
+            )}
           </>
         )}
 

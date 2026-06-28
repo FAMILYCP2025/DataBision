@@ -2,12 +2,14 @@ using DataBision.Api.Security;
 using DataBision.Application.Interfaces.Dashboard;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DataBision.Api.Controllers;
 
 [ApiController]
 [Route("api/client/diagnostics")]
 [AllowAnonymous]
+[EnableRateLimiting("api")]
 public sealed class ClientDiagnosticsController(
     IDiagnosticsService diagnostics,
     IConfiguration config) : ControllerBase

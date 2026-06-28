@@ -3,14 +3,17 @@ using DataBision.Application.DTOs.Dashboard;
 using DataBision.Application.Interfaces.Dashboard;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DataBision.Api.Controllers;
 
 [ApiController]
 [Route("api/client/bi/finance")]
 [AllowAnonymous]
+[EnableRateLimiting("api")]
 public sealed class ClientBiFinanceController(
     IProcessDashboardService svc,
+    IFinanceMartRepository? financeMart,
     IConfiguration config) : ControllerBase
 {
     // GET /api/client/bi/finance/executive?days=30
@@ -164,5 +167,63 @@ public sealed class ClientBiFinanceController(
 
         var result = await svc.GetFinanceRefreshStatusAsync(ctx.CompanyId!, ct);
         return this.OkData(result);
+    }
+
+    // ── Sprint 6 — Finance MART endpoints ────────────────────────────────────
+
+    // GET /api/client/bi/finance/mart/summary
+    [HttpGet("mart/summary")]
+    public async Task<IActionResult> GetMartSummary(CancellationToken ct)
+    {
+        if (financeMart is null)
+            return this.BadRequestError("staging_not_configured", "Staging connection is not configured.");
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+        var result = await financeMart.GetSummaryAsync(ctx.CompanyId!, ct);
+        return result is null
+            ? this.OkData(new { hasData = false })
+            : this.OkData(result);
+    }
+
+    // GET /api/client/bi/finance/mart/ar-aging?limit=50
+    [HttpGet("mart/ar-aging")]
+    public async Task<IActionResult> GetMartArAging(
+        [FromQuery] int limit = 50, CancellationToken ct = default)
+    {
+        if (financeMart is null)
+            return this.BadRequestError("staging_not_configured", "Staging connection is not configured.");
+        if (limit < 1 || limit > 500)
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 500.");
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+        return this.OkData(await financeMart.GetArAgingAsync(ctx.CompanyId!, limit, ct));
+    }
+
+    // GET /api/client/bi/finance/mart/ap-aging?limit=50
+    [HttpGet("mart/ap-aging")]
+    public async Task<IActionResult> GetMartApAging(
+        [FromQuery] int limit = 50, CancellationToken ct = default)
+    {
+        if (financeMart is null)
+            return this.BadRequestError("staging_not_configured", "Staging connection is not configured.");
+        if (limit < 1 || limit > 500)
+            return this.BadRequestError("invalid_limit", "limit must be between 1 and 500.");
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+        return this.OkData(await financeMart.GetApAgingAsync(ctx.CompanyId!, limit, ct));
+    }
+
+    // GET /api/client/bi/finance/mart/period-kpi?months=12
+    [HttpGet("mart/period-kpi")]
+    public async Task<IActionResult> GetMartPeriodKpi(
+        [FromQuery] int months = 12, CancellationToken ct = default)
+    {
+        if (financeMart is null)
+            return this.BadRequestError("staging_not_configured", "Staging connection is not configured.");
+        if (months < 1 || months > 36)
+            return this.BadRequestError("invalid_months", "months must be between 1 and 36.");
+        var ctx = CompanyContextResolver.TryResolve(HttpContext, config);
+        if (!ctx.IsSuccess) return ctx.Error!;
+        return this.OkData(await financeMart.GetPeriodKpiAsync(ctx.CompanyId!, months, ct));
     }
 }

@@ -13,6 +13,68 @@ const VARIANT: Record<string, { bg: string; border: string; color: string; icon:
   success: { bg: '#F0FDF4', border: '#BBF7D0', color: '#166534', icon: '✅' },
 }
 
+// ── NativeBiOnboardingBanner ──────────────────────────────────────────────────
+
+interface NativeBiOnboardingBannerProps {
+  visible: boolean
+}
+
+export function NativeBiOnboardingBanner({ visible }: NativeBiOnboardingBannerProps) {
+  if (!visible) return null
+  return (
+    <div
+      style={{
+        padding: '20px 24px',
+        backgroundColor: 'var(--c-surface, #FFFFFF)',
+        border: '1px solid var(--c-border, #E2E8F0)',
+        borderRadius: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text, #0F172A)' }}>
+        Bienvenido a DataBision
+      </div>
+      <div style={{ fontSize: 13.5, color: 'var(--c-text-muted, #64748B)', lineHeight: 1.6 }}>
+        Aún no hay datos sincronizados desde SAP.
+        Para ver tus indicadores, ejecuta la primera
+        sincronización desde el servidor del extractor.
+      </div>
+      <div
+        style={{
+          padding: '10px 14px',
+          backgroundColor: '#F8FAFC',
+          border: '1px solid var(--c-border, #E2E8F0)',
+          borderRadius: 6,
+          fontFamily: 'monospace',
+          fontSize: 13,
+          color: 'var(--c-text, #0F172A)',
+          overflowX: 'auto',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <code>DataBision.Extractor.exe --run-once --send</code>
+      </div>
+      <div>
+        <a
+          href="#"
+          style={{
+            fontSize: 13,
+            color: 'var(--brand-primary, #2563EB)',
+            textDecoration: 'none',
+            fontWeight: 500,
+          }}
+        >
+          Ver documentación →
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// ── NativeBiInfoBanner ────────────────────────────────────────────────────────
+
 export default function NativeBiInfoBanner({
   variant = 'info',
   icon,

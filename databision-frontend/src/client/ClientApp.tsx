@@ -13,6 +13,9 @@ import PermissionsSettingsPage from './pages/settings/PermissionsSettingsPage'
 import BrandingSettingsPage from './pages/settings/BrandingSettingsPage'
 import NativeBiDashboardPage from './pages/NativeBiDashboardPage'
 import NativeBiSalesPage from './pages/NativeBiSalesPage'
+import NativeBiPurchasePage from './pages/NativeBiPurchasePage'
+import NativeBiInventoryPage from './pages/NativeBiInventoryPage'
+import NativeBiFinancePage from './pages/NativeBiFinancePage'
 import NativeBiDiagnosticsPage from './pages/NativeBiDiagnosticsPage'
 import PurchasingDashboardPage from './pages/PurchasingDashboardPage'
 import InventoryDashboardPage from './pages/InventoryDashboardPage'
@@ -49,6 +52,9 @@ export default function ClientApp() {
                 {/* Native BI */}
                 <Route path="/client/bi/dashboard" element={<NativeBiDashboardPage />} />
                 <Route path="/client/bi/sales" element={<NativeBiSalesPage />} />
+                <Route path="/client/bi/purchase" element={<NativeBiPurchasePage />} />
+                <Route path="/client/bi/inventory-mart" element={<NativeBiInventoryPage />} />
+                <Route path="/client/bi/finance-mart" element={<NativeBiFinancePage />} />
                 <Route path="/client/bi/diagnostics" element={<NativeBiDiagnosticsPage />} />
                 <Route path="/client/bi/purchasing" element={<PurchasingDashboardPage />} />
                 <Route path="/client/bi/inventory" element={<InventoryDashboardPage />} />

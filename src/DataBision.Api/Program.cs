@@ -25,6 +25,10 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (builder.Environment.IsProduction() && string.IsNullOrEmpty(builder.Configuration["Jwt:PublicKey"]))
+    throw new InvalidOperationException(
+        "Jwt:PublicKey is required in Production. Set the RSA public key PEM in configuration.");
+
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
@@ -90,6 +94,22 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
     builder.Services.AddScoped<IFilterOptionsRepository>(_ =>
         new FilterOptionsRepository(stagingConnectionString));
     builder.Services.AddScoped<IFilterOptionsService, FilterOptionsService>();
+
+    // Sprint 3 — Sales MART (mart.sales_period_kpi, top_customers, top_items, top_salespersons, open_sales_orders)
+    builder.Services.AddScoped<ISalesMartRepository>(_ =>
+        new SalesMartRepository(stagingConnectionString));
+
+    // Sprint 4 — Purchases MART (mart.purchase_period_kpi, top_suppliers, top_purchase_items, open_purchase_orders)
+    builder.Services.AddScoped<IPurchaseMartRepository>(_ =>
+        new PurchaseMartRepository(stagingConnectionString));
+
+    // Sprint 5 — Inventory MART (mart.inventory_snapshot, inventory_movement_kpi, slow_moving_items, warehouse_stock)
+    builder.Services.AddScoped<IInventoryMartRepository>(_ =>
+        new InventoryMartRepository(stagingConnectionString));
+
+    // Sprint 6 — Finance MART (mart.finance_summary, ar_aging, ap_aging, finance_period_kpi)
+    builder.Services.AddScoped<IFinanceMartRepository>(_ =>
+        new FinanceMartRepository(stagingConnectionString));
 
     // Account classification rules (cfg.account_classification_rules in staging DB)
     builder.Services.AddScoped<IAccountClassificationService>(_ =>
@@ -185,7 +205,7 @@ builder.Services.AddCors(opts => opts.AddPolicy("DataBision", policy =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
     else
         policy.SetIsOriginAllowedToAllowWildcardSubdomains()
-              .WithOrigins("https://*.databision.com")
+              .WithOrigins("https://*.databision.com", "https://*.databision.app")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -198,6 +218,12 @@ builder.Services.AddRateLimiter(opts =>
     {
         o.PermitLimit = 5;
         o.Window = TimeSpan.FromMinutes(15);
+        o.QueueLimit = 0;
+    });
+    opts.AddFixedWindowLimiter("api", o =>
+    {
+        o.PermitLimit = 120;
+        o.Window = TimeSpan.FromMinutes(1);
         o.QueueLimit = 0;
     });
 });
@@ -236,6 +262,35 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
+app.MapGet("/api/health", async (IConfiguration cfg) =>
+{
+    var stagingStatus = "not_configured";
+    var stagingCs = cfg.GetConnectionString("StagingConnection");
+
+    if (!string.IsNullOrWhiteSpace(stagingCs))
+    {
+        try
+        {
+            await using var conn = new Npgsql.NpgsqlConnection(stagingCs);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await conn.OpenAsync(cts.Token);
+            stagingStatus = "ok";
+        }
+        catch (Exception ex)
+        {
+            stagingStatus = $"error:{ex.GetType().Name}";
+        }
+    }
+
+    var healthy = stagingStatus is "ok" or "not_configured";
+    var payload = new
+    {
+        status    = healthy ? "ok" : "degraded",
+        timestamp = DateTime.UtcNow,
+        staging   = stagingStatus
+    };
+
+    return healthy ? Results.Ok(payload) : Results.Json(payload, statusCode: 503);
+});
 
 app.Run();

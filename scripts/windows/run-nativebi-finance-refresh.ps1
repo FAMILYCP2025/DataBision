@@ -41,15 +41,35 @@ function Write-Log {
     Add-Content -Path $LogFile -Value $line -Encoding UTF8
 }
 
-function Invoke-Extractor {
-    param([string[]]$Args)
+function Invoke-ExtractorProcess {
+    param([string[]]$ExtractorArgs)
     if ($DryRun) {
-        Write-Log "INF" "DRY-RUN: $Exe $($Args -join ' ')"
+        Write-Log "INF" "DRY-RUN: $Exe $($ExtractorArgs -join ' ')"
         return 0
     }
-    & $Exe @Args
+    & $Exe @ExtractorArgs
     return $LASTEXITCODE
 }
+
+# ── Lock ──────────────────────────────────────────────────────────────────────
+
+$LockDir  = Join-Path $ExtractorPath "locks"
+$LockFile = Join-Path $LockDir "finance-refresh.lock"
+
+if (-not (Test-Path $LockDir)) {
+    New-Item -ItemType Directory -Force $LockDir | Out-Null
+}
+
+if (Test-Path $LockFile) {
+    Write-Log "WRN" "Lock file exists: $LockFile. Previous run still active or crashed. Exiting."
+    exit 1
+}
+
+New-Item -ItemType File -Path $LockFile -Force | Out-Null
+
+$ExitCode = 0
+
+try {
 
 # ── Validate ──────────────────────────────────────────────────────────────────
 
@@ -61,20 +81,21 @@ Write-Log "INF" "DryRun:        $DryRun"
 
 if (-not (Test-Path $Exe)) {
     Write-Log "ERR" "Extractor not found: $Exe"
-    exit 1
+    $ExitCode = 1
+    return
 }
 
 $StartTime = Get-Date
-$ExitCode  = 0
 
 # ── Step 1: OACT (full refresh) ───────────────────────────────────────────────
 
 if (-not $SkipOact) {
     Write-Log "INF" "Step 1/3: OACT extraction (full refresh)"
-    $code = Invoke-Extractor @("--object", "OACT", "--send")
+    $code = Invoke-ExtractorProcess @("--object", "OACT", "--send")
     if ($code -ne 0) {
         Write-Log "ERR" "OACT extraction failed (exit=$code). Aborting."
-        exit $code
+        $ExitCode = $code
+        return
     }
     Write-Log "INF" "Step 1/3: OACT OK"
 } else {
@@ -84,7 +105,7 @@ if (-not $SkipOact) {
 # ── Step 2: OJDT (incremental) ────────────────────────────────────────────────
 
 Write-Log "INF" "Step 2/3: OJDT extraction (incremental)"
-$code = Invoke-Extractor @("--object", "OJDT", "--send")
+$code = Invoke-ExtractorProcess @("--object", "OJDT", "--send")
 if ($code -ne 0) {
     Write-Log "WRN" "OJDT extraction failed (exit=$code) — refresh_accounting_all skipped."
     $ExitCode = $code
@@ -100,7 +121,7 @@ if ($code -ne 0) {
         $TransformArgs += @("--company", $CompanyId)
     }
 
-    $code = Invoke-Extractor $TransformArgs
+    $code = Invoke-ExtractorProcess $TransformArgs
     if ($code -ne 0) {
         Write-Log "ERR" "Transform failed (exit=$code)"
         $ExitCode = $code
@@ -115,5 +136,9 @@ $Duration = ((Get-Date) - $StartTime).TotalSeconds
 $Status   = if ($ExitCode -eq 0) { "SUCCESS" } else { "FAILED" }
 
 Write-Log "INF" "=== DataBision Finance Refresh $Status (${Duration}s, exit=$ExitCode) ==="
+
+} finally {
+    Remove-Item -Path $LockFile -Force -ErrorAction SilentlyContinue
+}
 
 exit $ExitCode

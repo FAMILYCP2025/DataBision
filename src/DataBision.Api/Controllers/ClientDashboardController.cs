@@ -2,6 +2,7 @@ using DataBision.Api.Security;
 using DataBision.Application.Interfaces.Dashboard;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DataBision.Api.Controllers;
 
@@ -11,6 +12,7 @@ namespace DataBision.Api.Controllers;
 [ApiController]
 [Route("api/client/dashboard")]
 [AllowAnonymous]
+[EnableRateLimiting("api")]
 public sealed class ClientDashboardController(
     IDashboardService dashboard,
     IConfiguration config) : ControllerBase

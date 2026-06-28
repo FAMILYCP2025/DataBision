@@ -136,6 +136,54 @@ public sealed class TransformationRunner(
         }
     }
 
+    public async Task<IReadOnlyList<(string Object, int RowsAffected)>> RefreshSalesMartAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        logger.LogInformation("Sales MART refresh starting — company_id={CompanyId}", companyId);
+        return await ExecuteFunctionAsync("mart.refresh_sales", companyId, ct);
+    }
+
+    public async Task<IReadOnlyList<(string Object, int RowsAffected)>> RefreshPurchasesMartAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        logger.LogInformation("Purchases MART refresh starting — company_id={CompanyId}", companyId);
+        return await ExecuteFunctionAsync("mart.refresh_purchases", companyId, ct);
+    }
+
+    public async Task<IReadOnlyList<(string Object, int RowsAffected)>> RefreshInventoryMartAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        logger.LogInformation("Inventory MART refresh starting — company_id={CompanyId}", companyId);
+        try
+        {
+            var results = await ExecuteFunctionAsync("mart.refresh_inventory", companyId, ct);
+            logger.LogInformation("Inventory MART refresh complete — {Count} object(s)", results.Count);
+            return results;
+        }
+        catch (PostgresException ex) when (ex.SqlState == "42883")
+        {
+            logger.LogWarning("mart.refresh_inventory not found — migration not applied yet");
+            return [];
+        }
+    }
+
+    public async Task<IReadOnlyList<(string Object, int RowsAffected)>> RefreshFinanceMartAsync(
+        string companyId, CancellationToken ct = default)
+    {
+        logger.LogInformation("Finance MART refresh starting — company_id={CompanyId}", companyId);
+        try
+        {
+            var results = await ExecuteFunctionAsync("mart.refresh_finance", companyId, ct);
+            logger.LogInformation("Finance MART refresh complete — {Count} object(s)", results.Count);
+            return results;
+        }
+        catch (PostgresException ex) when (ex.SqlState == "42883")
+        {
+            logger.LogWarning("mart.refresh_finance not found — migration not applied yet");
+            return [];
+        }
+    }
+
     private async Task<IReadOnlyList<(string, int)>> ExecuteFunctionAsync(
         string functionName, string companyId, CancellationToken ct)
     {

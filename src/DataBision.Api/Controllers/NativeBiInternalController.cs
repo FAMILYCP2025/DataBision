@@ -24,12 +24,18 @@ public sealed class NativeBiInternalController(
     /// Either profileName or profileId must be provided.
     /// </summary>
     [HttpGet("connection-profile/resolve")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> ResolveConnectionProfile(
         [FromQuery] string? companyId,
         [FromQuery] string? profileName,
         [FromQuery] int? profileId,
         CancellationToken ct)
     {
+        var isProduction = (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production")
+            .Equals("Production", StringComparison.OrdinalIgnoreCase);
+        if (isProduction && !HttpContext.Request.IsHttps)
+            return StatusCode(403, new { error = "https_required", message = "SAP credentials can only be resolved over HTTPS." });
+
         var keyCompanyId = HttpContext.Items[ApiKeyAuthFilter.CompanyIdItemKey] as string;
 
         if (string.IsNullOrWhiteSpace(companyId))

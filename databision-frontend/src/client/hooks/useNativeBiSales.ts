@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { PaginationParams, DateRangeParams } from '../types/nativeBi'
 import * as nbApi from '../api/nativeBiApi'
 
+
 export function useSalesOverview(params: DateRangeParams = {}) {
   return useQuery({
     queryKey: ['nb-sales-overview', params],
@@ -50,5 +51,55 @@ export function useSalesSalespersons(params: PaginationParams = {}) {
     queryFn: () => nbApi.getSalesSalespersons(params),
     staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
+  })
+}
+
+// ── Sprint 3 — Sales MART hooks ───────────────────────────────────────────────
+
+export function useSalesMartKpi() {
+  return useQuery({
+    queryKey: ['nb-mart-sales-kpi'],
+    queryFn: () => nbApi.getSalesMartKpi(),
+    staleTime: 15 * 60_000,
+  })
+}
+
+export function useSalesMartByPeriod(months = 12) {
+  return useQuery({
+    queryKey: ['nb-mart-sales-by-period', months],
+    queryFn: () => nbApi.getSalesMartByPeriod(months),
+    staleTime: 15 * 60_000,
+  })
+}
+
+export function useSalesMartTopCustomers(limit = 10) {
+  return useQuery({
+    queryKey: ['nb-mart-top-customers', limit],
+    queryFn: () => nbApi.getSalesMartTopCustomers(limit),
+    staleTime: 15 * 60_000,
+  })
+}
+
+export function useSalesMartTopItems(limit = 10) {
+  return useQuery({
+    queryKey: ['nb-mart-top-items', limit],
+    queryFn: () => nbApi.getSalesMartTopItems(limit),
+    staleTime: 15 * 60_000,
+  })
+}
+
+export function useSalesMartTopSalespersons() {
+  return useQuery({
+    queryKey: ['nb-mart-top-salespersons'],
+    queryFn: () => nbApi.getSalesMartTopSalespersons(),
+    staleTime: 15 * 60_000,
+  })
+}
+
+export function useSalesMartOpenOrders(overdueOnly = false) {
+  return useQuery({
+    queryKey: ['nb-mart-open-orders', overdueOnly],
+    queryFn: () => nbApi.getSalesMartOpenOrders(overdueOnly),
+    staleTime: 5 * 60_000,
   })
 }
