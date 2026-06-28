@@ -16,6 +16,7 @@ import NativeBiSalesPage from './pages/NativeBiSalesPage'
 import NativeBiPurchasePage from './pages/NativeBiPurchasePage'
 import NativeBiInventoryPage from './pages/NativeBiInventoryPage'
 import NativeBiFinancePage from './pages/NativeBiFinancePage'
+import NativeBiMartOverviewPage from './pages/NativeBiMartOverviewPage'
 import NativeBiDiagnosticsPage from './pages/NativeBiDiagnosticsPage'
 import PurchasingDashboardPage from './pages/PurchasingDashboardPage'
 import InventoryDashboardPage from './pages/InventoryDashboardPage'
@@ -55,6 +56,7 @@ export default function ClientApp() {
                 <Route path="/client/bi/purchase" element={<NativeBiPurchasePage />} />
                 <Route path="/client/bi/inventory-mart" element={<NativeBiInventoryPage />} />
                 <Route path="/client/bi/finance-mart" element={<NativeBiFinancePage />} />
+                <Route path="/client/bi/mart-overview" element={<NativeBiMartOverviewPage />} />
                 <Route path="/client/bi/diagnostics" element={<NativeBiDiagnosticsPage />} />
                 <Route path="/client/bi/purchasing" element={<PurchasingDashboardPage />} />
                 <Route path="/client/bi/inventory" element={<InventoryDashboardPage />} />
