@@ -435,3 +435,27 @@ export async function testNativeBiConnectionProfile(
   )
   return data.data
 }
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+export interface AuditLog {
+  id: number
+  userId: number | null
+  companyId: number | null
+  action: string
+  resourceType: string | null
+  resourceId: string | null
+  metadata: string | null
+  ipAddress: string | null
+  userAgent: string | null
+  createdAt: string
+  user?: { firstName?: string; lastName?: string; email?: string } | null
+  company?: { name?: string; slug?: string } | null
+}
+
+export async function getAuditLogs(page = 1, pageSize = 50): Promise<AuditLog[]> {
+  const { data } = await api.get<ApiResponse<AuditLog[]>>(
+    `/audit-logs?page=${page}&pageSize=${pageSize}`
+  )
+  return data.data
+}
