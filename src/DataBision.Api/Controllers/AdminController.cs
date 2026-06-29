@@ -4,6 +4,7 @@ using DataBision.Application.DTOs.Admin;
 using DataBision.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DataBision.Api.Controllers;
 
@@ -188,5 +189,27 @@ public class AdminController(
             metadata: System.Text.Json.JsonSerializer.Serialize(new { reportId }));
 
         return Ok(new { data = result });
+    }
+
+    // ── MART Admin Refresh (Sprint 10) ────────────────────────────────────────
+
+    // POST /api/admin/mart/refresh/{companyId}
+    [HttpPost("mart/refresh/{companyId}")]
+    public async Task<IActionResult> RefreshMart(
+        string companyId,
+        [FromServices] IMartAdminRefreshService refreshSvc,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(companyId))
+            return this.BadRequestError("invalid_company", "companyId is required.");
+
+        if (refreshSvc is null)
+            return this.BadRequestError("staging_unavailable", "Staging connection is not configured on this server.");
+
+        var rows = await refreshSvc.RefreshAllMartAsync(companyId, ct);
+
+        var results = rows.Select(r => new { module = r.Module, @object = r.Object, rowsAffected = r.RowsAffected }).ToList();
+
+        return this.OkData(new { companyId, refreshedAt = DateTime.UtcNow, results });
     }
 }

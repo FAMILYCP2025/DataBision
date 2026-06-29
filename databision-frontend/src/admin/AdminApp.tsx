@@ -12,6 +12,7 @@ import CompanyDetailPage from './pages/CompanyDetailPage'
 import CompanyUsersPage from './pages/CompanyUsersPage'
 import CreateUserPage from './pages/CreateUserPage'
 import EditUserPage from './pages/EditUserPage'
+import AdminMartRefreshPage from './pages/AdminMartRefreshPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +39,7 @@ export default function AdminApp() {
                 <Route path="/admin/companies/:id/users" element={<CompanyUsersPage />} />
                 <Route path="/admin/companies/:id/users/new" element={<CreateUserPage />} />
                 <Route path="/admin/companies/:id/users/:userId/edit" element={<EditUserPage />} />
+                <Route path="/admin/mart-refresh" element={<AdminMartRefreshPage />} />
               </Route>
             </Route>
 

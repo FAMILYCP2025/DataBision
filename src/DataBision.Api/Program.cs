@@ -111,6 +111,10 @@ if (!string.IsNullOrWhiteSpace(stagingConnectionString))
     builder.Services.AddScoped<IFinanceMartRepository>(_ =>
         new FinanceMartRepository(stagingConnectionString));
 
+    // Sprint 10 — MART Admin Refresh (triggers all 4 mart.refresh_* functions)
+    builder.Services.AddScoped<IMartAdminRefreshService>(_ =>
+        new MartAdminRefreshService(stagingConnectionString));
+
     // Account classification rules (cfg.account_classification_rules in staging DB)
     builder.Services.AddScoped<IAccountClassificationService>(_ =>
         new AccountClassificationRepository(stagingConnectionString));
