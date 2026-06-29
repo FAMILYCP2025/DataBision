@@ -1,4 +1,6 @@
 import { useState, useMemo, type ReactNode } from 'react'
+import { Download } from 'lucide-react'
+import { exportXlsx } from '../utils/exportXlsx'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -310,6 +312,24 @@ export default function NativeBiPurchasePage() {
       {/* ── PROVEEDORES ──────────────────────────────────────────────────────── */}
       {tab === 'proveedores' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button
+              onClick={() => exportXlsx('compras-top-proveedores', 'Top Proveedores', sortedSuppliers.map(r => ({
+                'Código': r.cardCode,
+                'Proveedor': r.cardName,
+                'Compras Brutas': r.grossPurchases,
+                'Compras Netas': r.netPurchases,
+                'N° Facturas': r.invoiceCount,
+                'Última Factura': r.lastInvoiceDate,
+                'DPO (días)': r.dpoDays,
+              })))}
+              disabled={sortedSuppliers.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <Download size={14} />
+              Exportar Excel
+            </button>
+          </div>
           {loadingSuppliers && <div className="cp-skeleton" style={{ height: 300, borderRadius: 8 }} />}
 
           {!loadingSuppliers && (!suppliers || suppliers.length === 0) && (
@@ -334,6 +354,24 @@ export default function NativeBiPurchasePage() {
       {/* ── ARTÍCULOS ────────────────────────────────────────────────────────── */}
       {tab === 'articulos' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button
+              onClick={() => exportXlsx('compras-top-articulos', 'Top Artículos', sortedItems.map(r => ({
+                'Código': r.itemCode,
+                'Artículo': r.itemName,
+                'Grupo': r.itemGroupName,
+                'Monto Comprado': r.grossPurchases,
+                'Cantidad': r.quantityPurchased,
+                'N° Facturas': r.invoiceCount,
+                'Precio Prom.': r.avgUnitPrice,
+              })))}
+              disabled={sortedItems.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <Download size={14} />
+              Exportar Excel
+            </button>
+          </div>
           {loadingItems && <div className="cp-skeleton" style={{ height: 300, borderRadius: 8 }} />}
 
           {!loadingItems && (!items || items.length === 0) && (

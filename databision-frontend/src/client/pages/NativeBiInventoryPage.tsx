@@ -1,4 +1,6 @@
 import { useState, useMemo, type ReactNode } from 'react'
+import { Download } from 'lucide-react'
+import { exportXlsx } from '../utils/exportXlsx'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -261,6 +263,25 @@ export default function NativeBiInventoryPage() {
       {/* ── Tab: Stock ──────────────────────────────────────────────────────── */}
       {tab === 'stock' && (
         <div className="db-card" style={{ overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px' }}>
+            <button
+              onClick={() => exportXlsx('inventario-stock', 'Stock', sortedStock.map(r => ({
+                'Código': r.itemCode,
+                'Artículo': r.itemName,
+                'Grupo': r.itemGroupName,
+                'En Stock': r.onHand,
+                'Comprometido': r.committed,
+                'Disponible': r.available,
+                'Precio Prom.': r.avgPrice,
+                'Valor Stock': r.stockValue,
+              })))}
+              disabled={sortedStock.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <Download size={14} />
+              Exportar Excel
+            </button>
+          </div>
           {loadingSnapshot ? (
             <div className="cp-skeleton" style={{ height: 300, margin: 16, borderRadius: 6 }} />
           ) : (snapshot ?? []).length === 0 ? (
@@ -359,7 +380,7 @@ export default function NativeBiInventoryPage() {
       {/* ── Tab: Slow-Moving ────────────────────────────────────────────────── */}
       {tab === 'slow-moving' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Sin movimiento hace:</span>
             {([30, 60, 90, 180] as const).map(d => (
               <button
@@ -370,6 +391,24 @@ export default function NativeBiInventoryPage() {
                 {d}+ días
               </button>
             ))}
+            <div style={{ marginLeft: 'auto' }}>
+              <button
+                onClick={() => exportXlsx('inventario-slow-moving', 'Slow Moving', sortedSlowItems.map(r => ({
+                  'Código': r.itemCode,
+                  'Artículo': r.itemName,
+                  'Grupo': r.itemGroupName,
+                  'En Stock': r.onHand,
+                  'Valor Stock': r.stockValue,
+                  'Último Movimiento': r.lastMovementDate,
+                  'Días sin Movimiento': r.daysWithoutMovement,
+                })))}
+                disabled={sortedSlowItems.length === 0}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                <Download size={14} />
+                Exportar Excel
+              </button>
+            </div>
           </div>
 
           <div className="db-card" style={{ overflow: 'hidden' }}>

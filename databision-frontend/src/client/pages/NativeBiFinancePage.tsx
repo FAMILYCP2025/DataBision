@@ -1,4 +1,6 @@
 import { useState, useMemo, type ReactNode } from 'react'
+import { Download } from 'lucide-react'
+import { exportXlsx } from '../utils/exportXlsx'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -215,6 +217,28 @@ export default function NativeBiFinancePage() {
       {/* ── Tab: AR Aging ───────────────────────────────────────────────────── */}
       {tab === 'ar-aging' && (
         <div className="db-card" style={{ overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px' }}>
+            <button
+              onClick={() => exportXlsx('finanzas-ar-aging', 'AR Aging', sortedAr.map(r => ({
+                'Código': r.cardCode,
+                'Cliente': r.cardName,
+                'Corriente': r.currentAmount,
+                '1–30 días': r.bucket1To30,
+                '31–60 días': r.bucket31To60,
+                '61–90 días': r.bucket61To90,
+                '91–120 días': r.bucket91To120,
+                '+120 días': r.bucketOver120,
+                'Total': r.totalOpen,
+                'Facturas': r.invoiceCount,
+                'Más antigua': r.oldestDueDate,
+              })))}
+              disabled={sortedAr.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <Download size={14} />
+              Exportar Excel
+            </button>
+          </div>
           {loadingAr ? (
             <div className="cp-skeleton" style={{ height: 300, margin: 16, borderRadius: 6 }} />
           ) : sortedAr.length === 0 ? (
@@ -237,6 +261,28 @@ export default function NativeBiFinancePage() {
       {/* ── Tab: AP Aging ───────────────────────────────────────────────────── */}
       {tab === 'ap-aging' && (
         <div className="db-card" style={{ overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px' }}>
+            <button
+              onClick={() => exportXlsx('finanzas-ap-aging', 'AP Aging', sortedAp.map(r => ({
+                'Código': r.cardCode,
+                'Proveedor': r.cardName,
+                'Corriente': r.currentAmount,
+                '1–30 días': r.bucket1To30,
+                '31–60 días': r.bucket31To60,
+                '61–90 días': r.bucket61To90,
+                '91–120 días': r.bucket91To120,
+                '+120 días': r.bucketOver120,
+                'Total': r.totalOpen,
+                'Facturas': r.invoiceCount,
+                'Más antigua': r.oldestDueDate,
+              })))}
+              disabled={sortedAp.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <Download size={14} />
+              Exportar Excel
+            </button>
+          </div>
           {loadingAp ? (
             <div className="cp-skeleton" style={{ height: 300, margin: 16, borderRadius: 6 }} />
           ) : sortedAp.length === 0 ? (

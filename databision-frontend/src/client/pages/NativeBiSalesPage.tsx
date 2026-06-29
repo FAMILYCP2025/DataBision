@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react'
+import { Download } from 'lucide-react'
+import { exportXlsx } from '../utils/exportXlsx'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -922,6 +924,22 @@ export default function NativeBiSalesPage() {
         {/* ── Clientes ────────────────────────────────────────────────────── */}
         {tab === 'customers' && (
           <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 20px 0' }}>
+              <button
+                onClick={() => exportXlsx('ventas-top-clientes', 'Top Clientes', (custData?.data ?? []).map(r => ({
+                  'Código': r.cardCode,
+                  'Cliente': r.cardName,
+                  'Ventas Netas': r.netSalesAmount,
+                  'N° Facturas': r.invoiceCount,
+                  'Última Factura': r.lastInvoiceDate,
+                })))}
+                disabled={(custData?.data ?? []).length === 0}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                <Download size={14} />
+                Exportar Excel
+              </button>
+            </div>
             {custData && custData.data.length > 0 && (
               <div style={{ padding: '16px 20px 0' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--c-text)' }}>
@@ -960,17 +978,36 @@ export default function NativeBiSalesPage() {
 
         {/* ── Productos ───────────────────────────────────────────────────── */}
         {tab === 'items' && (
-          <SortableTable
-            data={itemData?.data ?? []}
-            columns={itemCols}
-            meta={itemData?.meta ?? EMPTY_META}
-            sortBy={itemP.sortBy}
-            sortDir={itemP.sortDir}
-            onPageChange={(offset) => setItemP((p) => ({ ...p, offset }))}
-            onSortChange={(sortBy, sortDir) => setItemP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
-            isLoading={loadingItems}
-            rowKey={(r) => r.itemCode}
-          />
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 20px 0' }}>
+              <button
+                onClick={() => exportXlsx('ventas-top-items', 'Top Ítems', (itemData?.data ?? []).map(r => ({
+                  'Código': r.itemCode,
+                  'Ítem': r.itemName,
+                  'Ventas Brutas': r.grossSalesAmount,
+                  'Cantidad': r.quantitySold,
+                  'N° Facturas': r.invoiceCount,
+                  'Última Venta': r.lastSaleDate,
+                })))}
+                disabled={(itemData?.data ?? []).length === 0}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', color: 'var(--c-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                <Download size={14} />
+                Exportar Excel
+              </button>
+            </div>
+            <SortableTable
+              data={itemData?.data ?? []}
+              columns={itemCols}
+              meta={itemData?.meta ?? EMPTY_META}
+              sortBy={itemP.sortBy}
+              sortDir={itemP.sortDir}
+              onPageChange={(offset) => setItemP((p) => ({ ...p, offset }))}
+              onSortChange={(sortBy, sortDir) => setItemP((p) => ({ ...p, sortBy, sortDir, offset: 0 }))}
+              isLoading={loadingItems}
+              rowKey={(r) => r.itemCode}
+            />
+          </>
         )}
 
         {/* ── Vendedores ──────────────────────────────────────────────────── */}
