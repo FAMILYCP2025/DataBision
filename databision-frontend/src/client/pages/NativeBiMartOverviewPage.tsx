@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState, NbLoadingSkeleton } from '../components/nativebi/NativeBiState'
 import { NbAreaChart } from '../components/charts'
@@ -69,6 +70,7 @@ interface KpiRow {
   label: string
   value: string
   color?: string
+  tab?: string
 }
 
 interface ModuleCardProps {
@@ -81,6 +83,7 @@ interface ModuleCardProps {
 }
 
 function ModuleCard({ title, icon, rows, loading, linkLabel, linkHref }: ModuleCardProps) {
+  const navigate = useNavigate()
   return (
     <div
       style={{
@@ -104,7 +107,23 @@ function ModuleCard({ title, icon, rows, loading, linkLabel, linkHref }: ModuleC
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {rows.map((row, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+            <div
+              key={i}
+              onClick={row.tab && linkHref ? () => navigate(`${linkHref}?tab=${row.tab}`) : undefined}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                gap: 8,
+                cursor: row.tab ? 'pointer' : 'default',
+                borderRadius: 4,
+                padding: '2px 4px',
+                margin: '0 -4px',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => { if (row.tab) (e.currentTarget as HTMLDivElement).style.background = '#F1F5F9' }}
+              onMouseLeave={e => { if (row.tab) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+            >
               <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>{row.label}</span>
               <span
                 style={{
@@ -119,6 +138,12 @@ function ModuleCard({ title, icon, rows, loading, linkLabel, linkHref }: ModuleC
             </div>
           ))}
         </div>
+      )}
+
+      {rows.some(r => r.tab) && (
+        <span style={{ fontSize: 11, color: 'var(--c-text-faint, #94A3B8)' }}>
+          Haz clic en una métrica para ir al detalle
+        </span>
       )}
 
       {linkLabel && linkHref && (
@@ -197,7 +222,7 @@ export default function NativeBiMartOverviewPage() {
 
   const growthPctSales = kpiSales.data?.growthPct
   const salesRows: KpiRow[] = [
-    { label: 'Ventas LTM',   value: fmtAmt(kpiSales.data?.netSalesLtm) },
+    { label: 'Ventas LTM',   value: fmtAmt(kpiSales.data?.netSalesLtm),   tab: 'tendencia' },
     {
       label: 'Crecimiento',
       value: kpiSales.data == null ? '—' : `${fmtPct(growthPctSales)}%`,
@@ -205,16 +230,17 @@ export default function NativeBiMartOverviewPage() {
         : growthPctSales > 0 ? '#16A34A'
         : growthPctSales < 0 ? '#DC2626'
         : 'inherit',
+      tab: 'tendencia',
     },
-    { label: 'Ticket prom.',  value: fmtAmt(kpiSales.data?.avgTicketLtm) },
-    { label: 'OV abiertas',   value: fmtNum(kpiSales.data?.openOrdersCount) },
+    { label: 'Ticket prom.',  value: fmtAmt(kpiSales.data?.avgTicketLtm),  tab: 'customers' },
+    { label: 'OV abiertas',   value: fmtNum(kpiSales.data?.openOrdersCount), tab: 'pipeline' },
   ]
 
   // ── Compras rows ──────────────────────────────────────────────────────────
 
   const growthPctPurchase = kpiPurchase.data?.growthPct
   const purchaseRows: KpiRow[] = [
-    { label: 'Compras LTM',  value: fmtAmt(kpiPurchase.data?.grossPurchasesLtm) },
+    { label: 'Compras LTM',  value: fmtAmt(kpiPurchase.data?.grossPurchasesLtm), tab: 'tendencia' },
     {
       label: 'Crecimiento',
       value: kpiPurchase.data == null ? '—' : `${fmtPct(growthPctPurchase)}%`,
@@ -222,40 +248,45 @@ export default function NativeBiMartOverviewPage() {
         : growthPctPurchase > 0 ? '#16A34A'
         : growthPctPurchase < 0 ? '#DC2626'
         : 'inherit',
+      tab: 'tendencia',
     },
-    { label: 'OC abiertas',  value: fmtNum(kpiPurchase.data?.openOrdersCount) },
+    { label: 'OC abiertas',  value: fmtNum(kpiPurchase.data?.openOrdersCount),    tab: 'pipeline' },
     {
       label: 'OC vencidas',
       value: fmtNum(kpiPurchase.data?.overdueOrdersCount),
       color: (kpiPurchase.data?.overdueOrdersCount ?? 0) > 0 ? '#DC2626' : undefined,
+      tab: 'pipeline',
     },
   ]
 
   // ── Inventario rows ───────────────────────────────────────────────────────
 
   const inventoryRows: KpiRow[] = [
-    { label: 'Valor stock',    value: fmtAmt(kpiInventory.data?.totalStockValue) },
-    { label: 'Ítems totales',  value: fmtNum(kpiInventory.data?.totalItems) },
+    { label: 'Valor stock',    value: fmtAmt(kpiInventory.data?.totalStockValue),     tab: 'stock' },
+    { label: 'Ítems totales',  value: fmtNum(kpiInventory.data?.totalItems),           tab: 'stock' },
     {
       label: 'Ítems bajo mín.',
       value: fmtNum(kpiInventory.data?.itemsBelowMin),
       color: (kpiInventory.data?.itemsBelowMin ?? 0) > 0 ? '#DC2626' : undefined,
+      tab: 'stock',
     },
-    { label: 'Slow moving',    value: fmtNum(kpiInventory.data?.slowMovingItemsCount) },
+    { label: 'Slow moving',    value: fmtNum(kpiInventory.data?.slowMovingItemsCount), tab: 'slow-moving' },
   ]
 
   // ── Finanzas rows ─────────────────────────────────────────────────────────
 
   const financeRows: KpiRow[] = [
-    { label: 'AR abierto',  value: fmtAmt(summary.data?.totalOpenAr) },
-    { label: 'AP abierto',  value: fmtAmt(summary.data?.totalOpenAp) },
+    { label: 'AR abierto',  value: fmtAmt(summary.data?.totalOpenAr),                                     tab: 'ar-aging' },
+    { label: 'AP abierto',  value: fmtAmt(summary.data?.totalOpenAp),                                     tab: 'ap-aging' },
     {
       label: 'DSO',
       value: summary.data?.dsoDays != null ? `${summary.data.dsoDays.toFixed(0)} días` : '—',
+      tab: 'ar-aging',
     },
     {
       label: 'DPO',
       value: summary.data?.dpoDays != null ? `${summary.data.dpoDays.toFixed(0)} días` : '—',
+      tab: 'ap-aging',
     },
   ]
 

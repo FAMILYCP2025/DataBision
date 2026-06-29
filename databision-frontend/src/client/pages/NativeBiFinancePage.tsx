@@ -1,6 +1,9 @@
 import { useState, useMemo, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { exportXlsx } from '../utils/exportXlsx'
+import { useDateRangeFilter, filterByRange } from '../hooks/useDateRangeFilter'
+import DateRangeSelector from '../components/nativebi/DateRangeSelector'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -31,6 +34,9 @@ function fmtDate(iso: string | null) {
 }
 
 type Tab = 'resumen' | 'ar-aging' | 'ap-aging' | 'tendencia'
+
+const VALID_TABS: Tab[] = ['resumen', 'ar-aging', 'ap-aging', 'tendencia']
+const DEFAULT_TAB: Tab = 'resumen'
 
 function fakeMeta(count: number): NbPagedMeta {
   return { limit: count, offset: 0, count, hasMore: false }
@@ -93,8 +99,14 @@ function BucketCell({ value }: { value: number }) {
 }
 
 export default function NativeBiFinancePage() {
-  const [tab, setTab] = useState<Tab>('resumen')
-  const [periodMonths, setPeriodMonths] = useState(12)
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') as Tab | null
+  const [tab, setTab] = useState<Tab>(
+    initialTab && (VALID_TABS as string[]).includes(initialTab)
+      ? (initialTab as Tab)
+      : DEFAULT_TAB
+  )
+  const { range, setFrom, setTo } = useDateRangeFilter(12)
 
   const [arSort, setArSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalOpen', dir: 'desc' })
   const [apSort, setApSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalOpen', dir: 'desc' })
@@ -102,16 +114,21 @@ export default function NativeBiFinancePage() {
   const { data: summary,    isLoading: loadingSummary }   = useFinanceMartSummary()
   const { data: arAging,    isLoading: loadingAr }        = useFinanceMartArAging(100)
   const { data: apAging,    isLoading: loadingAp }        = useFinanceMartApAging(100)
-  const { data: periodKpi,  isLoading: loadingPeriod }    = useFinanceMartPeriodKpi(periodMonths)
+  const { data: periodKpi,  isLoading: loadingPeriod }    = useFinanceMartPeriodKpi(24)
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const arChartData: ChartDataPoint[] = (periodKpi ?? []).map(p => ({
+  const filteredPeriod = useMemo(
+    () => filterByRange(periodKpi ?? [], range),
+    [periodKpi, range],
+  )
+
+  const arChartData: ChartDataPoint[] = filteredPeriod.map(p => ({
     name: `${p.year}-${String(p.month).padStart(2, '0')}`,
     value: p.arNet,
   }))
 
-  const apChartData: ChartDataPoint[] = (periodKpi ?? []).map(p => ({
+  const apChartData: ChartDataPoint[] = filteredPeriod.map(p => ({
     name: `${p.year}-${String(p.month).padStart(2, '0')}`,
     value: p.apNet,
   }))
@@ -305,18 +322,7 @@ export default function NativeBiFinancePage() {
       {/* ── Tab: Tendencia ──────────────────────────────────────────────────── */}
       {tab === 'tendencia' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Período:</span>
-            {([6, 12, 24] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setPeriodMonths(m)}
-                className={`db-btn db-btn--sm ${periodMonths === m ? 'db-btn--primary' : 'db-btn--ghost'}`}
-              >
-                {m} meses
-              </button>
-            ))}
-          </div>
+          <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
 
           <div className="db-card" style={{ padding: 20 }}>
             <h3 style={{ fontSize: 13.5, fontWeight: 600, margin: '0 0 16px', color: 'var(--c-text)' }}>
@@ -324,7 +330,7 @@ export default function NativeBiFinancePage() {
             </h3>
             {loadingPeriod ? (
               <div className="cp-skeleton" style={{ height: 220, borderRadius: 6 }} />
-            ) : arChartData.length === 0 ? (
+            ) : filteredPeriod.length === 0 ? (
               <NbEmptyState message="Sin datos para el período seleccionado." icon="chart" />
             ) : (
               <NbAreaChart
@@ -340,13 +346,13 @@ export default function NativeBiFinancePage() {
           <div className="db-card" style={{ overflow: 'hidden' }}>
             {loadingPeriod ? (
               <div className="cp-skeleton" style={{ height: 200, margin: 16, borderRadius: 6 }} />
-            ) : (periodKpi ?? []).length === 0 ? (
+            ) : filteredPeriod.length === 0 ? (
               <NbEmptyState message="Sin datos de período disponibles." icon="table" />
             ) : (
               <SortableTable<FinancePeriodKpi>
-                data={periodKpi ?? []}
+                data={filteredPeriod}
                 columns={periodCols}
-                meta={fakeMeta((periodKpi ?? []).length)}
+                meta={fakeMeta(filteredPeriod.length)}
                 onPageChange={() => {}}
                 onSortChange={() => {}}
                 rowKey={r => `${r.year}-${r.month}`}

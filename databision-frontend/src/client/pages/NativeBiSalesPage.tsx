@@ -1,6 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useMemo, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { exportXlsx } from '../utils/exportXlsx'
+import { useDateRangeFilter, filterByRange } from '../hooks/useDateRangeFilter'
+import DateRangeSelector from '../components/nativebi/DateRangeSelector'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -76,6 +79,9 @@ function semaforo(value: number, total: number): { text: string; color: string }
 
 type Tab = 'resumen' | 'tendencia' | 'grupos' | 'almacenes' | 'customers' | 'items' | 'salespersons' | 'fulfillment' | 'pipeline'
 
+const VALID_TABS: Tab[] = ['resumen', 'tendencia', 'grupos', 'almacenes', 'customers', 'items', 'salespersons', 'fulfillment', 'pipeline']
+const DEFAULT_TAB: Tab = 'resumen'
+
 const LIMIT = 20
 const EMPTY_META: NbPagedMeta = { limit: LIMIT, offset: 0, count: 0, hasMore: false }
 
@@ -126,11 +132,18 @@ function StatCard({ label, value, sub, loading }: { label: string; value: ReactN
 
 export default function NativeBiSalesPage() {
   const { filters, setFilter, resetFilter, resetAll, hasActiveFilters } = useNativeBiFilters('sales', defaultDates())
-  const [tab, setTab] = useState<Tab>('resumen')
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') as Tab | null
+  const [tab, setTab] = useState<Tab>(
+    initialTab && (VALID_TABS as string[]).includes(initialTab)
+      ? (initialTab as Tab)
+      : DEFAULT_TAB
+  )
   const [custP, setCustP]     = useState<PaginationParams>(initPag('netSalesAmount'))
   const [itemP, setItemP]     = useState<PaginationParams>(initPag('grossSalesAmount'))
   const [spP, setSpP]         = useState<PaginationParams>(initPag('netSalesAmount'))
   const [overdueOnly, setOverdueOnly] = useState(false)
+  const { range, setFrom, setTo } = useDateRangeFilter(12)
 
   const { data: spOpts, isLoading: spOptsLoading } = useSalespersonOptions()
   const { data: igOpts, isLoading: igOptsLoading } = useItemGroupOptions()
@@ -510,6 +523,18 @@ export default function NativeBiSalesPage() {
 
   const overdueCount = openOrders?.filter((o) => o.isOverdue).length ?? 0
 
+  const filteredMonthly = useMemo(() => {
+    if (!monthly) return []
+    return filterByRange(
+      monthly.map(m => ({
+        ...m,
+        year: parseInt(m.salesMonth.slice(0, 4)),
+        month: parseInt(m.salesMonth.slice(5, 7)),
+      })),
+      range
+    )
+  }, [monthly, range])
+
   const tabs: { id: Tab; label: ReactNode }[] = [
     { id: 'resumen',      label: 'Resumen' },
     { id: 'tendencia',    label: 'Tendencia' },
@@ -728,14 +753,14 @@ export default function NativeBiSalesPage() {
         {/* ── Tendencia ───────────────────────────────────────────────────── */}
         {tab === 'tendencia' && (
           <div style={{ padding: '20px' }}>
-            <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 16 }}>
-              Evolución mensual de ventas — ventas brutas vs netas
-            </p>
+            <div style={{ marginBottom: 16 }}>
+              <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
+            </div>
             <NbLineChart
               series={[
                 {
                   name: 'Ventas brutas',
-                  data: (monthly ?? []).slice().reverse().map((m): ChartDataPoint => ({
+                  data: filteredMonthly.slice().reverse().map((m): ChartDataPoint => ({
                     name: new Date(m.salesMonth + 'T00:00:00').toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }),
                     value: m.grossSalesAmount,
                   })),
@@ -743,7 +768,7 @@ export default function NativeBiSalesPage() {
                 },
                 {
                   name: 'Ventas netas',
-                  data: (monthly ?? []).slice().reverse().map((m): ChartDataPoint => ({
+                  data: filteredMonthly.slice().reverse().map((m): ChartDataPoint => ({
                     name: new Date(m.salesMonth + 'T00:00:00').toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }),
                     value: m.netSalesAmount,
                   })),
@@ -755,7 +780,7 @@ export default function NativeBiSalesPage() {
               valueFormatter={(v) => v.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
             />
             <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-              {(monthly ?? []).slice().reverse().map((m) => (
+              {filteredMonthly.slice().reverse().map((m) => (
                 <div key={m.salesMonth} className="db-stat-card">
                   <span className="db-stat-label">
                     {new Date(m.salesMonth + 'T00:00:00').toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}

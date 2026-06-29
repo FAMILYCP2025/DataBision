@@ -1,6 +1,9 @@
 import { useState, useMemo, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { exportXlsx } from '../utils/exportXlsx'
+import { useDateRangeFilter, filterByRange } from '../hooks/useDateRangeFilter'
+import DateRangeSelector from '../components/nativebi/DateRangeSelector'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -32,6 +35,9 @@ function fmtDate(iso: string | null) {
 }
 
 type Tab = 'resumen' | 'tendencia' | 'proveedores' | 'articulos' | 'pipeline'
+
+const VALID_TABS: Tab[] = ['resumen', 'tendencia', 'proveedores', 'articulos', 'pipeline']
+const DEFAULT_TAB: Tab = 'resumen'
 
 function fakeMeta(count: number): NbPagedMeta {
   return { limit: count, offset: 0, count, hasMore: false }
@@ -79,16 +85,22 @@ function StatCard({ label, value, sub, loading }: { label: string; value: ReactN
 }
 
 export default function NativeBiPurchasePage() {
-  const [tab, setTab] = useState<Tab>('resumen')
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') as Tab | null
+  const [tab, setTab] = useState<Tab>(
+    initialTab && (VALID_TABS as string[]).includes(initialTab)
+      ? (initialTab as Tab)
+      : DEFAULT_TAB
+  )
   const [overdueOnly, setOverdueOnly] = useState(false)
-  const [periodMonths, setPeriodMonths] = useState(12)
+  const { range, setFrom, setTo } = useDateRangeFilter(12)
 
   const [supSort, setSupSort]   = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'netPurchases', dir: 'desc' })
   const [itemSort, setItemSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'grossPurchases', dir: 'desc' })
   const [ordSort, setOrdSort]   = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'isOverdue', dir: 'desc' })
 
   const { data: kpi,       isLoading: loadingKpi }       = usePurchaseMartKpi()
-  const { data: byPeriod,  isLoading: loadingPeriod }    = usePurchaseMartByPeriod(periodMonths)
+  const { data: byPeriod,  isLoading: loadingPeriod }    = usePurchaseMartByPeriod(24)
   const { data: suppliers, isLoading: loadingSuppliers } = usePurchaseMartTopSuppliers(20)
   const { data: items,     isLoading: loadingItems }     = usePurchaseMartTopItems(20)
   const { data: orders,    isLoading: loadingOrders }    = usePurchaseMartOpenOrders(overdueOnly)
@@ -121,6 +133,16 @@ export default function NativeBiPurchasePage() {
     () => localSort(orders ?? [], ordSort.key, ordSort.dir),
     [orders, ordSort],
   )
+
+  const filteredPeriod = useMemo(
+    () => filterByRange(byPeriod ?? [], range),
+    [byPeriod, range],
+  )
+
+  const filteredChartData: ChartDataPoint[] = filteredPeriod.map(p => ({
+    name: `${p.year}-${String(p.month).padStart(2, '0')}`,
+    value: p.grossPurchases,
+  }))
 
   // ── Columns ────────────────────────────────────────────────────────────────
   const supplierCols: ColumnDef<TopSupplierMart>[] = [
@@ -242,7 +264,7 @@ export default function NativeBiPurchasePage() {
           {byPeriod && byPeriod.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <p style={{ fontSize: 13, color: 'var(--c-text-muted)', marginBottom: 8, fontWeight: 500 }}>
-                Compras brutas — últimos {periodMonths} meses
+                Compras brutas — últimos 24 meses
               </p>
               <NbBarChart data={periodChartData} height={200} />
             </div>
@@ -253,37 +275,19 @@ export default function NativeBiPurchasePage() {
       {/* ── TENDENCIA ────────────────────────────────────────────────────────── */}
       {tab === 'tendencia' && (
         <div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Período:</span>
-            {([6, 12, 24] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setPeriodMonths(m)}
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: 6,
-                  border: '1px solid var(--c-border)',
-                  background: periodMonths === m ? 'var(--brand-primary, #2563EB)' : 'white',
-                  color: periodMonths === m ? 'white' : 'var(--c-text)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                {m}M
-              </button>
-            ))}
+          <div style={{ marginBottom: 16 }}>
+            <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
           </div>
 
           {loadingPeriod && <div className="cp-skeleton" style={{ height: 220, borderRadius: 8 }} />}
 
-          {!loadingPeriod && (!byPeriod || byPeriod.length === 0) && (
+          {!loadingPeriod && filteredPeriod.length === 0 && (
             <NbEmptyState message="Sin datos de tendencia. Ejecuta --object OPCH --send para sincronizar facturas de proveedores." />
           )}
 
-          {byPeriod && byPeriod.length > 0 && (
+          {filteredPeriod.length > 0 && (
             <>
-              <NbAreaChart series={[{ name: 'Compras brutas', data: periodChartData }]} height={240} />
+              <NbAreaChart series={[{ name: 'Compras brutas', data: filteredChartData }]} height={240} />
               <div style={{ marginTop: 24 }}>
                 <SortableTable
                   columns={[
@@ -295,8 +299,8 @@ export default function NativeBiPurchasePage() {
                     { key: 'activeSuppliers',  label: 'Proveedores',    sortKey: 'activeSuppliers',  render: r => r.activeSuppliers },
                     { key: 'avgTicket',        label: 'Ticket prom.',   sortKey: 'avgTicket',        render: r => fmtAmt(r.avgTicket) },
                   ]}
-                  data={byPeriod}
-                  meta={fakeMeta(byPeriod.length)}
+                  data={filteredPeriod}
+                  meta={fakeMeta(filteredPeriod.length)}
                   sortBy="period"
                   sortDir="asc"
                   onPageChange={() => undefined}

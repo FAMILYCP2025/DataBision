@@ -1,6 +1,9 @@
 import { useState, useMemo, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { exportXlsx } from '../utils/exportXlsx'
+import { useDateRangeFilter, filterByRange } from '../hooks/useDateRangeFilter'
+import DateRangeSelector from '../components/nativebi/DateRangeSelector'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
@@ -37,6 +40,9 @@ function fmtDate(iso: string | null) {
 }
 
 type Tab = 'resumen' | 'stock' | 'movimientos' | 'almacenes' | 'slow-moving'
+
+const VALID_TABS: Tab[] = ['resumen', 'stock', 'movimientos', 'almacenes', 'slow-moving']
+const DEFAULT_TAB: Tab = 'resumen'
 
 function fakeMeta(count: number): NbPagedMeta {
   return { limit: count, offset: 0, count, hasMore: false }
@@ -94,8 +100,14 @@ function StatCard({ label, value, sub, loading }: { label: string; value: ReactN
 }
 
 export default function NativeBiInventoryPage() {
-  const [tab, setTab] = useState<Tab>('resumen')
-  const [months, setMonths] = useState(12)
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') as Tab | null
+  const [tab, setTab] = useState<Tab>(
+    initialTab && (VALID_TABS as string[]).includes(initialTab)
+      ? (initialTab as Tab)
+      : DEFAULT_TAB
+  )
+  const { range, setFrom, setTo } = useDateRangeFilter(12)
   const [minDays, setMinDays] = useState(90)
 
   const [stockSort,   setStockSort]   = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'stockValue',         dir: 'desc' })
@@ -104,7 +116,7 @@ export default function NativeBiInventoryPage() {
 
   const { data: kpi,       isLoading: loadingKpi }     = useInventoryMartKpi()
   const { data: snapshot,  isLoading: loadingSnapshot } = useInventoryMartSnapshot(50)
-  const { data: movement,  isLoading: loadingMovement } = useInventoryMartMovement(months)
+  const { data: movement,  isLoading: loadingMovement } = useInventoryMartMovement(24)
   const { data: slowItems, isLoading: loadingSlowItems } = useInventoryMartSlowMoving(minDays)
   const { data: warehouses, isLoading: loadingWarehouses } = useInventoryMartWarehouses()
 
@@ -114,12 +126,17 @@ export default function NativeBiInventoryPage() {
     .slice(0, 10)
     .map(s => ({ name: s.itemName ?? s.itemCode, value: s.stockValue }))
 
-  const movementInbound: ChartDataPoint[] = (movement ?? []).map(m => ({
+  const filteredMovement = useMemo(
+    () => filterByRange(movement ?? [], range),
+    [movement, range],
+  )
+
+  const movementInbound: ChartDataPoint[] = filteredMovement.map(m => ({
     name: `${m.year}-${String(m.month).padStart(2, '0')}`,
     value: m.inboundValue,
   }))
 
-  const movementOutbound: ChartDataPoint[] = (movement ?? []).map(m => ({
+  const movementOutbound: ChartDataPoint[] = filteredMovement.map(m => ({
     name: `${m.year}-${String(m.month).padStart(2, '0')}`,
     value: m.outboundValue,
   }))
@@ -304,18 +321,7 @@ export default function NativeBiInventoryPage() {
       {/* ── Tab: Movimientos ────────────────────────────────────────────────── */}
       {tab === 'movimientos' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: 'var(--c-text-muted)' }}>Período:</span>
-            {([6, 12, 24] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setMonths(m)}
-                className={`db-btn db-btn--sm ${months === m ? 'db-btn--primary' : 'db-btn--ghost'}`}
-              >
-                {m} meses
-              </button>
-            ))}
-          </div>
+          <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
 
           <div className="db-card" style={{ padding: 20 }}>
             <h3 style={{ fontSize: 13.5, fontWeight: 600, margin: '0 0 16px', color: 'var(--c-text)' }}>
@@ -339,13 +345,13 @@ export default function NativeBiInventoryPage() {
           <div className="db-card" style={{ overflow: 'hidden' }}>
             {loadingMovement ? (
               <div className="cp-skeleton" style={{ height: 200, margin: 16, borderRadius: 6 }} />
-            ) : (movement ?? []).length === 0 ? (
+            ) : filteredMovement.length === 0 ? (
               <NbEmptyState message="Sin datos de movimiento." icon="table" />
             ) : (
               <SortableTable<InventoryMovementKpi>
-                data={movement ?? []}
+                data={filteredMovement}
                 columns={movKpiCols}
-                meta={fakeMeta((movement ?? []).length)}
+                meta={fakeMeta(filteredMovement.length)}
                 onPageChange={() => {}}
                 onSortChange={() => {}}
                 rowKey={r => `${r.year}-${r.month}`}
