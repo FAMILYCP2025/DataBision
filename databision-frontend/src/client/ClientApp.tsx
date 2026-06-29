@@ -11,6 +11,7 @@ import ReportViewPage from './pages/ReportViewPage'
 import UsersSettingsPage from './pages/settings/UsersSettingsPage'
 import PermissionsSettingsPage from './pages/settings/PermissionsSettingsPage'
 import BrandingSettingsPage from './pages/settings/BrandingSettingsPage'
+import PasswordSettingsPage from './pages/settings/PasswordSettingsPage'
 import NativeBiDashboardPage from './pages/NativeBiDashboardPage'
 import NativeBiSalesPage from './pages/NativeBiSalesPage'
 import NativeBiPurchasePage from './pages/NativeBiPurchasePage'
@@ -49,6 +50,7 @@ export default function ClientApp() {
                 <Route path="/client/settings/users" element={<UsersSettingsPage />} />
                 <Route path="/client/settings/permissions" element={<PermissionsSettingsPage />} />
                 <Route path="/client/settings/branding" element={<BrandingSettingsPage />} />
+                <Route path="/client/settings/password" element={<PasswordSettingsPage />} />
 
                 {/* Native BI */}
                 <Route path="/client/bi/dashboard" element={<NativeBiDashboardPage />} />

@@ -1,4 +1,5 @@
 import { NavLink, useParams, useLocation } from 'react-router-dom'
+import { KeyRound } from 'lucide-react'
 import { useClientModules } from '../hooks/useClientData'
 import { useClientAuthStore } from '../store/useClientAuthStore'
 import { clientLogout } from '../api/clientApi'
@@ -316,6 +317,26 @@ export default function ClientSidebar() {
               </svg>
             </span>
             <span className="cp-nav-label">Apariencia</span>
+          </NavLink>
+          <NavLink
+            to="/client/settings/password"
+            className={({ isActive }) => `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`}
+          >
+            <span className="cp-nav-icon"><KeyRound size={16} /></span>
+            <span className="cp-nav-label">Contraseña</span>
+          </NavLink>
+        </nav>
+      )}
+
+      {/* Contraseña — usuarios sin rol admin */}
+      {user?.role !== 'CompanyAdmin' && (
+        <nav className="cp-sidebar-nav" style={{ marginTop: 'auto', marginBottom: 16 }}>
+          <NavLink
+            to="/client/settings/password"
+            className={({ isActive }) => `cp-nav-item${isActive ? ' cp-nav-item--active' : ''}`}
+          >
+            <span className="cp-nav-icon"><KeyRound size={16} /></span>
+            <span className="cp-nav-label">Contraseña</span>
           </NavLink>
         </nav>
       )}

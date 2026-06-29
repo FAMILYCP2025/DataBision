@@ -1,6 +1,9 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using DataBision.Api.Middleware;
 using DataBision.Application.DTOs.Auth;
 using DataBision.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -50,6 +53,28 @@ public class AuthController(IAuthService authService, IAuditService auditService
         SetRefreshCookie(result.RefreshToken);
 
         return Ok(new { data = new { result.AccessToken, result.ExpiresIn, result.User } });
+    }
+
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+    {
+        var userIdStr = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (!int.TryParse(userIdStr, out var userId))
+            return Unauthorized();
+
+        var (success, error) = await authService.ChangePasswordAsync(userId, dto);
+        if (!success)
+            return BadRequest(new
+            {
+                error,
+                message = error == "wrong_current_password"
+                    ? "La contraseña actual no es correcta."
+                    : "No se pudo actualizar la contraseña.",
+            });
+
+        await auditService.LogAsync("CHANGE_PASSWORD", userId: userId);
+        return Ok(new { data = "password_changed" });
     }
 
     [HttpPost("logout")]

@@ -114,6 +114,20 @@ public class AuthService(IAuthRepository repository, IConfiguration config) : IA
             await repository.RevokeRefreshTokenAsync(stored.Id);
     }
 
+    public async Task<(bool Success, string? Error)> ChangePasswordAsync(int userId, ChangePasswordDto dto)
+    {
+        var user = await repository.FindUserByIdAsync(userId);
+        if (user is null || !user.IsActive)
+            return (false, "user_not_found");
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+            return (false, "wrong_current_password");
+
+        var newHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        await repository.UpdateUserPasswordHashAsync(userId, newHash);
+        return (true, null);
+    }
+
     private string GenerateAccessToken(User user, string companySlug, int? companyId, int[] moduleIds)
     {
         var privateKeyPem = config["Jwt:PrivateKey"]

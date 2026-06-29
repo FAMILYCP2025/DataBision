@@ -57,4 +57,14 @@ public class AuthRepository(AppDbContext db) : IAuthRepository
             await db.SaveChangesAsync();
         }
     }
+
+    public async Task UpdateUserPasswordHashAsync(int userId, string passwordHash)
+    {
+        var user = await db.Users.FindAsync(userId);
+        if (user is not null)
+        {
+            user.PasswordHash = passwordHash;
+            await db.SaveChangesAsync();
+        }
+    }
 }

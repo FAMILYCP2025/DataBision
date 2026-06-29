@@ -14,4 +14,5 @@ public interface IAuthRepository
     Task<RefreshToken?> FindRefreshTokenAsync(string hash);
     Task RevokeRefreshTokenAsync(int tokenId);
     Task UpdateLastLoginAsync(int userId);
+    Task UpdateUserPasswordHashAsync(int userId, string passwordHash);
 }

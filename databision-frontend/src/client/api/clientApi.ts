@@ -36,6 +36,10 @@ export async function clientLogout(): Promise<void> {
   await api.post('/auth/logout')
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api.post<ApiResponse<string>>('/auth/change-password', { currentPassword, newPassword })
+}
+
 // ── Branding ─────────────────────────────────────────────────────────────────
 // Real source of truth: GET /api/tenant/config (public, resolved by subdomain
 // in prod and by ?tenant= query param in local dev via TenantMiddleware).
