@@ -45,3 +45,13 @@ export function useDateRangeFilter(defaultMonths = 12) {
 
   return { range, setFrom, setTo }
 }
+
+/** Desplaza un rango exactamente N años (default: -1) */
+export function shiftRangeByYear(range: DateRange, years = -1): DateRange {
+  return {
+    fromYear:  range.fromYear  + years,
+    fromMonth: range.fromMonth,
+    toYear:    range.toYear    + years,
+    toMonth:   range.toMonth,
+  }
+}

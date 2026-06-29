@@ -2,7 +2,7 @@ import { useState, useMemo, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { exportXlsx } from '../utils/exportXlsx'
-import { useDateRangeFilter, filterByRange } from '../hooks/useDateRangeFilter'
+import { useDateRangeFilter, filterByRange, shiftRangeByYear } from '../hooks/useDateRangeFilter'
 import DateRangeSelector from '../components/nativebi/DateRangeSelector'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
@@ -94,6 +94,7 @@ export default function NativeBiPurchasePage() {
   )
   const [overdueOnly, setOverdueOnly] = useState(false)
   const { range, setFrom, setTo } = useDateRangeFilter(12)
+  const [yoyEnabled, setYoyEnabled] = useState(false)
 
   const [supSort, setSupSort]   = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'netPurchases', dir: 'desc' })
   const [itemSort, setItemSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'grossPurchases', dir: 'desc' })
@@ -137,6 +138,13 @@ export default function NativeBiPurchasePage() {
   const filteredPeriod = useMemo(
     () => filterByRange(byPeriod ?? [], range),
     [byPeriod, range],
+  )
+
+  const prevYearRange = useMemo(() => shiftRangeByYear(range), [range])
+
+  const filteredPrevYear = useMemo(
+    () => yoyEnabled ? filterByRange(byPeriod ?? [], prevYearRange) : [],
+    [yoyEnabled, byPeriod, prevYearRange],
   )
 
   const filteredChartData: ChartDataPoint[] = filteredPeriod.map(p => ({
@@ -275,8 +283,17 @@ export default function NativeBiPurchasePage() {
       {/* ── TENDENCIA ────────────────────────────────────────────────────────── */}
       {tab === 'tendencia' && (
         <div>
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: 'var(--c-text-muted)' }}>
+              <input
+                type="checkbox"
+                checked={yoyEnabled}
+                onChange={e => setYoyEnabled(e.target.checked)}
+                style={{ accentColor: 'var(--brand-primary)', width: 14, height: 14 }}
+              />
+              vs año anterior
+            </label>
           </div>
 
           {loadingPeriod && <div className="cp-skeleton" style={{ height: 220, borderRadius: 8 }} />}
@@ -287,7 +304,17 @@ export default function NativeBiPurchasePage() {
 
           {filteredPeriod.length > 0 && (
             <>
-              <NbAreaChart series={[{ name: 'Compras brutas', data: filteredChartData }]} height={240} />
+              <NbAreaChart
+                series={[
+                  { name: `Compras brutas ${range.fromYear}–${range.toYear}`, data: filteredChartData },
+                  ...(yoyEnabled && filteredPrevYear.length > 0 ? [
+                    { name: `Compras brutas ${range.fromYear - 1}–${range.toYear - 1}`,
+                      data: filteredPrevYear.map(r => ({ name: `${r.year}-${String(r.month).padStart(2, '0')}`, value: r.grossPurchases })),
+                      color: '#94A3B8' },
+                  ] : []),
+                ]}
+                height={240}
+              />
               <div style={{ marginTop: 24 }}>
                 <SortableTable
                   columns={[

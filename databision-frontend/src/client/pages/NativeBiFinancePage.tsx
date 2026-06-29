@@ -2,13 +2,12 @@ import { useState, useMemo, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { exportXlsx } from '../utils/exportXlsx'
-import { useDateRangeFilter, filterByRange } from '../hooks/useDateRangeFilter'
+import { useDateRangeFilter, filterByRange, shiftRangeByYear } from '../hooks/useDateRangeFilter'
 import DateRangeSelector from '../components/nativebi/DateRangeSelector'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
 import { NbEmptyState } from '../components/nativebi/NativeBiState'
 import { NbAreaChart } from '../components/charts'
-import type { ChartDataPoint } from '../components/charts'
 import {
   useFinanceMartSummary,
   useFinanceMartArAging,
@@ -107,6 +106,7 @@ export default function NativeBiFinancePage() {
       : DEFAULT_TAB
   )
   const { range, setFrom, setTo } = useDateRangeFilter(12)
+  const [yoyEnabled, setYoyEnabled] = useState(false)
 
   const [arSort, setArSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalOpen', dir: 'desc' })
   const [apSort, setApSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalOpen', dir: 'desc' })
@@ -123,15 +123,12 @@ export default function NativeBiFinancePage() {
     [periodKpi, range],
   )
 
-  const arChartData: ChartDataPoint[] = filteredPeriod.map(p => ({
-    name: `${p.year}-${String(p.month).padStart(2, '0')}`,
-    value: p.arNet,
-  }))
+  const prevYearRange = useMemo(() => shiftRangeByYear(range), [range])
 
-  const apChartData: ChartDataPoint[] = filteredPeriod.map(p => ({
-    name: `${p.year}-${String(p.month).padStart(2, '0')}`,
-    value: p.apNet,
-  }))
+  const filteredPrevYear = useMemo(
+    () => yoyEnabled ? filterByRange(periodKpi ?? [], prevYearRange) : [],
+    [yoyEnabled, periodKpi, prevYearRange],
+  )
 
   const sortedAr = useMemo(
     () => localSort(arAging ?? [], arSort.key, arSort.dir),
@@ -322,7 +319,18 @@ export default function NativeBiFinancePage() {
       {/* ── Tab: Tendencia ──────────────────────────────────────────────────── */}
       {tab === 'tendencia' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: 'var(--c-text-muted)' }}>
+              <input
+                type="checkbox"
+                checked={yoyEnabled}
+                onChange={e => setYoyEnabled(e.target.checked)}
+                style={{ accentColor: 'var(--brand-primary)', width: 14, height: 14 }}
+              />
+              vs año anterior
+            </label>
+          </div>
 
           <div className="db-card" style={{ padding: 20 }}>
             <h3 style={{ fontSize: 13.5, fontWeight: 600, margin: '0 0 16px', color: 'var(--c-text)' }}>
@@ -335,8 +343,18 @@ export default function NativeBiFinancePage() {
             ) : (
               <NbAreaChart
                 series={[
-                  { name: 'AR Neto', data: arChartData },
-                  { name: 'AP Neto', data: apChartData },
+                  { name: `AR Neto ${range.fromYear}–${range.toYear}`,
+                    data: filteredPeriod.map(r => ({ name: `${r.year}-${String(r.month).padStart(2, '0')}`, value: r.arNet })) },
+                  { name: `AP Neto ${range.fromYear}–${range.toYear}`,
+                    data: filteredPeriod.map(r => ({ name: `${r.year}-${String(r.month).padStart(2, '0')}`, value: r.apNet })) },
+                  ...(yoyEnabled && filteredPrevYear.length > 0 ? [
+                    { name: `AR Neto ${range.fromYear - 1}–${range.toYear - 1}`,
+                      data: filteredPrevYear.map(r => ({ name: `${r.year}-${String(r.month).padStart(2, '0')}`, value: r.arNet })),
+                      color: '#94A3B8' },
+                    { name: `AP Neto ${range.fromYear - 1}–${range.toYear - 1}`,
+                      data: filteredPrevYear.map(r => ({ name: `${r.year}-${String(r.month).padStart(2, '0')}`, value: r.apNet })),
+                      color: '#CBD5E1' },
+                  ] : []),
                 ]}
                 height={220}
               />

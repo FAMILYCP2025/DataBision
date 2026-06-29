@@ -2,7 +2,7 @@ import { useState, useMemo, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { exportXlsx } from '../utils/exportXlsx'
-import { useDateRangeFilter, filterByRange } from '../hooks/useDateRangeFilter'
+import { useDateRangeFilter, filterByRange, shiftRangeByYear } from '../hooks/useDateRangeFilter'
 import DateRangeSelector from '../components/nativebi/DateRangeSelector'
 import SortableTable, { type ColumnDef } from '../components/nativebi/SortableTable'
 import NativeBiPageHeader from '../components/nativebi/NativeBiPageHeader'
@@ -108,6 +108,7 @@ export default function NativeBiInventoryPage() {
       : DEFAULT_TAB
   )
   const { range, setFrom, setTo } = useDateRangeFilter(12)
+  const [yoyEnabled, setYoyEnabled] = useState(false)
   const [minDays, setMinDays] = useState(90)
 
   const [stockSort,   setStockSort]   = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'stockValue',         dir: 'desc' })
@@ -129,6 +130,13 @@ export default function NativeBiInventoryPage() {
   const filteredMovement = useMemo(
     () => filterByRange(movement ?? [], range),
     [movement, range],
+  )
+
+  const prevYearRange = useMemo(() => shiftRangeByYear(range), [range])
+
+  const filteredPrevYear = useMemo(
+    () => yoyEnabled ? filterByRange(movement ?? [], prevYearRange) : [],
+    [yoyEnabled, movement, prevYearRange],
   )
 
   const movementInbound: ChartDataPoint[] = filteredMovement.map(m => ({
@@ -321,7 +329,18 @@ export default function NativeBiInventoryPage() {
       {/* ── Tab: Movimientos ────────────────────────────────────────────────── */}
       {tab === 'movimientos' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <DateRangeSelector range={range} onFromChange={setFrom} onToChange={setTo} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: 'var(--c-text-muted)' }}>
+              <input
+                type="checkbox"
+                checked={yoyEnabled}
+                onChange={e => setYoyEnabled(e.target.checked)}
+                style={{ accentColor: 'var(--brand-primary)', width: 14, height: 14 }}
+              />
+              vs año anterior
+            </label>
+          </div>
 
           <div className="db-card" style={{ padding: 20 }}>
             <h3 style={{ fontSize: 13.5, fontWeight: 600, margin: '0 0 16px', color: 'var(--c-text)' }}>
@@ -334,8 +353,16 @@ export default function NativeBiInventoryPage() {
             ) : (
               <NbAreaChart
                 series={[
-                  { name: 'Entradas', data: movementInbound },
-                  { name: 'Salidas',  data: movementOutbound },
+                  { name: `Entradas ${range.fromYear}–${range.toYear}`, data: movementInbound },
+                  { name: `Salidas ${range.fromYear}–${range.toYear}`,  data: movementOutbound },
+                  ...(yoyEnabled && filteredPrevYear.length > 0 ? [
+                    { name: `Entradas ${range.fromYear - 1}–${range.toYear - 1}`,
+                      data: filteredPrevYear.map(r => ({ name: `${r.year}-${String(r.month).padStart(2, '0')}`, value: r.inboundValue })),
+                      color: '#94A3B8' },
+                    { name: `Salidas ${range.fromYear - 1}–${range.toYear - 1}`,
+                      data: filteredPrevYear.map(r => ({ name: `${r.year}-${String(r.month).padStart(2, '0')}`, value: r.outboundValue })),
+                      color: '#CBD5E1' },
+                  ] : []),
                 ]}
                 height={220}
               />
